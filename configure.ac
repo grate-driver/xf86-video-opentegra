@@ -49,6 +49,11 @@ AC_ARG_WITH(xorg-module-dir,
             [moduledir="$withval"],
             [moduledir="$libdir/xorg/modules"])
 
+AC_ARG_WITH(gallium-dir,
+            AC_HELP_STRING([--with-gallium-dir=DIR],
+                           [gallium directory [[default=none]]]),
+            [GALLIUM_DIR="$withval"])
+
 AC_ARG_ENABLE(dri, AC_HELP_STRING([--disable-dri],
                                   [Disable DRI support [[default=auto]]]),
               [DRI="$enableval"],
@@ -93,7 +98,6 @@ AC_MSG_RESULT([$DRI])
 
 save_CFLAGS="$CFLAGS"
 CFLAGS="$XORG_CFLAGS"
-AC_CHECK_HEADER(xf86Modes.h,[XMODES=yes],[XMODES=no],[#include "xorg-server.h"])
 AC_CHECK_DECL(XSERVER_LIBPCIACCESS,
 	      [XSERVER_LIBPCIACCESS=yes],[XSERVER_LIBPCIACCESS=no],
 	      [#include "xorg-server.h"])
@@ -109,7 +113,6 @@ fi
 AM_CONDITIONAL(XSERVER_LIBPCIACCESS, test "x$XSERVER_LIBPCIACCESS" = xyes)
 AM_CONDITIONAL(LIBPCIACCESS,
 	test "x$XSERVER_LIBPCIACCESS" = xyes -o "x$have_libpciaccess" = xyes)
-AM_CONDITIONAL(XMODES, test "x$XMODES" = xno)
 
 if test "x$XSERVER_SOURCE" = x; then
 	if test -d ../../xserver; then
@@ -137,21 +140,6 @@ if test -d "$XSERVER_SOURCE"; then
 		ln -sf $XSERVER_SOURCE/hw/xfree86/parser $srcdir/src/parser
 	fi
 fi
-
-if test "x$XMODES" = xyes; then
-	AC_MSG_NOTICE([X server has new mode code])
-	AC_DEFINE(XMODES, 1,[X server has built-in mode code])
-	XMODES_CFLAGS=
-else
-	if test -f $srcdir/src/modes/xf86Modes.h -a -f $srcdir/src/parser/xf86Parser.h; then
-		AC_MSG_NOTICE([X server is missing new mode code, using local copy])
-	else
-		AC_MSG_ERROR([Must have X server >= 1.3 source tree for mode setting code. Please specify --with-xserver-source])
-	fi
-	XMODES_CFLAGS='-DXF86_MODES_RENAME -I$(top_srcdir)/src -I$(top_srcdir)/src/modes -I$(top_srcdir)/src/parser'
-fi
-
-AC_SUBST([XMODES_CFLAGS])
 
 dnl Use lots of warning flags with GCC
 
@@ -181,6 +169,7 @@ fi
 AC_SUBST([DRI_CFLAGS])
 AC_SUBST([XORG_CFLAGS])
 AC_SUBST([WARN_CFLAGS])
+AC_SUBST([GALLIUM_DIR])
 AC_SUBST([moduledir])
 
 DRIVER_NAME=modesetting
