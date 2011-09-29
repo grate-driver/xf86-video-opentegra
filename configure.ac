@@ -47,6 +47,10 @@ AC_PROG_LIBTOOL
 AC_PROG_CC
 AM_PROG_CC_C_O
 
+if test "x$GCC" = "xyes"; then
+        CPPFLAGS="$CPPFLAGS -Wall"
+fi
+
 AH_TOP([#include "xorg-server.h"])
 
 AC_ARG_WITH(xorg-module-dir,
