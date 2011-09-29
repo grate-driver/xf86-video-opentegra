@@ -20,24 +20,30 @@
 #
 # Process this file with autoconf to produce a configure script
 
-AC_PREREQ(2.57)
+AC_PREREQ([2.60])
 AC_INIT([xf86-video-modesetting],
-        0.1.0,
+        [0.1.0],
         [https://bugs.freedesktop.org/enter_bug.cgi?product=xorg],
-        xf86-video-modesetting)
+        [xf86-video-modesetting])
 
 AC_CONFIG_SRCDIR([Makefile.am])
 AM_CONFIG_HEADER([config.h])
+
+m4_ifndef([XORG_MACROS_VERSION],
+	[m4_fatal([must install xorg-macros 1.8 or later before runnign autoconf/autogen])])
+XORG_MACROS_VERSION(1.8)
+XORG_DEFAULT_OPTIONS
+
 AC_CONFIG_AUX_DIR(.)
 
-AM_INIT_AUTOMAKE([dist-bzip2])
+AM_INIT_AUTOMAKE([foreign dist-bzip2])
+AC_SYS_LARGEFILE
 
 AM_MAINTAINER_MODE
 
 # Checks for programs.
 AC_DISABLE_STATIC
 AC_PROG_LIBTOOL
-DOLT
 AC_PROG_CC
 AM_PROG_CC_C_O
 
@@ -48,11 +54,6 @@ AC_ARG_WITH(xorg-module-dir,
                            [Default xorg module directory [[default=$libdir/xorg/modules]]]),
             [moduledir="$withval"],
             [moduledir="$libdir/xorg/modules"])
-
-AC_ARG_WITH(gallium-dir,
-            AC_HELP_STRING([--with-gallium-dir=DIR],
-                           [gallium directory [[default=none]]]),
-            [GALLIUM_DIR="$withval"])
 
 AC_ARG_ENABLE(dri, AC_HELP_STRING([--disable-dri],
                                   [Disable DRI support [[default=auto]]]),
@@ -74,115 +75,23 @@ sdkdir=$(pkg-config --variable=sdkdir xorg-server)
 # Checks for header files.
 AC_HEADER_STDC
 
-AC_MSG_CHECKING([whether to include DRI support])
-if test x$DRI = xauto; then
-        AC_CHECK_FILE([${sdkdir}/dri.h],
-                      [have_dri_h="yes"], [have_dri_h="no"])
-        AC_CHECK_FILE([${sdkdir}/sarea.h],
-                      [have_sarea_h="yes"], [have_sarea_h="no"])
-        AC_CHECK_FILE([${sdkdir}/dristruct.h],
-                      [have_dristruct_h="yes"], [have_dristruct_h="no"])
-	AC_CHECK_FILE([${sdkdir}/damage.h],
-                      [have_damage_h="yes"], [have_damage_h="no"])
+PKG_CHECK_MODULES(DRM, [libdrm >= 2.2])
+PKG_CHECK_MODULES([PCIACCESS], [pciaccess >= 0.10])
+AM_CONDITIONAL(DRM, test "x$DRM" = xyes)
 
-        if test "$have_dri_h" = yes -a \
-                "$have_sarea_h" = yes -a \
-                "$have_dristruct_h" = yes; then
-                DRI="yes"
-        else
-                DRI="no"
-        fi
+PKG_CHECK_MODULES(UDEV, [libudev], [udev=yes], [udev=no])
+if test x"$udev" = xyes; then
+        AC_DEFINE(HAVE_UDEV,1,[Enable udev-based monitor hotplug detection])
 fi
-AC_MSG_RESULT([$DRI])
-
-save_CFLAGS="$CFLAGS"
-CFLAGS="$XORG_CFLAGS"
-AC_CHECK_DECL(XSERVER_LIBPCIACCESS,
-	      [XSERVER_LIBPCIACCESS=yes],[XSERVER_LIBPCIACCESS=no],
-	      [#include "xorg-server.h"])
-CFLAGS="$save_CFLAGS"
-
-if test x$XSERVER_LIBPCIACCESS = xyes; then
-	PKG_CHECK_MODULES([PCIACCESS], [pciaccess >= 0.10])
-else
-	PKG_CHECK_MODULES([PCIACCESS], [pciaccess >= 0.10],
-				       have_libpciaccess=yes,
-				       have_libpciaccess=no)
-fi
-AM_CONDITIONAL(XSERVER_LIBPCIACCESS, test "x$XSERVER_LIBPCIACCESS" = xyes)
-AM_CONDITIONAL(LIBPCIACCESS,
-	test "x$XSERVER_LIBPCIACCESS" = xyes -o "x$have_libpciaccess" = xyes)
-
-if test "x$XSERVER_SOURCE" = x; then
-	if test -d ../../xserver; then
-		XSERVER_SOURCE="`cd ../../xserver && pwd`"
-	fi
-fi
-	
-if test -d "$XSERVER_SOURCE"; then
-	case "$XSERVER_SOURCE" in
-	/*)
-		;;
-	*)
-		XSERVER_SOURCE="`cd $XSERVER_SOURCE && pwd`"
-		;;
-	esac
-	if test -f $srcdir/src/modes/xf86Modes.h; then
-		:
-	else
-		ln -sf $XSERVER_SOURCE/hw/xfree86/modes $srcdir/src/modes
-	fi
-	
-	if test -f $srcdir/src/parser/xf86Parser.h; then
-		:
-	else
-		ln -sf $XSERVER_SOURCE/hw/xfree86/parser $srcdir/src/parser
-	fi
-fi
-
-dnl Use lots of warning flags with GCC
-
-WARN_CFLAGS=""
-
-if test "x$GCC" = "xyes"; then
-	WARN_CFLAGS="-Wall -Wpointer-arith -Wstrict-prototypes \
-	-Wmissing-prototypes -Wmissing-declarations \
-	-Wnested-externs -fno-strict-aliasing"
-fi
-
-AM_CONDITIONAL(DRI, test x$DRI = xyes)
-if test "$DRI" = yes; then
-        PKG_CHECK_MODULES(DRI, [libdrm xf86driproto])
-        AC_DEFINE(XF86DRI,1,[Enable DRI driver support])
-        AC_DEFINE(XF86DRI_DEVEL,1,[Enable developmental DRI driver support])
-	PKG_CHECK_MODULES(DRI_MM, [libdrm >= 2.3.1],[DRI_MM=yes], [DRI_MM=no])
-	if test "x$DRI_MM" = xyes; then
-		AC_DEFINE(XF86DRI_MM,1,[Extended DRI memory management])
-	fi
-	if test "$have_damage_h" = yes; then
-		AC_DEFINE(DAMAGE,1,[Use Damage extension])
-	fi
-	CFLAGS="$XORG_CFLAGS $DRI_CFLAGS"
-fi
-
-AC_SUBST([DRI_CFLAGS])
-AC_SUBST([XORG_CFLAGS])
-AC_SUBST([WARN_CFLAGS])
-AC_SUBST([GALLIUM_DIR])
-AC_SUBST([moduledir])
 
 DRIVER_NAME=modesetting
 AC_SUBST([DRIVER_NAME])
+AC_SUBST([moduledir])
 
-m4_ifndef([XORG_MACROS_VERSION], [AC_FATAL([must install xorg-macros 1.1.3 or later before running autoconf/autogen])])
-XORG_MACROS_VERSION(1.1.3)
-XORG_MANPAGE_SECTIONS
-XORG_RELEASE_VERSION
-
-XORG_CHECK_LINUXDOC
-
-AC_OUTPUT([
+AC_CONFIG_FILES([
 	Makefile
 	src/Makefile
 	man/Makefile
 ])
+
+AC_OUTPUT
