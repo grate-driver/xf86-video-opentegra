@@ -71,9 +71,9 @@ core
 *.tar.bz2
 *.tar.gz
 #
-#		Add & Override patterns for xf86-video-intel 
+#		Add & Override patterns for xf86-video-modesetting
 #
 #		Edit the following section as needed
 # For example, !report.pc overrides *.pc. See 'man gitignore'
-# 
+#
 cscope*
