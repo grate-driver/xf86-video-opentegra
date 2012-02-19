@@ -45,10 +45,6 @@ AM_MAINTAINER_MODE
 AC_DISABLE_STATIC
 AC_PROG_LIBTOOL
 
-if test "x$GCC" = "xyes"; then
-        CPPFLAGS="$CPPFLAGS -Wall"
-fi
-
 AH_TOP([#include "xorg-server.h"])
 
 AC_ARG_WITH(xorg-module-dir,
