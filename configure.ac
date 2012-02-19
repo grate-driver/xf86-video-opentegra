@@ -20,30 +20,30 @@
 #
 # Process this file with autoconf to produce a configure script
 
+# Initialize Autoconf
 AC_PREREQ([2.60])
 AC_INIT([xf86-video-modesetting],
         [0.1.0],
         [https://bugs.freedesktop.org/enter_bug.cgi?product=xorg],
         [xf86-video-modesetting])
-
 AC_CONFIG_SRCDIR([Makefile.am])
 AC_CONFIG_HEADERS([config.h])
-
-m4_ifndef([XORG_MACROS_VERSION],
-	[m4_fatal([must install xorg-macros 1.8 or later before runnign autoconf/autogen])])
-XORG_MACROS_VERSION(1.8)
-XORG_DEFAULT_OPTIONS
-
 AC_CONFIG_AUX_DIR(.)
-
-AM_INIT_AUTOMAKE([foreign dist-bzip2])
 AC_SYS_LARGEFILE
 
+# Initialize Automake
+AM_INIT_AUTOMAKE([foreign dist-bzip2])
 AM_MAINTAINER_MODE
 
-# Checks for programs.
+# Initialize libtool
 AC_DISABLE_STATIC
 AC_PROG_LIBTOOL
+
+# Initialize X.Org macros 1.8 or later for MAN_SUBSTS set by XORG_MANPAGE_SECTIONS
+m4_ifndef([XORG_MACROS_VERSION],
+	[m4_fatal([must install xorg-macros 1.8 or later before running autoconf/autogen])])
+XORG_MACROS_VERSION(1.8)
+XORG_DEFAULT_OPTIONS
 
 AH_TOP([#include "xorg-server.h"])
 
