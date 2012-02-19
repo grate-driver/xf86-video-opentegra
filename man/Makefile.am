@@ -25,16 +25,16 @@
 # 
 
 drivermandir = $(DRIVER_MAN_DIR)
-driverman_DATA = $(DRIVER_NAME).$(DRIVER_MAN_SUFFIX)
+driverman_PRE = @DRIVER_NAME@.man
+driverman_DATA = $(driverman_PRE:man=@DRIVER_MAN_SUFFIX@)
 
 EXTRA_DIST = @DRIVER_NAME@.man
 
 CLEANFILES = $(driverman_DATA)
 
-SED = sed
 
+# String replacements in MAN_SUBSTS now come from xorg-macros.m4 via configure
 SUFFIXES = .$(DRIVER_MAN_SUFFIX) .man
 
 .man.$(DRIVER_MAN_SUFFIX):
-	sed $(MAN_SUBSTS) < $< > $@
-
+	$(AM_V_GEN)$(SED) $(MAN_SUBSTS) < $< > $@
