@@ -27,7 +27,7 @@ AC_INIT([xf86-video-modesetting],
         [xf86-video-modesetting])
 
 AC_CONFIG_SRCDIR([Makefile.am])
-AM_CONFIG_HEADER([config.h])
+AC_CONFIG_HEADERS([config.h])
 
 m4_ifndef([XORG_MACROS_VERSION],
 	[m4_fatal([must install xorg-macros 1.8 or later before runnign autoconf/autogen])])
