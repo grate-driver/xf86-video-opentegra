@@ -53,14 +53,8 @@ AC_ARG_WITH(xorg-module-dir,
             [moduledir="$withval"],
             [moduledir="$libdir/xorg/modules"])
 
-AC_ARG_ENABLE(dri, AS_HELP_STRING([--disable-dri],
-                                  [Disable DRI support [[default=auto]]]),
-              [DRI="$enableval"],
-              [DRI=auto])
-
 # Checks for extensions
 XORG_DRIVER_CHECK_EXT(RANDR, randrproto)
-XORG_DRIVER_CHECK_EXT(RENDER, renderproto)
 XORG_DRIVER_CHECK_EXT(XF86DRI, xextproto x11)
 XORG_DRIVER_CHECK_EXT(DPMSExtension, xextproto)
 
