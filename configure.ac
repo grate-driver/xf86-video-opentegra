@@ -82,6 +82,14 @@ if test x"$udev" = xyes; then
         AC_DEFINE(HAVE_UDEV,1,[Enable udev-based monitor hotplug detection])
 fi
 
+SAVE_CFLAGS=$CFLAGS
+SAVE_LIBS=$LIBS
+CFLAGS=$DRM_CFLAGS
+LIBS=$DRM_LIBS
+AC_CHECK_FUNCS([drmPrimeFDToHandle])
+CFLAGS=$SAVE_CFLAGS
+LIBS=$SAVE_LIBS
+
 DRIVER_NAME=modesetting
 AC_SUBST([DRIVER_NAME])
 AC_SUBST([moduledir])
