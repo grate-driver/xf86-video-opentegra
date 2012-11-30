@@ -33,7 +33,6 @@
 #include <damage.h>
 
 #include "drmmode_display.h"
-#define DRV_ERROR(msg)	xf86DrvMsg(pScrn->scrnIndex, X_ERROR, msg);
 
 typedef struct
 {
@@ -43,7 +42,7 @@ typedef struct
     ScrnInfoPtr pScrn_2;
 } EntRec, *EntPtr;
 
-typedef struct _modesettingRec
+typedef struct _TegraRec
 {
     int fd;
 
@@ -51,12 +50,6 @@ typedef struct _modesettingRec
 
     int Chipset;
     EntityInfoPtr pEnt;
-#if XSERVER_LIBPCIACCESS
-    struct pci_device *PciInfo;
-#else
-    pciVideoPtr PciInfo;
-    PCITAG PciTag;
-#endif
 
     Bool noAccel;
     Bool SWCursor;
@@ -76,6 +69,6 @@ typedef struct _modesettingRec
     DamagePtr damage;
     Bool dirty_enabled;
 
-} modesettingRec, *modesettingPtr;
+} TegraRec, *TegraPtr;
 
-#define modesettingPTR(p) ((modesettingPtr)((p)->driverPrivate))
+#define TegraPTR(p) ((TegraPtr)((p)->driverPrivate))

@@ -24,6 +24,7 @@
  *     Dave Airlie <airlied@redhat.com>
  *
  */
+
 #ifndef DRMMODE_DISPLAY_H
 #define DRMMODE_DISPLAY_H
 
@@ -33,8 +34,12 @@
 #endif
 
 /* the perfect storm */
-#if XF86_CRTC_VERSION >= 5 && defined(HAVE_DRMPRIMEFDTOHANDLE) && HAVE_SCREEN_SPECIFIC_PRIVATE_KEYS
-#define MODESETTING_OUTPUT_SLAVE_SUPPORT 1
+#if XF86_CRTC_VERSION >= 5
+#  if defined(HAVE_DRMPRIMEFDTOHANDLE)
+#    if HAVE_SCREEN_SPECIFIC_PRIVATE_KEYS
+#      define TEGRA_OUTPUT_SLAVE_SUPPORT 1
+#    endif
+#  endif
 #endif
 
 struct dumb_bo {
@@ -85,7 +90,6 @@ typedef struct {
     Atom *atoms;
 } drmmode_prop_rec, *drmmode_prop_ptr;
 
-
 typedef struct {
     drmmode_ptr drmmode;
     int output_id;
@@ -99,19 +103,18 @@ typedef struct {
     int enc_clone_mask;
 } drmmode_output_private_rec, *drmmode_output_private_ptr;
 
-#ifdef MODESETTING_OUTPUT_SLAVE_SUPPORT
-typedef struct _msPixmapPriv {
+#ifdef TEGRA_OUTPUT_SLAVE_SUPPORT
+typedef struct _TegraPixmapPriv {
     uint32_t fb_id;
     struct dumb_bo *backing_bo; /* if this pixmap is backed by a dumb bo */
-} msPixmapPrivRec, *msPixmapPrivPtr;
+} TegraPixmapPrivRec, *TegraPixmapPrivPtr;
 
+extern DevPrivateKeyRec TegraPixmapPrivateKeyRec;
+#define TegraPixmapPrivateKey (&TegraPixmapPrivateKeyRec)
 
-extern DevPrivateKeyRec msPixmapPrivateKeyRec;
-#define msPixmapPrivateKey (&msPixmapPrivateKeyRec)
+#define TegraGetPixmapPriv(drmmode, p) ((TegraPixmapPrivPtr)dixGetPrivateAddr(&(p)->devPrivates, &(drmmode)->pixmapPrivateKeyRec))
 
-#define msGetPixmapPriv(drmmode, p) ((msPixmapPrivPtr)dixGetPrivateAddr(&(p)->devPrivates, &(drmmode)->pixmapPrivateKeyRec))
-
-void *drmmode_map_slave_bo(drmmode_ptr drmmode, msPixmapPrivPtr ppriv);
+void *drmmode_map_slave_bo(drmmode_ptr drmmode, TegraPixmapPrivPtr ppriv);
 Bool drmmode_SetSlaveBO(PixmapPtr ppix,
 			drmmode_ptr drmmode,
 			int fd_handle, int pitch, int size);
@@ -131,15 +134,12 @@ Bool drmmode_map_cursor_bos(ScrnInfoPtr pScrn, drmmode_ptr drmmode);
 void drmmode_free_bos(ScrnInfoPtr pScrn, drmmode_ptr drmmode);
 void drmmode_get_default_bpp(ScrnInfoPtr pScrn, drmmode_ptr drmmmode, int *depth, int *bpp);
 
-
 #ifndef DRM_CAP_DUMB_PREFERRED_DEPTH
 #define DRM_CAP_DUMB_PREFERRED_DEPTH 3
 #endif
+
 #ifndef DRM_CAP_DUMB_PREFER_SHADOW
 #define DRM_CAP_DUMB_PREFER_SHADOW 4
 #endif
-
-#define MS_ARRAY_SIZE(x) (sizeof(x)/sizeof(x[0]))
-
 
 #endif
