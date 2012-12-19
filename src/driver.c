@@ -771,15 +771,13 @@ static Bool
 TegraPlatformProbe(DriverPtr driver, int entity_num, int flags,
                    struct xf86_platform_device *dev, intptr_t match_data)
 {
-    char *path = xf86_get_platform_device_attrib(dev, ODEV_ATTRIB_PATH);
+    char *busid = xf86_get_platform_device_attrib(dev, ODEV_ATTRIB_BUSID);
     ScrnInfoPtr scrn = NULL;
-    int scr_flags = 0;
+    int fd;
 
-    if (flags & PLATFORM_PROBE_GPU_SCREEN)
-        scr_flags = XF86_ALLOCATE_GPU_SCREEN;
-
-    if (TegraProbeHardware(path)) {
-        scrn = xf86AllocateScreen(driver, scr_flags);
+    fd = drmOpen(NULL, busid);
+    if (fd != -1) {
+        scrn = xf86AllocateScreen(driver, 0);
 
         xf86AddEntityToScreen(scrn, entity_num);
 
@@ -795,7 +793,9 @@ TegraPlatformProbe(DriverPtr driver, int entity_num, int flags,
         scrn->ValidMode = TegraValidMode;
 
         xf86DrvMsg(scrn->scrnIndex, X_INFO, "using %s\n",
-                   path ? path : "default device");
+                   busid ? busid : "default device");
+
+        drmClose(fd);
     }
 
     return scrn != NULL;
