@@ -189,15 +189,21 @@ GetRec(ScrnInfoPtr pScrn)
 static void
 FreeRec(ScrnInfoPtr pScrn)
 {
+    TegraPtr tegra;
+
     if (!pScrn)
         return;
 
-    if (!pScrn->driverPrivate)
+    tegra = TegraPTR(pScrn);
+    if (!tegra)
         return;
-
-    free(pScrn->driverPrivate);
-
     pScrn->driverPrivate = NULL;
+
+    if (tegra->fd > 0)
+        close(tegra->fd);
+
+    free(tegra->Options);
+    free(tegra);
 }
 
 #ifdef TEGRA_OUTPUT_SLAVE_SUPPORT
@@ -922,3 +928,4 @@ static XF86ModuleVersionInfo VersRec = {
 _X_EXPORT XF86ModuleData opentegraModuleData = { &VersRec, Setup, NULL };
 
 /* vim: set et sts=4 sw=4 ts=4: */
+
