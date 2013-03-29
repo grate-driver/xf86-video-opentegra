@@ -589,6 +589,7 @@ TegraCloseScreen(CLOSE_SCREEN_ARGS_DECL)
 
     TegraEXAScreenExit(pScreen);
     TegraDRI2ScreenExit(pScreen);
+    TegraVideoScreenExit(pScreen);
 
     pScreen->CreateScreenResources = tegra->createScreenResources;
     pScreen->BlockHandler = tegra->BlockHandler;
@@ -707,6 +708,7 @@ TegraScreenInit(SCREEN_INIT_ARGS_DECL)
                           HARDWARE_CURSOR_SOURCE_MASK_INTERLEAVE_64 |
                           HARDWARE_CURSOR_ARGB);
 
+    TegraVideoScreenInit(pScreen);
     TegraDRI2ScreenInit(pScreen);
     TegraEXAScreenInit(pScreen);
 

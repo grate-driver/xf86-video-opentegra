@@ -87,3 +87,6 @@ void TegraDRI2ScreenExit(ScreenPtr pScreen);
 
 void TegraEXAScreenInit(ScreenPtr pScreen);
 void TegraEXAScreenExit(ScreenPtr pScreen);
+
+void TegraVideoScreenInit(ScreenPtr pScreen);
+void TegraVideoScreenExit(ScreenPtr pScreen);
