@@ -348,6 +348,7 @@ TegraPreInit(ScrnInfoPtr pScrn, int flags)
     if (tegra->fd < 0)
         return FALSE;
 
+    tegra->path = drmGetDeviceNameFromFd(tegra->fd);
     tegra->drmmode.fd = tegra->fd;
 
 #ifdef TEGRA_OUTPUT_SLAVE_SUPPORT
@@ -439,7 +440,8 @@ TegraPreInit(ScrnInfoPtr pScrn, int flags)
     xf86SetDpi(pScrn, 0, 0);
 
     /* Load the required sub modules */
-    if (!xf86LoadSubModule(pScrn, "fb"))
+    if (!xf86LoadSubModule(pScrn, "dri2") ||
+        !xf86LoadSubModule(pScrn, "fb"))
         return FALSE;
 
     if (tegra->drmmode.shadow_enable) {
@@ -584,6 +586,8 @@ TegraCloseScreen(CLOSE_SCREEN_ARGS_DECL)
     if (pScrn->vtSema)
         TegraLeaveVT(VT_FUNC_ARGS);
 
+    TegraDRI2ScreenExit(pScreen);
+
     pScreen->CreateScreenResources = tegra->createScreenResources;
     pScreen->BlockHandler = tegra->BlockHandler;
 
@@ -700,6 +704,8 @@ TegraScreenInit(SCREEN_INIT_ARGS_DECL)
         xf86_cursors_init(pScreen, 64, 64,
                           HARDWARE_CURSOR_SOURCE_MASK_INTERLEAVE_64 |
                           HARDWARE_CURSOR_ARGB);
+
+    TegraDRI2ScreenInit(pScreen);
 
     /* Must force it before EnterVT, so we are in control of VT and
      * later memory should be bound when allocating, e.g rotate_mem */

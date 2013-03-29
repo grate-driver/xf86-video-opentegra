@@ -32,8 +32,9 @@ opentegra_drv_la_LIBADD = @UDEV_LIBS@ @DRM_LIBS@
 opentegra_drv_ladir = @moduledir@/drivers
 
 opentegra_drv_la_SOURCES = \
-	 compat-api.h \
-	 driver.c \
-	 driver.h \
-	 drmmode_display.c \
-	 drmmode_display.h
+	compat-api.h \
+	dri2.c \
+	driver.c \
+	driver.h \
+	drmmode_display.c \
+	drmmode_display.h
