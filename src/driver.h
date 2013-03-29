@@ -33,6 +33,7 @@
 #include <damage.h>
 
 #include "drmmode_display.h"
+#include "exa.h"
 
 #ifdef LONG64
 #  define FMT_CARD32 "x"
@@ -72,11 +73,18 @@ typedef struct _TegraRec
     Bool dirty_enabled;
 
     uint32_t cursor_width, cursor_height;
+
+    TegraEXAPtr exa;
+
+    struct drm_tegra *drm;
 } TegraRec, *TegraPtr;
 
 #define TegraPTR(p) ((TegraPtr)((p)->driverPrivate))
 
 void TegraVideoScreenInit(ScreenPtr pScreen);
 void TegraVideoScreenExit(ScreenPtr pScreen);
+
+void TegraEXAScreenInit(ScreenPtr pScreen);
+void TegraEXAScreenExit(ScreenPtr pScreen);
 
 /* vim: set et sts=4 sw=4 ts=4: */

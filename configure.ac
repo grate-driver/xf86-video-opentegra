@@ -69,7 +69,7 @@ AM_CONDITIONAL(HAVE_XEXTPROTO_71, [ test "$HAVE_XEXTPROTO_71" = "yes" ])
 
 AC_HEADER_STDC
 
-PKG_CHECK_MODULES(DRM, [libdrm >= 2.4.46])
+PKG_CHECK_MODULES(DRM, [libdrm_tegra >= 2.4.46])
 AM_CONDITIONAL(DRM, test "x$DRM" = xyes)
 
 PKG_CHECK_MODULES(UDEV, [libudev], [udev=yes], [udev=no])
