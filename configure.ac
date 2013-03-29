@@ -33,7 +33,7 @@ AC_CONFIG_AUX_DIR(.)
 AC_SYS_LARGEFILE
 
 # Initialize Automake
-AM_INIT_AUTOMAKE([foreign dist-bzip2])
+AM_INIT_AUTOMAKE([foreign no-dist-gzip dist-xz])
 AM_MAINTAINER_MODE
 
 # Initialize libtool
