@@ -365,7 +365,7 @@ TegraPreInit(ScrnInfoPtr pScrn, int flags)
 #endif
     drmmode_get_default_bpp(pScrn, &tegra->drmmode, &defaultdepth, &defaultbpp);
     if (defaultdepth == 24 && defaultbpp == 24)
-        bppflags = Support24bppFb;
+	    bppflags = SupportConvert32to24 | Support24bppFb;
     else
         bppflags = PreferConvert24to32 | SupportConvert24to32 | Support32bppFb;
 
