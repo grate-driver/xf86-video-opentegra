@@ -126,7 +126,7 @@ Bool drmmode_SetSlaveBO(PixmapPtr ppix, drmmode_ptr drmmode, int fd_handle,
 #endif
 
 extern Bool drmmode_pre_init(ScrnInfoPtr pScrn, drmmode_ptr drmmode, int cpp);
-void drmmode_adjust_frame(ScrnInfoPtr pScrn, drmmode_ptr drmmode, int x, int y, int flags);
+void drmmode_adjust_frame(ScrnInfoPtr pScrn, drmmode_ptr drmmode, int x, int y);
 extern Bool drmmode_set_desired_modes(ScrnInfoPtr pScrn, drmmode_ptr drmmode);
 extern Bool drmmode_setup_colormap(ScreenPtr pScreen, ScrnInfoPtr pScrn);
 

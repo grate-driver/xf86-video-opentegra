@@ -759,16 +759,9 @@ static void
 TegraAdjustFrame(ADJUST_FRAME_ARGS_DECL)
 {
     SCRN_INFO_PTR(arg);
-    xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(pScrn);
-    xf86OutputPtr output = config->output[config->compat_output];
-    xf86CrtcPtr crtc = output->crtc;
+    TegraPtr tegra = TegraPTR(pScrn);
 
-    if (crtc && crtc->enabled) {
-        crtc->funcs->mode_set(crtc, pScrn->currentMode, pScrn->currentMode, x,
-                              y);
-        crtc->x = output->initial_x + x;
-        crtc->y = output->initial_y + y;
-    }
+    drmmode_adjust_frame(pScrn, &tegra->drmmode, x, y);
 }
 
 static void
