@@ -29,6 +29,7 @@
 #define DRMMODE_DISPLAY_H
 
 #include "xf86drmMode.h"
+#include "xorgVersion.h"
 #ifdef HAVE_UDEV
 #include "libudev.h"
 #endif
@@ -40,6 +41,10 @@
 #      define TEGRA_OUTPUT_SLAVE_SUPPORT 1
 #    endif
 #  endif
+#endif
+
+#if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,14,99,2,0)
+#define DamageUnregister(d, dd) DamageUnregister(dd)
 #endif
 
 struct dumb_bo {
