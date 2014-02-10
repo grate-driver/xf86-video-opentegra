@@ -333,10 +333,12 @@ TegraPreInit(ScrnInfoPtr pScrn, int flags)
     pScrn->rgbBits = 8;
 
     switch (pEnt->location.type) {
+#ifdef XSERVER_PLATFORM_BUS
     case BUS_PLATFORM:
         path = xf86_get_platform_device_attrib(pEnt->location.id.plat,
                                                ODEV_ATTRIB_PATH);
         break;
+#endif
 
     default:
         path = xf86GetOptValString(tegra->pEnt->device->options,
