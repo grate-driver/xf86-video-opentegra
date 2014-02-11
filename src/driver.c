@@ -303,9 +303,6 @@ TegraPreInit(ScrnInfoPtr pScrn, int flags)
 
     pEnt = xf86GetEntityInfo(pScrn->entityList[0]);
 
-    if (flags & PROBE_DETECT)
-        return FALSE;
-
     /* Allocate driverPrivate */
     if (!GetRec(pScrn))
         return FALSE;
