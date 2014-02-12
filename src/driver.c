@@ -306,6 +306,14 @@ TegraDriverFunc(ScrnInfoPtr pScrn, xorgDriverFuncOp op, void *data)
     }
 }
 
+#ifndef DRM_CAP_CURSOR_WIDTH
+#define DRM_CAP_CURSOR_WIDTH 0x8
+#endif
+
+#ifndef DRM_CAP_CURSOR_HEIGHT
+#define DRM_CAP_CURSOR_HEIGHT 0x9
+#endif
+
 static Bool
 TegraPreInit(ScrnInfoPtr pScrn, int flags)
 {
@@ -442,6 +450,18 @@ TegraPreInit(ScrnInfoPtr pScrn, int flags)
     ret = drmGetCap(tegra->fd, DRM_CAP_DUMB_PREFER_SHADOW, &value);
     if (!ret)
         prefer_shadow = !!value;
+
+    tegra->cursor_width = 64;
+    tegra->cursor_height = 64;
+    ret = drmGetCap(tegra->fd, DRM_CAP_CURSOR_WIDTH, &value);
+    if (!ret) {
+	tegra->cursor_width = value;
+    }
+    ret = drmGetCap(tegra->fd, DRM_CAP_CURSOR_HEIGHT, &value);
+    if (!ret) {
+	tegra->cursor_height = value;
+    }
+
 
     tegra->drmmode.shadow_enable = xf86ReturnOptValBool(tegra->Options,
                                                         OPTION_SHADOW_FB,
@@ -768,7 +788,7 @@ TegraScreenInit(SCREEN_INIT_ARGS_DECL)
 
     /* Need to extend HWcursor support to handle mask interleave */
     if (!tegra->drmmode.want_sw_cursor)
-        xf86_cursors_init(pScreen, 64, 64,
+        xf86_cursors_init(pScreen, tegra->cursor_width, tegra->cursor_height,
                           HARDWARE_CURSOR_SOURCE_MASK_INTERLEAVE_64 |
                           HARDWARE_CURSOR_ARGB);
 

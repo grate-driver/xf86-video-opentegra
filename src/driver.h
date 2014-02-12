@@ -73,6 +73,8 @@ typedef struct _TegraRec
     DamagePtr damage;
     Bool dirty_enabled;
 
+    uint32_t cursor_width, cursor_height;
+
     ExaDriverPtr exa;
 } TegraRec, *TegraPtr;
 
