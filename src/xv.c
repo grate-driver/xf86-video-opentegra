@@ -118,7 +118,7 @@ static XF86VideoAdaptorPtr TegraSetupOverlayVideo(ScreenPtr pScreen)
 	adaptor->name = "Tegra Video Overlay";
 	adaptor->nEncodings = 1;
 	adaptor->pEncodings = &DummyEncoding;
-	adaptor->nFormats = ARRAY_SIZE(TegraFormats);
+	adaptor->nFormats = TEGRA_ARRAY_SIZE(TegraFormats);
 	adaptor->pFormats = TegraFormats;
 	adaptor->nPorts = 1;
 
@@ -126,9 +126,9 @@ static XF86VideoAdaptorPtr TegraSetupOverlayVideo(ScreenPtr pScreen)
 	port = (TegraXvPort *)&adaptor->pPortPrivates[1];
 	adaptor->pPortPrivates[0].ptr = port;
 
-	adaptor->nAttributes = ARRAY_SIZE(TegraOverlayAttributes);
+	adaptor->nAttributes = TEGRA_ARRAY_SIZE(TegraOverlayAttributes);
 	adaptor->pAttributes = TegraOverlayAttributes;
-	adaptor->nImages = ARRAY_SIZE(TegraImages);
+	adaptor->nImages = TEGRA_ARRAY_SIZE(TegraImages);
 	adaptor->pImages = TegraImages;
 
 	adaptor->PutVideo = NULL;

@@ -41,6 +41,8 @@
 #  define FMT_CARD32 "lx"
 #endif
 
+#define TEGRA_ARRAY_SIZE(x) (sizeof(x) / sizeof(*x))
+
 typedef struct
 {
     int lastInstance;

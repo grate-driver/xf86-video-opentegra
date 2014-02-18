@@ -50,6 +50,8 @@
 #define DPMS_SERVER
 #include <X11/extensions/dpms.h>
 #endif
+
+#include "driver.h"
 #include "compat-api.h"
 
 static struct dumb_bo *
@@ -894,7 +896,7 @@ drmmode_output_init(ScrnInfoPtr pScrn, drmmode_ptr drmmode, int num, int *num_dv
     }
 
     /* need to do smart conversion here for compat with non-kms ATI driver */
-    if (koutput->connector_type >= ARRAY_SIZE(output_names))
+    if (koutput->connector_type >= TEGRA_ARRAY_SIZE(output_names))
         snprintf(name, 32, "Unknown-%d", koutput->connector_type_id - 1);
     else
         snprintf(name, 32, "%s-%d", output_names[koutput->connector_type],
