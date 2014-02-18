@@ -6,6 +6,7 @@
 #include "dri2.h"
 
 #include "driver.h"
+#include "compat-api.h"
 
 static DRI2BufferPtr TegraDRI2CreateBuffer(DrawablePtr drawable,
                                            unsigned int attachment,

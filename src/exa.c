@@ -5,6 +5,7 @@
 #include "xf86.h"
 
 #include "driver.h"
+#include "compat-api.h"
 
 static int TegraEXAMarkSync(ScreenPtr pScreen)
 {
