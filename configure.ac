@@ -54,14 +54,14 @@ AC_ARG_WITH(xorg-module-dir,
 	    [moduledir="$withval"],
 	    [moduledir="$libdir/xorg/modules"])
 
+# check for X.Org server
+PKG_CHECK_MODULES(XORG, [xorg-server xproto fontsproto $REQUIRED_MODULES])
+sdkdir=$(pkg-config --variable=sdkdir xorg-server)
+
 # check for extensions
 XORG_DRIVER_CHECK_EXT(RANDR, randrproto)
 XORG_DRIVER_CHECK_EXT(XF86DRI, xextproto x11)
 XORG_DRIVER_CHECK_EXT(DPMSExtension, xextproto)
-
-# check for X.Org server
-PKG_CHECK_MODULES(XORG, [xorg-server xproto fontsproto $REQUIRED_MODULES])
-sdkdir=$(pkg-config --variable=sdkdir xorg-server)
 
 PKG_CHECK_MODULES(XEXT, [xextproto >= 7.0.99.1],
 		  HAVE_XEXTPROTO_71="yes"; AC_DEFINE(HAVE_XEXTPROTO_71, 1, [xextproto 7.1 available]),
