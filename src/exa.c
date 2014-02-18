@@ -31,6 +31,7 @@
 #include "host1x.h"
 #include "driver.h"
 #include "exa.h"
+#include "compat-api.h"
 
 #define EXA_ALIGN(offset, align) \
     (((offset) + (align) - 1) & ~((align) - 1))
