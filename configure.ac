@@ -34,7 +34,6 @@ AC_SYS_LARGEFILE
 
 # Initialize Automake
 AM_INIT_AUTOMAKE([foreign no-dist-gzip dist-xz])
-AM_MAINTAINER_MODE
 
 # Initialize libtool
 AC_DISABLE_STATIC
