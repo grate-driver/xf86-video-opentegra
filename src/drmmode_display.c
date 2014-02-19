@@ -874,7 +874,8 @@ static const char * const output_names[] = {
     "HDMI",
     "TV",
     "eDP",
-    "Virtual"
+    "Virtual",
+    "DSI",
 };
 
 static void
