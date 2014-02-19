@@ -290,13 +290,13 @@ TegraPreInit(ScrnInfoPtr pScrn, int flags)
     rgb defaultWeight = { 0, 0, 0 };
     EntityInfoPtr pEnt;
     EntPtr tegraEnt = NULL;
-    char *devicename;
     Bool prefer_shadow = TRUE;
     uint64_t value = 0;
     int ret;
     int bppflags;
     int defaultdepth, defaultbpp;
     Gamma zeros = { 0.0, 0.0, 0.0 };
+    const char *path;
 
     if (pScrn->numEntities != 1)
         return FALSE;
@@ -332,20 +332,19 @@ TegraPreInit(ScrnInfoPtr pScrn, int flags)
     pScrn->progClock = TRUE;
     pScrn->rgbBits = 8;
 
-#ifdef XSERVER_PLATFORM_BUS
-    if (pEnt->location.type == BUS_PLATFORM) {
-            char *path;
-            path = xf86_get_platform_device_attrib(pEnt->location.id.plat,
-                                                   ODEV_ATTRIB_PATH);
-            tegra->fd = TegraOpenHardware(path);
-    } else
-#endif
-    {
-        devicename = xf86GetOptValString(tegra->pEnt->device->options,
-                                         OPTION_DEVICE_PATH);
-        tegra->fd = TegraOpenHardware(devicename);
+    switch (pEnt->location.type) {
+    case BUS_PLATFORM:
+        path = xf86_get_platform_device_attrib(pEnt->location.id.plat,
+                                               ODEV_ATTRIB_PATH);
+        break;
+
+    default:
+        path = xf86GetOptValString(tegra->pEnt->device->options,
+                                   OPTION_DEVICE_PATH);
+        break;
     }
 
+    tegra->fd = TegraOpenHardware(path);
     if (tegra->fd < 0)
         return FALSE;
 
