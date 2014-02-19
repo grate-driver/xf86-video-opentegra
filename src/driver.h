@@ -86,3 +86,5 @@ void TegraEXAScreenExit(ScreenPtr pScreen);
 
 void TegraVideoScreenInit(ScreenPtr pScreen);
 void TegraVideoScreenExit(ScreenPtr pScreen);
+
+/* vim: set et sts=4 sw=4 ts=4: */

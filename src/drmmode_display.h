@@ -121,9 +121,8 @@ extern DevPrivateKeyRec TegraPixmapPrivateKeyRec;
 #define TegraGetPixmapPriv(drmmode, p) ((TegraPixmapPrivPtr)dixGetPrivateAddr(&(p)->devPrivates, &(drmmode)->pixmapPrivateKeyRec))
 
 void *drmmode_map_slave_bo(drmmode_ptr drmmode, TegraPixmapPrivPtr ppriv);
-Bool drmmode_SetSlaveBO(PixmapPtr ppix,
-			drmmode_ptr drmmode,
-			int fd_handle, int pitch, int size);
+Bool drmmode_SetSlaveBO(PixmapPtr ppix, drmmode_ptr drmmode, int fd_handle,
+                        int pitch, int size);
 #endif
 
 extern Bool drmmode_pre_init(ScrnInfoPtr pScrn, drmmode_ptr drmmode, int cpp);
@@ -149,3 +148,5 @@ void drmmode_get_default_bpp(ScrnInfoPtr pScrn, drmmode_ptr drmmmode, int *depth
 #endif
 
 #endif
+
+/* vim: set et sts=4 sw=4 ts=4: */
