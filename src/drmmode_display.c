@@ -411,7 +411,7 @@ drmmode_load_cursor_argb(xf86CrtcPtr crtc, CARD32 *image)
         xf86CursorInfoPtr cursor_info = xf86_config->cursor_info;
 
         cursor_info->MaxWidth = cursor_info->MaxHeight = 0;
-        drmmode_crtc->drmmode->sw_cursor = TRUE;
+        drmmode_crtc->drmmode->want_sw_cursor = TRUE;
         /* fallback to swcursor */
     }
 }
@@ -513,17 +513,25 @@ static const xf86CrtcFuncsRec drmmode_crtc_funcs = {
 static void
 drmmode_crtc_init(ScrnInfoPtr pScrn, drmmode_ptr drmmode, int num)
 {
+    uint32_t crtc_id = drmmode->mode_res->crtcs[num];
+    drmmode_crtc_private_ptr priv;
     xf86CrtcPtr crtc;
-    drmmode_crtc_private_ptr drmmode_crtc;
+    int err;
 
     crtc = xf86CrtcCreate(pScrn, &drmmode_crtc_funcs);
     if (crtc == NULL)
         return;
 
-    drmmode_crtc = xnfcalloc(sizeof(drmmode_crtc_private_rec), 1);
-    drmmode_crtc->mode_crtc = drmModeGetCrtc(drmmode->fd, drmmode->mode_res->crtcs[num]);
-    drmmode_crtc->drmmode = drmmode;
-    crtc->driver_private = drmmode_crtc;
+    priv = xnfcalloc(sizeof(*priv), 1);
+    priv->mode_crtc = drmModeGetCrtc(drmmode->fd, crtc_id);
+    priv->drmmode = drmmode;
+    crtc->driver_private = priv;
+
+    if (!drmmode->want_sw_cursor && !drmmode->need_sw_cursor) {
+        err = drmModeSetCursor(drmmode->fd, crtc_id, 0, 64, 64);
+        if (err < 0)
+            drmmode->need_sw_cursor = TRUE;
+    }
 }
 
 static xf86OutputStatus

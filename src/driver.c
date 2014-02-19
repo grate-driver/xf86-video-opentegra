@@ -404,7 +404,7 @@ TegraPreInit(ScrnInfoPtr pScrn, int flags)
         return FALSE;
 
     if (xf86ReturnOptValBool(tegra->Options, OPTION_SW_CURSOR, FALSE))
-        tegra->drmmode.sw_cursor = TRUE;
+        tegra->drmmode.want_sw_cursor = TRUE;
 
     ret = drmGetCap(tegra->fd, DRM_CAP_DUMB_PREFER_SHADOW, &value);
     if (!ret)
@@ -423,6 +423,9 @@ TegraPreInit(ScrnInfoPtr pScrn, int flags)
         xf86DrvMsg(pScrn->scrnIndex, X_ERROR, "KMS setup failed\n");
         return FALSE;
     }
+
+    if (tegra->drmmode.need_sw_cursor)
+        tegra->drmmode.want_sw_cursor = TRUE;
 
     /*
      * If the driver can do gamma correction, it should call xf86SetGamma() here.
@@ -527,7 +530,7 @@ TegraCreateScreenResources(ScreenPtr pScreen)
 
     drmmode_uevent_init(pScrn, &tegra->drmmode);
 
-    if (!tegra->drmmode.sw_cursor)
+    if (!tegra->drmmode.want_sw_cursor)
         drmmode_map_cursor_bos(pScrn, &tegra->drmmode);
 
     pixels = drmmode_map_front_bo(&tegra->drmmode);
@@ -704,7 +707,7 @@ TegraScreenInit(SCREEN_INIT_ARGS_DECL)
     miDCInitialize(pScreen, xf86GetPointerScreenFuncs());
 
     /* Need to extend HWcursor support to handle mask interleave */
-    if (!tegra->drmmode.sw_cursor)
+    if (!tegra->drmmode.want_sw_cursor)
         xf86_cursors_init(pScreen, 64, 64,
                           HARDWARE_CURSOR_SOURCE_MASK_INTERLEAVE_64 |
                           HARDWARE_CURSOR_ARGB);
