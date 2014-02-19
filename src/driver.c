@@ -795,8 +795,8 @@ TegraPlatformProbe(DriverPtr driver, int entity_num, int flags,
 
         xf86AddEntityToScreen(scrn, entity_num);
 
-        scrn->driverName = "opentegra";
-        scrn->name = "opentegra";
+        scrn->driverName = (char *)"opentegra";
+        scrn->name = (char *)"opentegra";
         scrn->PreInit = TegraPreInit;
         scrn->ScreenInit = TegraScreenInit;
         scrn->SwitchMode = TegraSwitchMode;
@@ -847,8 +847,8 @@ TegraProbe(DriverPtr drv, int flags)
         if (scrn) {
             foundScreen = TRUE;
             scrn->driverVersion = 1;
-            scrn->driverName = "opentegra";
-            scrn->name = "opentegra";
+            scrn->driverName = (char *)"opentegra";
+            scrn->name = (char *)"opentegra";
             scrn->Probe = TegraProbe;
             scrn->PreInit = TegraPreInit;
             scrn->ScreenInit = TegraScreenInit;
@@ -871,7 +871,7 @@ TegraProbe(DriverPtr drv, int flags)
 
 _X_EXPORT DriverRec tegra = {
     1,
-    "opentegra",
+    (char *)"opentegra",
     TegraIdentify,
     TegraProbe,
     TegraAvailableOptions,

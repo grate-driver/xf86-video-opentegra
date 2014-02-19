@@ -17,7 +17,7 @@ typedef struct TegraXvPort {
 
 static XF86VideoEncodingRec DummyEncoding = {
 	0,
-	"XV_IMAGE",
+	(char *)"XV_IMAGE",
 	2048,
 	2048,
 	{ 1, 1 }
@@ -116,7 +116,7 @@ static XF86VideoAdaptorPtr TegraSetupOverlayVideo(ScreenPtr pScreen)
 
 	adaptor->type = XvWindowMask | XvInputMask | XvImageMask;
 	adaptor->flags = VIDEO_OVERLAID_IMAGES;
-	adaptor->name = "Tegra Video Overlay";
+	adaptor->name = (char *)"Tegra Video Overlay";
 	adaptor->nEncodings = 1;
 	adaptor->pEncodings = &DummyEncoding;
 	adaptor->nFormats = TEGRA_ARRAY_SIZE(TegraFormats);
