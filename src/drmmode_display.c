@@ -858,7 +858,7 @@ static int subpixel_conv_table[7] = {
     SubPixelNone
 };
 
-const char *output_names[] = {
+static const char * const output_names[] = {
     "None",
     "VGA",
     "DVI",
