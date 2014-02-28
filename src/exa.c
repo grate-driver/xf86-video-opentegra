@@ -405,13 +405,8 @@ static Bool TegraEXAPrepareCopy(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
     *pb->ptr++ = 0x0000003a;
     *pb->ptr++ = 0x00000000;
 
-    *pb->ptr++ = HOST1X_OPCODE_MASK(0x01e, 0x7);
+    *pb->ptr++ = HOST1X_OPCODE_MASK(0x01e, 0x5);
     *pb->ptr++ = 0x00000000; /* controlsecond */
-    /*
-     * [20:20] source color depth (0: mono, 1: same)
-     * [17:16] destination color depth (0: 8 bpp, 1: 16 bpp, 2: 32 bpp)
-     */
-    *pb->ptr++ = (1 << 20) | (2 << 16); /* controlmain */
     *pb->ptr++ = rop3[op]; /* ropfade */
 
     *pb->ptr++ = HOST1X_OPCODE_NONINCR(0x046, 1);
@@ -458,8 +453,32 @@ static void TegraEXACopy(PixmapPtr pDstPixmap, int srcX, int srcY, int dstX,
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
     struct drm_tegra_pushbuf *pb;
     int err;
+    uint32_t controlmain;
 
     pb = tegra->pushbuf;
+
+    /*
+     * [20:20] source color depth (0: mono, 1: same)
+     * [17:16] destination color depth (0: 8 bpp, 1: 16 bpp, 2: 32 bpp)
+     * [10:10] y-direction (0: increment, 1: decrement)
+     * [9:9] x-direction (0: increment, 1: decrement)
+     */
+    controlmain = (1 << 20) | (2 << 16);
+
+    if (dstX > srcX) {
+        controlmain |= 1 << 9;
+        srcX += width - 1;
+        dstX += width - 1;
+    }
+
+    if (dstY > srcY) {
+        controlmain |= 1 << 10;
+        srcY += height - 1;
+        dstY += height - 1;
+    }
+
+    *pb->ptr++ = HOST1X_OPCODE_INCR(0x01f, 1);
+    *pb->ptr++ = controlmain;
 
     *pb->ptr++ = HOST1X_OPCODE_INCR(0x37, 0x4);
     *pb->ptr++ = height << 16 | width; /* srcsize */
