@@ -232,7 +232,7 @@ static Bool TegraEXAPrepareSolid(PixmapPtr pPixmap, int op, Pixel planemask,
     unsigned int bpp = pPixmap->drawable.bitsPerPixel;
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
     struct drm_tegra_pushbuf *pb;
-    uint32_t value, rop;
+    uint32_t value;
     int err;
 
     if (!tegra->gr2d)
@@ -245,8 +245,6 @@ static Bool TegraEXAPrepareSolid(PixmapPtr pPixmap, int op, Pixel planemask,
      */
     if (op != GXcopy)
         return FALSE;
-
-    rop = rop3[op];
 
     /*
      * Support only 32-bit fills for now. Adding support for 16-bit fills
@@ -285,7 +283,7 @@ static Bool TegraEXAPrepareSolid(PixmapPtr pPixmap, int op, Pixel planemask,
     *pb->ptr++ = HOST1X_OPCODE_MASK(0x1e, 0x7);
     *pb->ptr++ = 0x00000000; /* controlsecond */
     *pb->ptr++ = value; /* controlmain */
-    *pb->ptr++ = rop; /* ropfade */
+    *pb->ptr++ = rop3[op]; /* ropfade */
 
     *pb->ptr++ = HOST1X_OPCODE_MASK(0x2b, 0x9);
 
@@ -361,7 +359,6 @@ static Bool TegraEXAPrepareCopy(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
     TegraPixmapPtr dst = exaGetPixmapDriverPrivate(pDstPixmap);
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
     struct drm_tegra_pushbuf *pb;
-    uint32_t rop;
     int err;
 
     if (!tegra->gr2d)
@@ -374,8 +371,6 @@ static Bool TegraEXAPrepareCopy(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
      */
     if (op != GXcopy)
         return FALSE;
-
-    rop = rop3[op];
 
     /*
      * Support only 32-bit to 32-bit copies for now. The hardware should be
@@ -412,7 +407,7 @@ static Bool TegraEXAPrepareCopy(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
      * [17:16] destination color depth (0: 8 bpp, 1: 16 bpp, 2: 32 bpp)
      */
     *pb->ptr++ = (1 << 20) | (2 << 16); /* controlmain */
-    *pb->ptr++ = rop; /* ropfade */
+    *pb->ptr++ = rop3[op]; /* ropfade */
 
     *pb->ptr++ = HOST1X_OPCODE_NONINCR(0x046, 1);
     /*
