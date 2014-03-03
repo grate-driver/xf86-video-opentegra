@@ -163,7 +163,7 @@ static Bool TegraEXAModifyPixmapHeader(PixmapPtr pPixmap, int width,
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pPixmap->drawable.pScreen);
     TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pPixmap);
     TegraPtr tegra = TegraPTR(pScrn);
-    unsigned int bpp, stride, size;
+    unsigned int bpp, size;
     Bool ret;
     int err;
 
@@ -209,8 +209,8 @@ static Bool TegraEXAModifyPixmapHeader(PixmapPtr pPixmap, int width,
     height = pPixmap->drawable.height;
     depth = pPixmap->drawable.depth;
     bpp = pPixmap->drawable.bitsPerPixel;
-    stride = TegraEXAPitch(width, bpp);
-    size = stride * height;
+    pPixmap->devKind = TegraEXAPitch(width, bpp);
+    size = pPixmap->devKind * height;
 
     if (priv->bo) {
         drm_tegra_bo_unref(priv->bo);
