@@ -270,8 +270,8 @@ static Bool TegraEXAPrepareSolid(PixmapPtr pPixmap, int op, Pixel planemask,
 
     *pb->ptr++ = HOST1X_OPCODE_SETCL(0, HOST1X_CLASS_GR2D, 0);
     *pb->ptr++ = HOST1X_OPCODE_MASK(0x9, 0x9);
-    *pb->ptr++ = 0x0000003a;
-    *pb->ptr++ = 0x00000000;
+    *pb->ptr++ = 0x0000003a; /* trigger */
+    *pb->ptr++ = 0x00000000; /* cmdsel */
 
     *pb->ptr++ = HOST1X_OPCODE_NONINCR(0x35, 1);
     *pb->ptr++ = color;
@@ -409,8 +409,8 @@ static Bool TegraEXAPrepareCopy(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
 
     *pb->ptr++ = HOST1X_OPCODE_SETCL(0, HOST1X_CLASS_GR2D, 0);
     *pb->ptr++ = HOST1X_OPCODE_MASK(0x9, 0x9);
-    *pb->ptr++ = 0x0000003a;
-    *pb->ptr++ = 0x00000000;
+    *pb->ptr++ = 0x0000003a; /* trigger */
+    *pb->ptr++ = 0x00000000; /* cmdsel */
 
     *pb->ptr++ = HOST1X_OPCODE_MASK(0x01e, 0x5);
     *pb->ptr++ = 0x00000000; /* controlsecond */
