@@ -67,19 +67,13 @@ typedef struct {
 
 static inline unsigned int TegraEXAPitch(unsigned int width, unsigned int bpp)
 {
-    unsigned int pitch;
-
     /*
      * Alignment to 16 bytes isn't strictly necessary for all buffers, but
      * there are cases where X's software rendering fallbacks crash when a
      * buffer's pitch is too small (which happens for very small, low-bpp
      * pixmaps).
      */
-    pitch = EXA_ALIGN(width * bpp / 8, 16);
-    if (!pitch)
-        pitch = 16;
-
-    return pitch;
+    return EXA_ALIGN((width * bpp + 7) / 8, 16);
 }
 
 static int TegraEXAMarkSync(ScreenPtr pScreen)
