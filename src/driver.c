@@ -25,7 +25,7 @@
  *
  *
  * Original Author: Alan Hourihane <alanh@tungstengraphics.com>
- * Rewrite: Dave Airlie <airlied@redhat.com> 
+ * Rewrite: Dave Airlie <airlied@redhat.com>
  *
  */
 
@@ -200,7 +200,11 @@ FreeRec(ScrnInfoPtr pScrn)
     pScrn->driverPrivate = NULL;
 
     if (tegra->fd > 0)
-        close(tegra->fd);
+#ifdef XF86_PDEV_SERVER_FD
+        if (!(tegra->pEnt->location.type == BUS_PLATFORM &&
+              (tegra->pEnt->location.id.plat->flags & XF86_PDEV_SERVER_FD)))
+#endif
+            close(tegra->fd);
 
     free(tegra->Options);
     free(tegra);
@@ -255,9 +259,18 @@ TegraOpenHardware(const char *dev)
 }
 
 static Bool
-TegraProbeHardware(const char *dev)
+TegraProbeHardware(const char *dev, struct xf86_platform_device *platform_dev)
 {
     int fd;
+
+#if XSERVER_PLATFORM_BUS
+    if (platform_dev && (platform_dev->flags & XF86_PDEV_SERVER_FD)) {
+        fd = xf86_get_platform_device_int_attrib(platform_dev, ODEV_ATTRIB_FD, -1);
+        if (fd == -1)
+            return FALSE;
+        return TRUE;
+    }
+#endif
 
     fd = TegraOpenHardware(dev);
     if (fd != -1) {
@@ -284,6 +297,10 @@ TegraDriverFunc(ScrnInfoPtr pScrn, xorgDriverFuncOp op, void *data)
             flag = (CARD32 *)data;
             (*flag) = 0;
             return TRUE;
+#if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,15,99,902,0)
+        case SUPPORTS_SERVER_FDS:
+            return TRUE;
+#endif
         default:
             return FALSE;
     }
@@ -341,18 +358,27 @@ TegraPreInit(ScrnInfoPtr pScrn, int flags)
     switch (pEnt->location.type) {
 #ifdef XSERVER_PLATFORM_BUS
     case BUS_PLATFORM:
-        path = xf86_get_platform_device_attrib(pEnt->location.id.plat,
-                                               ODEV_ATTRIB_PATH);
+#ifdef XF86_PDEV_SERVER_FD
+        if (pEnt->location.id.plat->flags & XF86_PDEV_SERVER_FD)
+            tegra->fd = xf86_get_platform_device_int_attrib(
+                                    pEnt->location.id.plat, ODEV_ATTRIB_FD, -1);
+        else
+#endif
+        {
+            path = xf86_get_platform_device_attrib(pEnt->location.id.plat,
+                                                   ODEV_ATTRIB_PATH);
+            tegra->fd = TegraOpenHardware(path);
+        }
         break;
 #endif
 
     default:
         path = xf86GetOptValString(tegra->pEnt->device->options,
                                    OPTION_DEVICE_PATH);
+        tegra->fd = TegraOpenHardware(path);
         break;
     }
 
-    tegra->fd = TegraOpenHardware(path);
     if (tegra->fd < 0)
         return FALSE;
 
@@ -464,6 +490,26 @@ TegraPreInit(ScrnInfoPtr pScrn, int flags)
     return TRUE;
 }
 
+static Bool
+SetMaster(ScrnInfoPtr pScrn)
+{
+    TegraPtr tegra = TegraPTR(pScrn);
+    int ret;
+
+#ifdef XF86_PDEV_SERVER_FD
+    if (tegra->pEnt->location.type == BUS_PLATFORM &&
+            (tegra->pEnt->location.id.plat->flags & XF86_PDEV_SERVER_FD))
+        return TRUE;
+#endif
+
+    ret = drmSetMaster(tegra->fd);
+    if (ret)
+        xf86DrvMsg(pScrn->scrnIndex, X_ERROR, "drmSetMaster failed: %s\n",
+                   strerror(errno));
+
+    return ret == 0;
+}
+
 /*
  * This gets called when gaining control of the VT, and from ScreenInit().
  */
@@ -475,9 +521,7 @@ TegraEnterVT(VT_FUNC_ARGS_DECL)
 
     pScrn->vtSema = TRUE;
 
-    if (drmSetMaster(tegra->fd))
-        xf86DrvMsg(pScrn->scrnIndex, X_WARNING, "drmSetMaster failed: %s\n",
-                   strerror(errno));
+    SetMaster(pScrn);
 
     if (!drmmode_set_desired_modes(pScrn, &tegra->drmmode))
         return FALSE;
@@ -493,6 +537,12 @@ TegraLeaveVT(VT_FUNC_ARGS_DECL)
     xf86_hide_cursors(pScrn);
 
     pScrn->vtSema = FALSE;
+
+#ifdef XF86_PDEV_SERVER_FD
+    if (tegra->pEnt->location.type == BUS_PLATFORM &&
+            (tegra->pEnt->location.id.plat->flags & XF86_PDEV_SERVER_FD))
+        return;
+#endif
 
     drmDropMaster(tegra->fd);
 }
@@ -640,15 +690,11 @@ TegraScreenInit(SCREEN_INIT_ARGS_DECL)
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pScreen);
     TegraPtr tegra = TegraPTR(pScrn);
     VisualPtr visual;
-    int ret;
 
     pScrn->pScreen = pScreen;
 
-    ret = drmSetMaster(tegra->fd);
-    if (ret) {
-        ErrorF("Unable to set master\n");
+    if (!SetMaster(pScrn))
         return FALSE;
-    }
 
     /* HW dependent - FIXME */
     pScrn->displayWidth = pScrn->virtualX;
@@ -796,10 +842,8 @@ TegraPlatformProbe(DriverPtr driver, int entity_num, int flags,
 {
     char *path = xf86_get_platform_device_attrib(dev, ODEV_ATTRIB_PATH);
     ScrnInfoPtr scrn = NULL;
-    int fd;
 
-    fd = open(path, O_RDWR);
-    if (fd >= 0) {
+    if (TegraProbeHardware(path, dev)) {
         scrn = xf86AllocateScreen(driver, 0);
 
         xf86AddEntityToScreen(scrn, entity_num);
@@ -814,8 +858,6 @@ TegraPlatformProbe(DriverPtr driver, int entity_num, int flags,
         scrn->LeaveVT = TegraLeaveVT;
         scrn->FreeScreen = TegraFreeScreen;
         scrn->ValidMode = TegraValidMode;
-
-        close(fd);
     }
 
     return scrn != NULL;
@@ -844,7 +886,7 @@ TegraProbe(DriverPtr drv, int flags)
 
     for (i = 0; i < numDevSections; i++) {
         dev = xf86FindOptionValue(devSections[i]->options, "device");
-        if (TegraProbeHardware(dev)) {
+        if (TegraProbeHardware(dev, NULL)) {
             int entity = xf86ClaimFbSlot(drv, 0, devSections[i], TRUE);
             scrn = xf86ConfigFbEntity(scrn, 0, entity, NULL, NULL, NULL,
                                       NULL);
