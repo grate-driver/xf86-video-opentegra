@@ -658,13 +658,12 @@ drmmode_output_destroy(xf86OutputPtr output)
         drmModeFreeProperty(drmmode_output->props[i].mode_prop);
         free(drmmode_output->props[i].atoms);
     }
-
+    free(drmmode_output->props);
     for (i = 0; i < drmmode_output->mode_output->count_encoders; i++) {
         drmModeFreeEncoder(drmmode_output->mode_encoders[i]);
-        free(drmmode_output->mode_encoders);
     }
 
-    free(drmmode_output->props);
+    free(drmmode_output->mode_encoders);
     drmModeFreeConnector(drmmode_output->mode_output);
 
     free(drmmode_output);
