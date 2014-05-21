@@ -520,6 +520,12 @@ TegraShadowWindow(ScreenPtr screen, CARD32 row, CARD32 offset, int mode,
     return ((uint8_t *)tegra->drmmode.front_bo->ptr + row * stride + offset);
 }
 
+static void
+TegraUpdatePacked(ScreenPtr pScreen, shadowBufPtr pBuf)
+{
+    shadowUpdatePacked(pScreen, pBuf);
+}
+
 static Bool
 TegraCreateScreenResources(ScreenPtr pScreen)
 {
@@ -554,7 +560,7 @@ TegraCreateScreenResources(ScreenPtr pScreen)
         FatalError("Couldn't adjust screen pixmap\n");
 
     if (tegra->drmmode.shadow_enable) {
-        if (!shadowAdd(pScreen, rootPixmap, shadowUpdatePackedWeak(),
+        if (!shadowAdd(pScreen, rootPixmap, TegraUpdatePacked,
                        TegraShadowWindow, 0, 0))
             return FALSE;
     }
@@ -928,4 +934,5 @@ static XF86ModuleVersionInfo VersRec = {
 _X_EXPORT XF86ModuleData opentegraModuleData = { &VersRec, Setup, NULL };
 
 /* vim: set et sts=4 sw=4 ts=4: */
+
 
