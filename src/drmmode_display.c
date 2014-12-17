@@ -395,23 +395,32 @@ drmmode_set_cursor_position(xf86CrtcPtr crtc, int x, int y)
 }
 
 static void
-drmmode_load_cursor_argb(xf86CrtcPtr crtc, CARD32 *image)
+drmmode_set_cursor(xf86CrtcPtr crtc)
 {
     TegraPtr tegra = TegraPTR(crtc->scrn);
     drmmode_crtc_private_ptr drmmode_crtc = crtc->driver_private;
-    int i;
-    uint32_t *ptr;
+    drmmode_ptr drmmode = drmmode_crtc->drmmode;
     uint32_t handle = drmmode_crtc->cursor_bo->handle;
+    static Bool use_set_cursor2 = TRUE;
     int ret;
 
-    /* cursor should be mapped already */
-    ptr = (uint32_t *)(drmmode_crtc->cursor_bo->ptr);
+    if (use_set_cursor2) {
+        xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(crtc->scrn);
+        CursorPtr cursor = xf86_config->cursor;
 
-    for (i = 0; i < tegra->cursor_width * tegra->cursor_height; i++)
-        ptr[i] = image[i];// cpu_to_le32(image[i]);
+        ret =
+            drmModeSetCursor2(drmmode->fd, drmmode_crtc->mode_crtc->crtc_id,
+                              handle, tegra->cursor_width, tegra->cursor_height,
+                              cursor->bits->xhot, cursor->bits->yhot);
+        if (ret == -EINVAL)
+            use_set_cursor2 = FALSE;
+        else
+            return;
+    }
 
-    ret = drmModeSetCursor(drmmode_crtc->drmmode->fd, drmmode_crtc->mode_crtc->crtc_id, handle,
+    ret = drmModeSetCursor(drmmode->fd, drmmode_crtc->mode_crtc->crtc_id, handle,
                            tegra->cursor_width, tegra->cursor_height);
+
     if (ret) {
         xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(crtc->scrn);
         xf86CursorInfoPtr cursor_info = xf86_config->cursor_info;
@@ -424,12 +433,31 @@ drmmode_load_cursor_argb(xf86CrtcPtr crtc, CARD32 *image)
 
 
 static void
+drmmode_load_cursor_argb(xf86CrtcPtr crtc, CARD32 *image)
+{
+    TegraPtr tegra = TegraPTR(crtc->scrn);
+    drmmode_crtc_private_ptr drmmode_crtc = crtc->driver_private;
+    int i;
+    uint32_t *ptr;
+
+    /* cursor should be mapped already */
+    ptr = (uint32_t *) (drmmode_crtc->cursor_bo->ptr);
+
+    for (i = 0; i < tegra->cursor_width * tegra->cursor_height; i++)
+        ptr[i] = image[i];      // cpu_to_le32(image[i]);
+
+    if (drmmode_crtc->cursor_up)
+        drmmode_set_cursor(crtc);
+}
+
+static void
 drmmode_hide_cursor(xf86CrtcPtr crtc)
 {
     TegraPtr tegra = TegraPTR(crtc->scrn);
     drmmode_crtc_private_ptr drmmode_crtc = crtc->driver_private;
     drmmode_ptr drmmode = drmmode_crtc->drmmode;
 
+    drmmode_crtc->cursor_up = FALSE;
     drmModeSetCursor(drmmode->fd, drmmode_crtc->mode_crtc->crtc_id, 0,
                      tegra->cursor_width, tegra->cursor_height);
 }
@@ -437,27 +465,9 @@ drmmode_hide_cursor(xf86CrtcPtr crtc)
 static void
 drmmode_show_cursor(xf86CrtcPtr crtc)
 {
-    TegraPtr tegra = TegraPTR(crtc->scrn);
     drmmode_crtc_private_ptr drmmode_crtc = crtc->driver_private;
-    drmmode_ptr drmmode = drmmode_crtc->drmmode;
-    uint32_t handle = drmmode_crtc->cursor_bo->handle;
-    static Bool use_set_cursor2 = TRUE;
-
-    if (use_set_cursor2) {
-        xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(crtc->scrn);
-        CursorPtr cursor = xf86_config->cursor;
-        int ret;
-        ret = drmModeSetCursor2(drmmode->fd, drmmode_crtc->mode_crtc->crtc_id,
-                                handle, tegra->cursor_width, tegra->cursor_height,
-                                cursor->bits->xhot, cursor->bits->yhot);
-        if (ret == -EINVAL)
-            use_set_cursor2 = FALSE;
-        else
-            return;
-    }
-
-    drmModeSetCursor(drmmode->fd, drmmode_crtc->mode_crtc->crtc_id, handle,
-                     tegra->cursor_width, tegra->cursor_height);
+    drmmode_crtc->cursor_up = TRUE;
+    drmmode_set_cursor(crtc);
 }
 
 static void
