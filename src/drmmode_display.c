@@ -394,7 +394,7 @@ drmmode_set_cursor_position(xf86CrtcPtr crtc, int x, int y)
     drmModeMoveCursor(drmmode->fd, drmmode_crtc->mode_crtc->crtc_id, x, y);
 }
 
-static void
+static Bool
 drmmode_set_cursor(xf86CrtcPtr crtc)
 {
     TegraPtr tegra = TegraPTR(crtc->scrn);
@@ -413,7 +413,7 @@ drmmode_set_cursor(xf86CrtcPtr crtc)
                               handle, tegra->cursor_width, tegra->cursor_height,
                               cursor->bits->xhot, cursor->bits->yhot);
         if (!ret)
-            return;
+            return TRUE;
 
         use_set_cursor2 = FALSE;
     }
@@ -428,12 +428,22 @@ drmmode_set_cursor(xf86CrtcPtr crtc)
         cursor_info->MaxWidth = cursor_info->MaxHeight = 0;
         drmmode_crtc->drmmode->sw_cursor = TRUE;
         /* fallback to swcursor */
+        return FALSE;
     }
+    return TRUE;
 }
 
+static void drmmode_hide_cursor(xf86CrtcPtr crtc);
 
-static void
-drmmode_load_cursor_argb(xf86CrtcPtr crtc, CARD32 *image)
+/*
+ * The load_cursor_argb_check driver hook.
+ *
+ * Sets the hardware cursor by calling the drmModeSetCursor2 ioctl.
+ * On failure, returns FALSE indicating that the X server should fall
+ * back to software cursors.
+ */
+static Bool
+drmmode_load_cursor_argb_check(xf86CrtcPtr crtc, CARD32 *image)
 {
     TegraPtr tegra = TegraPTR(crtc->scrn);
     drmmode_crtc_private_ptr drmmode_crtc = crtc->driver_private;
@@ -447,7 +457,8 @@ drmmode_load_cursor_argb(xf86CrtcPtr crtc, CARD32 *image)
         ptr[i] = image[i];      // cpu_to_le32(image[i]);
 
     if (drmmode_crtc->cursor_up)
-        drmmode_set_cursor(crtc);
+        return drmmode_set_cursor(crtc);
+    return TRUE;
 }
 
 static void
@@ -535,7 +546,7 @@ static const xf86CrtcFuncsRec drmmode_crtc_funcs = {
     .set_cursor_position = drmmode_set_cursor_position,
     .show_cursor = drmmode_show_cursor,
     .hide_cursor = drmmode_hide_cursor,
-    .load_cursor_argb = drmmode_load_cursor_argb,
+    .load_cursor_argb_check = drmmode_load_cursor_argb_check,
 
     .gamma_set = drmmode_crtc_gamma_set,
     .destroy = NULL, /* XXX */
