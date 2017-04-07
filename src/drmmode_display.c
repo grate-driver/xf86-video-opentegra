@@ -43,6 +43,8 @@
 #include "xf86Crtc.h"
 #include "drmmode_display.h"
 
+#include <cursorstr.h>
+
 /* DPMS */
 #ifdef HAVE_XEXTPROTO_71
 #include <X11/extensions/dpmsconst.h>
@@ -256,7 +258,7 @@ drmmode_set_mode_major(xf86CrtcPtr crtc, DisplayModePtr mode,
     int saved_x, saved_y;
     Rotation saved_rotation;
     DisplayModeRec saved_mode;
-    uint32_t *output_ids;
+    uint32_t *output_ids = NULL;
     int output_count = 0;
     Bool ret = TRUE;
     int i;
@@ -373,6 +375,8 @@ done:
         crtc->active = TRUE;
 #endif
 
+    free(output_ids);
+
     return ret;
 }
 
@@ -390,22 +394,33 @@ drmmode_set_cursor_position(xf86CrtcPtr crtc, int x, int y)
     drmModeMoveCursor(drmmode->fd, drmmode_crtc->mode_crtc->crtc_id, x, y);
 }
 
-static void
-drmmode_load_cursor_argb(xf86CrtcPtr crtc, CARD32 *image)
+static Bool
+drmmode_set_cursor(xf86CrtcPtr crtc)
 {
+    TegraPtr tegra = TegraPTR(crtc->scrn);
     drmmode_crtc_private_ptr drmmode_crtc = crtc->driver_private;
-    int i;
-    uint32_t *ptr;
+    drmmode_ptr drmmode = drmmode_crtc->drmmode;
     uint32_t handle = drmmode_crtc->cursor_bo->handle;
+    static Bool use_set_cursor2 = TRUE;
     int ret;
 
-    /* cursor should be mapped already */
-    ptr = (uint32_t *)(drmmode_crtc->cursor_bo->ptr);
+    if (use_set_cursor2) {
+        xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(crtc->scrn);
+        CursorPtr cursor = xf86_config->cursor;
 
-    for (i = 0; i < 64 * 64; i++)
-        ptr[i] = image[i];// cpu_to_le32(image[i]);
+        ret =
+            drmModeSetCursor2(drmmode->fd, drmmode_crtc->mode_crtc->crtc_id,
+                              handle, tegra->cursor_width, tegra->cursor_height,
+                              cursor->bits->xhot, cursor->bits->yhot);
+        if (!ret)
+            return TRUE;
 
-    ret = drmModeSetCursor(drmmode_crtc->drmmode->fd, drmmode_crtc->mode_crtc->crtc_id, handle, 64, 64);
+        use_set_cursor2 = FALSE;
+    }
+
+    ret = drmModeSetCursor(drmmode->fd, drmmode_crtc->mode_crtc->crtc_id, handle,
+                           tegra->cursor_width, tegra->cursor_height);
+
     if (ret) {
         xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(crtc->scrn);
         xf86CursorInfoPtr cursor_info = xf86_config->cursor_info;
@@ -413,27 +428,63 @@ drmmode_load_cursor_argb(xf86CrtcPtr crtc, CARD32 *image)
         cursor_info->MaxWidth = cursor_info->MaxHeight = 0;
         drmmode_crtc->drmmode->sw_cursor = TRUE;
         /* fallback to swcursor */
+        return FALSE;
     }
+    return TRUE;
 }
 
+static void drmmode_hide_cursor(xf86CrtcPtr crtc);
+
+/*
+ * The load_cursor_argb_check driver hook.
+ *
+ * Sets the hardware cursor by calling the drmModeSetCursor2 ioctl.
+ * On failure, returns FALSE indicating that the X server should fall
+ * back to software cursors.
+ */
+static Bool
+drmmode_load_cursor_argb_check(xf86CrtcPtr crtc, CARD32 *image)
+{
+    TegraPtr tegra = TegraPTR(crtc->scrn);
+    drmmode_crtc_private_ptr drmmode_crtc = crtc->driver_private;
+    int i;
+    uint32_t *ptr;
+    static Bool first_time = TRUE;
+
+    /* cursor should be mapped already */
+    ptr = (uint32_t *) (drmmode_crtc->cursor_bo->ptr);
+
+    for (i = 0; i < tegra->cursor_width * tegra->cursor_height; i++)
+        ptr[i] = image[i];      // cpu_to_le32(image[i]);
+
+    if (drmmode_crtc->cursor_up || first_time) {
+        Bool ret = drmmode_set_cursor(crtc);
+        if (!drmmode_crtc->cursor_up)
+            drmmode_hide_cursor(crtc);
+        first_time = FALSE;
+        return ret;
+    }
+    return TRUE;
+}
 
 static void
 drmmode_hide_cursor(xf86CrtcPtr crtc)
 {
+    TegraPtr tegra = TegraPTR(crtc->scrn);
     drmmode_crtc_private_ptr drmmode_crtc = crtc->driver_private;
     drmmode_ptr drmmode = drmmode_crtc->drmmode;
 
-    drmModeSetCursor(drmmode->fd, drmmode_crtc->mode_crtc->crtc_id, 0, 64, 64);
+    drmmode_crtc->cursor_up = FALSE;
+    drmModeSetCursor(drmmode->fd, drmmode_crtc->mode_crtc->crtc_id, 0,
+                     tegra->cursor_width, tegra->cursor_height);
 }
 
 static void
 drmmode_show_cursor(xf86CrtcPtr crtc)
 {
     drmmode_crtc_private_ptr drmmode_crtc = crtc->driver_private;
-    drmmode_ptr drmmode = drmmode_crtc->drmmode;
-    uint32_t handle = drmmode_crtc->cursor_bo->handle;
-
-    drmModeSetCursor(drmmode->fd, drmmode_crtc->mode_crtc->crtc_id, handle, 64, 64);
+    drmmode_crtc->cursor_up = TRUE;
+    drmmode_set_cursor(crtc);
 }
 
 static void
@@ -501,7 +552,7 @@ static const xf86CrtcFuncsRec drmmode_crtc_funcs = {
     .set_cursor_position = drmmode_set_cursor_position,
     .show_cursor = drmmode_show_cursor,
     .hide_cursor = drmmode_hide_cursor,
-    .load_cursor_argb = drmmode_load_cursor_argb,
+    .load_cursor_argb_check = drmmode_load_cursor_argb_check,
 
     .gamma_set = drmmode_crtc_gamma_set,
     .destroy = NULL, /* XXX */
@@ -576,6 +627,9 @@ drmmode_output_get_modes(xf86OutputPtr output)
     drmModePropertyPtr props;
     xf86MonPtr mon = NULL;
 
+   if (!koutput)
+      return NULL;
+
     /* look for an EDID property */
     for (i = 0; i < koutput->count_props; i++) {
         props = drmModeGetProperty(drmmode->fd, koutput->props[i]);
@@ -625,13 +679,12 @@ drmmode_output_destroy(xf86OutputPtr output)
         drmModeFreeProperty(drmmode_output->props[i].mode_prop);
         free(drmmode_output->props[i].atoms);
     }
-
+    free(drmmode_output->props);
     for (i = 0; i < drmmode_output->mode_output->count_encoders; i++) {
         drmModeFreeEncoder(drmmode_output->mode_encoders[i]);
-        free(drmmode_output->mode_encoders);
     }
 
-    free(drmmode_output->props);
+    free(drmmode_output->mode_encoders);
     drmModeFreeConnector(drmmode_output->mode_output);
 
     free(drmmode_output);
@@ -704,7 +757,8 @@ drmmode_output_create_resources(xf86OutputPtr output)
         drmmode_prop = p->mode_prop;
 
         if (drmmode_prop->flags & DRM_MODE_PROP_RANGE) {
-            INT32 range[2], value = p->value;
+            INT32 prop_range[2];
+            INT32 value = p->value;
 
             p->num_atoms = 1;
             p->atoms = calloc(p->num_atoms, sizeof(Atom));
@@ -713,13 +767,13 @@ drmmode_output_create_resources(xf86OutputPtr output)
                 continue;
 
             p->atoms[0] = MakeAtom(drmmode_prop->name, strlen(drmmode_prop->name), TRUE);
-            range[0] = drmmode_prop->values[0];
-            range[1] = drmmode_prop->values[1];
+            prop_range[0] = drmmode_prop->values[0];
+            prop_range[1] = drmmode_prop->values[1];
 
             err = RRConfigureOutputProperty(output->randr_output, p->atoms[0],
                                             FALSE, TRUE,
                                             drmmode_prop->flags & DRM_MODE_PROP_IMMUTABLE ? TRUE : FALSE,
-                                            2, range);
+                                            2, prop_range);
             if (err != 0)
                 xf86DrvMsg(output->scrn->scrnIndex, X_ERROR,
                            "RRConfigureOutputProperty error, %d\n", err);
@@ -850,7 +904,7 @@ static int subpixel_conv_table[7] = {
     SubPixelNone
 };
 
-const char *output_names[] = {
+static const char * const output_names[] = {
     "None",
     "VGA",
     "DVI",
@@ -866,7 +920,8 @@ const char *output_names[] = {
     "HDMI",
     "TV",
     "eDP",
-    "Virtual"
+    "Virtual",
+    "DSI",
 };
 
 static void
@@ -1166,7 +1221,7 @@ Bool drmmode_pre_init(ScrnInfoPtr pScrn, drmmode_ptr drmmode, int cpp)
     return TRUE;
 }
 
-void drmmode_adjust_frame(ScrnInfoPtr pScrn, drmmode_ptr drmmode, int x, int y, int flags)
+void drmmode_adjust_frame(ScrnInfoPtr pScrn, drmmode_ptr drmmode, int x, int y)
 {
     xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(pScrn);
     xf86OutputPtr output = config->output[config->compat_output];
@@ -1383,6 +1438,7 @@ void drmmode_uevent_fini(ScrnInfoPtr scrn, drmmode_ptr drmmode)
 /* create front and cursor BOs */
 Bool drmmode_create_initial_bos(ScrnInfoPtr pScrn, drmmode_ptr drmmode)
 {
+    TegraPtr tegra = TegraPTR(pScrn);
     xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(pScrn);
     int width;
     int height;
@@ -1399,7 +1455,8 @@ Bool drmmode_create_initial_bos(ScrnInfoPtr pScrn, drmmode_ptr drmmode)
 
     pScrn->displayWidth = drmmode->front_bo->pitch / cpp;
 
-    width = height = 64;
+    width = tegra->cursor_width;
+    height = tegra->cursor_height;
     bpp = 32;
 
     for (i = 0; i < xf86_config->num_crtc; i++) {
@@ -1532,3 +1589,5 @@ out:
     drmModeFreeResources(mode_res);
     return;
 }
+
+/* vim: set et sts=4 sw=4 ts=4: */

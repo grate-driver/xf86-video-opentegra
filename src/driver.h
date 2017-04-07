@@ -57,18 +57,12 @@ typedef struct _TegraRec
     int fd;
 
     EntPtr entityPrivate;
-
-    int Chipset;
     EntityInfoPtr pEnt;
 
-    Bool noAccel;
-    Bool SWCursor;
     CloseScreenProcPtr CloseScreen;
 
     /* Broken-out options. */
     OptionInfoPtr Options;
-
-    unsigned int SaveGeneration;
 
     CreateScreenResourcesProcPtr createScreenResources;
     ScreenBlockHandlerProcPtr BlockHandler;
@@ -78,6 +72,8 @@ typedef struct _TegraRec
 
     DamagePtr damage;
     Bool dirty_enabled;
+
+    uint32_t cursor_width, cursor_height;
 
     ExaDriverPtr exa;
 } TegraRec, *TegraPtr;
@@ -92,3 +88,5 @@ void TegraEXAScreenExit(ScreenPtr pScreen);
 
 void TegraVideoScreenInit(ScreenPtr pScreen);
 void TegraVideoScreenExit(ScreenPtr pScreen);
+
+/* vim: set et sts=4 sw=4 ts=4: */

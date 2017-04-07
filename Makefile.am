@@ -26,6 +26,10 @@ MAINTAINERCLEANFILES = ChangeLog INSTALL
 
 .PHONY: ChangeLog INSTALL
 
+xorgconfdir = $(datarootdir)/X11/xorg.conf.d
+xorgconf_DATA = \
+	opentegra.conf
+
 INSTALL:
 	$(INSTALL_CMD)
 

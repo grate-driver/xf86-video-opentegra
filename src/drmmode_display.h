@@ -83,6 +83,7 @@ typedef struct {
     drmModeCrtcPtr mode_crtc;
     int hw_id;
     struct dumb_bo *cursor_bo;
+    Bool cursor_up;
     unsigned rotate_fb_id;
     uint16_t lut_r[256], lut_g[256], lut_b[256];
     DamagePtr slave_damage;
@@ -120,13 +121,12 @@ extern DevPrivateKeyRec TegraPixmapPrivateKeyRec;
 #define TegraGetPixmapPriv(drmmode, p) ((TegraPixmapPrivPtr)dixGetPrivateAddr(&(p)->devPrivates, &(drmmode)->pixmapPrivateKeyRec))
 
 void *drmmode_map_slave_bo(drmmode_ptr drmmode, TegraPixmapPrivPtr ppriv);
-Bool drmmode_SetSlaveBO(PixmapPtr ppix,
-			drmmode_ptr drmmode,
-			int fd_handle, int pitch, int size);
+Bool drmmode_SetSlaveBO(PixmapPtr ppix, drmmode_ptr drmmode, int fd_handle,
+                        int pitch, int size);
 #endif
 
 extern Bool drmmode_pre_init(ScrnInfoPtr pScrn, drmmode_ptr drmmode, int cpp);
-void drmmode_adjust_frame(ScrnInfoPtr pScrn, drmmode_ptr drmmode, int x, int y, int flags);
+void drmmode_adjust_frame(ScrnInfoPtr pScrn, drmmode_ptr drmmode, int x, int y);
 extern Bool drmmode_set_desired_modes(ScrnInfoPtr pScrn, drmmode_ptr drmmode);
 extern Bool drmmode_setup_colormap(ScreenPtr pScreen, ScrnInfoPtr pScrn);
 
@@ -148,3 +148,5 @@ void drmmode_get_default_bpp(ScrnInfoPtr pScrn, drmmode_ptr drmmmode, int *depth
 #endif
 
 #endif
+
+/* vim: set et sts=4 sw=4 ts=4: */

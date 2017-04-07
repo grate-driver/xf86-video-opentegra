@@ -25,7 +25,7 @@
  *
  *
  * Original Author: Alan Hourihane <alanh@tungstengraphics.com>
- * Rewrite: Dave Airlie <airlied@redhat.com> 
+ * Rewrite: Dave Airlie <airlied@redhat.com>
  *
  */
 
@@ -189,15 +189,25 @@ GetRec(ScrnInfoPtr pScrn)
 static void
 FreeRec(ScrnInfoPtr pScrn)
 {
+    TegraPtr tegra;
+
     if (!pScrn)
         return;
 
-    if (!pScrn->driverPrivate)
+    tegra = TegraPTR(pScrn);
+    if (!tegra)
         return;
-
-    free(pScrn->driverPrivate);
-
     pScrn->driverPrivate = NULL;
+
+    if (tegra->fd > 0)
+#ifdef XF86_PDEV_SERVER_FD
+        if (!(tegra->pEnt->location.type == BUS_PLATFORM &&
+              (tegra->pEnt->location.id.plat->flags & XF86_PDEV_SERVER_FD)))
+#endif
+            close(tegra->fd);
+
+    free(tegra->Options);
+    free(tegra);
 }
 
 #ifdef TEGRA_OUTPUT_SLAVE_SUPPORT
@@ -249,9 +259,18 @@ TegraOpenHardware(const char *dev)
 }
 
 static Bool
-TegraProbeHardware(const char *dev)
+TegraProbeHardware(const char *dev, struct xf86_platform_device *platform_dev)
 {
     int fd;
+
+#if XSERVER_PLATFORM_BUS
+    if (platform_dev && (platform_dev->flags & XF86_PDEV_SERVER_FD)) {
+        fd = xf86_get_platform_device_int_attrib(platform_dev, ODEV_ATTRIB_FD, -1);
+        if (fd == -1)
+            return FALSE;
+        return TRUE;
+    }
+#endif
 
     fd = TegraOpenHardware(dev);
     if (fd != -1) {
@@ -269,7 +288,7 @@ TegraAvailableOptions(int chipid, int busid)
 }
 
 static Bool
-TegraDriverFunc(ScrnInfoPtr scrn, xorgDriverFuncOp op, void *data)
+TegraDriverFunc(ScrnInfoPtr pScrn, xorgDriverFuncOp op, void *data)
 {
     xorgHWFlags *flag;
 
@@ -278,10 +297,22 @@ TegraDriverFunc(ScrnInfoPtr scrn, xorgDriverFuncOp op, void *data)
             flag = (CARD32 *)data;
             (*flag) = 0;
             return TRUE;
+#if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,15,99,902,0)
+        case SUPPORTS_SERVER_FDS:
+            return TRUE;
+#endif
         default:
             return FALSE;
     }
 }
+
+#ifndef DRM_CAP_CURSOR_WIDTH
+#define DRM_CAP_CURSOR_WIDTH 0x8
+#endif
+
+#ifndef DRM_CAP_CURSOR_HEIGHT
+#define DRM_CAP_CURSOR_HEIGHT 0x9
+#endif
 
 static Bool
 TegraPreInit(ScrnInfoPtr pScrn, int flags)
@@ -290,13 +321,13 @@ TegraPreInit(ScrnInfoPtr pScrn, int flags)
     rgb defaultWeight = { 0, 0, 0 };
     EntityInfoPtr pEnt;
     EntPtr tegraEnt = NULL;
-    char *devicename;
     Bool prefer_shadow = TRUE;
     uint64_t value = 0;
     int ret;
     int bppflags;
     int defaultdepth, defaultbpp;
     Gamma zeros = { 0.0, 0.0, 0.0 };
+    const char *path;
 
     if (pScrn->numEntities != 1)
         return FALSE;
@@ -308,7 +339,6 @@ TegraPreInit(ScrnInfoPtr pScrn, int flags)
         return FALSE;
 
     tegra = TegraPTR(pScrn);
-    tegra->SaveGeneration = -1;
     tegra->pEnt = pEnt;
 
     pScrn->displayWidth = 640; /* default it */
@@ -333,18 +363,28 @@ TegraPreInit(ScrnInfoPtr pScrn, int flags)
     pScrn->progClock = TRUE;
     pScrn->rgbBits = 8;
 
+    switch (pEnt->location.type) {
 #ifdef XSERVER_PLATFORM_BUS
-    if (pEnt->location.type == BUS_PLATFORM) {
-            char *path;
+    case BUS_PLATFORM:
+#ifdef XF86_PDEV_SERVER_FD
+        if (pEnt->location.id.plat->flags & XF86_PDEV_SERVER_FD)
+            tegra->fd = xf86_get_platform_device_int_attrib(
+                                    pEnt->location.id.plat, ODEV_ATTRIB_FD, -1);
+        else
+#endif
+        {
             path = xf86_get_platform_device_attrib(pEnt->location.id.plat,
                                                    ODEV_ATTRIB_PATH);
             tegra->fd = TegraOpenHardware(path);
-    } else
+        }
+        break;
 #endif
-    {
-        devicename = xf86GetOptValString(tegra->pEnt->device->options,
-                                         OPTION_DEVICE_PATH);
-        tegra->fd = TegraOpenHardware(devicename);
+
+    default:
+        path = xf86GetOptValString(tegra->pEnt->device->options,
+                                   OPTION_DEVICE_PATH);
+        tegra->fd = TegraOpenHardware(path);
+        break;
     }
 
     if (tegra->fd < 0)
@@ -365,7 +405,7 @@ TegraPreInit(ScrnInfoPtr pScrn, int flags)
 #endif
     drmmode_get_default_bpp(pScrn, &tegra->drmmode, &defaultdepth, &defaultbpp);
     if (defaultdepth == 24 && defaultbpp == 24)
-        bppflags = Support24bppFb;
+	    bppflags = SupportConvert32to24 | Support24bppFb;
     else
         bppflags = PreferConvert24to32 | SupportConvert24to32 | Support32bppFb;
 
@@ -411,6 +451,18 @@ TegraPreInit(ScrnInfoPtr pScrn, int flags)
     if (!ret)
         prefer_shadow = !!value;
 
+    tegra->cursor_width = 64;
+    tegra->cursor_height = 64;
+    ret = drmGetCap(tegra->fd, DRM_CAP_CURSOR_WIDTH, &value);
+    if (!ret) {
+	tegra->cursor_width = value;
+    }
+    ret = drmGetCap(tegra->fd, DRM_CAP_CURSOR_HEIGHT, &value);
+    if (!ret) {
+	tegra->cursor_height = value;
+    }
+
+
     tegra->drmmode.shadow_enable = xf86ReturnOptValBool(tegra->Options,
                                                         OPTION_SHADOW_FB,
                                                         prefer_shadow);
@@ -455,6 +507,26 @@ TegraPreInit(ScrnInfoPtr pScrn, int flags)
     return TRUE;
 }
 
+static Bool
+SetMaster(ScrnInfoPtr pScrn)
+{
+    TegraPtr tegra = TegraPTR(pScrn);
+    int ret;
+
+#ifdef XF86_PDEV_SERVER_FD
+    if (tegra->pEnt->location.type == BUS_PLATFORM &&
+            (tegra->pEnt->location.id.plat->flags & XF86_PDEV_SERVER_FD))
+        return TRUE;
+#endif
+
+    ret = drmSetMaster(tegra->fd);
+    if (ret)
+        xf86DrvMsg(pScrn->scrnIndex, X_ERROR, "drmSetMaster failed: %s\n",
+                   strerror(errno));
+
+    return ret == 0;
+}
+
 /*
  * This gets called when gaining control of the VT, and from ScreenInit().
  */
@@ -466,9 +538,7 @@ TegraEnterVT(VT_FUNC_ARGS_DECL)
 
     pScrn->vtSema = TRUE;
 
-    if (drmSetMaster(tegra->fd))
-        xf86DrvMsg(pScrn->scrnIndex, X_WARNING, "drmSetMaster failed: %s\n",
-                   strerror(errno));
+    SetMaster(pScrn);
 
     if (!drmmode_set_desired_modes(pScrn, &tegra->drmmode))
         return FALSE;
@@ -484,6 +554,12 @@ TegraLeaveVT(VT_FUNC_ARGS_DECL)
     xf86_hide_cursors(pScrn);
 
     pScrn->vtSema = FALSE;
+
+#ifdef XF86_PDEV_SERVER_FD
+    if (tegra->pEnt->location.type == BUS_PLATFORM &&
+            (tegra->pEnt->location.id.plat->flags & XF86_PDEV_SERVER_FD))
+        return;
+#endif
 
     drmDropMaster(tegra->fd);
 }
@@ -511,6 +587,12 @@ TegraShadowWindow(ScreenPtr screen, CARD32 row, CARD32 offset, int mode,
     return ((uint8_t *)tegra->drmmode.front_bo->ptr + row * stride + offset);
 }
 
+static void
+TegraUpdatePacked(ScreenPtr pScreen, shadowBufPtr pBuf)
+{
+    shadowUpdatePacked(pScreen, pBuf);
+}
+
 static Bool
 TegraCreateScreenResources(ScreenPtr pScreen)
 {
@@ -519,6 +601,7 @@ TegraCreateScreenResources(ScreenPtr pScreen)
     PixmapPtr rootPixmap;
     Bool ret;
     void *pixels;
+
     pScreen->CreateScreenResources = tegra->createScreenResources;
     ret = pScreen->CreateScreenResources(pScreen);
     pScreen->CreateScreenResources = TegraCreateScreenResources;
@@ -528,7 +611,7 @@ TegraCreateScreenResources(ScreenPtr pScreen)
 
     drmmode_uevent_init(pScrn, &tegra->drmmode);
 
-    if (!tegra->SWCursor)
+    if (!tegra->drmmode.sw_cursor)
         drmmode_map_cursor_bos(pScrn, &tegra->drmmode);
 
     pixels = drmmode_map_front_bo(&tegra->drmmode);
@@ -544,7 +627,7 @@ TegraCreateScreenResources(ScreenPtr pScreen)
         FatalError("Couldn't adjust screen pixmap\n");
 
     if (tegra->drmmode.shadow_enable) {
-        if (!shadowAdd(pScreen, rootPixmap, shadowUpdatePackedWeak(),
+        if (!shadowAdd(pScreen, rootPixmap, TegraUpdatePacked,
                        TegraShadowWindow, 0, 0))
             return FALSE;
     }
@@ -624,15 +707,11 @@ TegraScreenInit(SCREEN_INIT_ARGS_DECL)
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pScreen);
     TegraPtr tegra = TegraPTR(pScrn);
     VisualPtr visual;
-    int ret;
 
     pScrn->pScreen = pScreen;
 
-    ret = drmSetMaster(tegra->fd);
-    if (ret) {
-        ErrorF("Unable to set master\n");
+    if (!SetMaster(pScrn))
         return FALSE;
-    }
 
     /* HW dependent - FIXME */
     pScrn->displayWidth = pScrn->virtualX;
@@ -706,7 +785,7 @@ TegraScreenInit(SCREEN_INIT_ARGS_DECL)
 
     /* Need to extend HWcursor support to handle mask interleave */
     if (!tegra->drmmode.sw_cursor)
-        xf86_cursors_init(pScreen, 64, 64,
+        xf86_cursors_init(pScreen, tegra->cursor_width, tegra->cursor_height,
                           HARDWARE_CURSOR_SOURCE_MASK_INTERLEAVE_64 |
                           HARDWARE_CURSOR_ARGB);
 
@@ -755,16 +834,9 @@ static void
 TegraAdjustFrame(ADJUST_FRAME_ARGS_DECL)
 {
     SCRN_INFO_PTR(arg);
-    xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(pScrn);
-    xf86OutputPtr output = config->output[config->compat_output];
-    xf86CrtcPtr crtc = output->crtc;
+    TegraPtr tegra = TegraPTR(pScrn);
 
-    if (crtc && crtc->enabled) {
-        crtc->funcs->mode_set(crtc, pScrn->currentMode, pScrn->currentMode, x,
-                              y);
-        crtc->x = output->initial_x + x;
-        crtc->y = output->initial_y + y;
-    }
+    drmmode_adjust_frame(pScrn, &tegra->drmmode, x, y);
 }
 
 static void
@@ -785,12 +857,10 @@ static Bool
 TegraPlatformProbe(DriverPtr driver, int entity_num, int flags,
                    struct xf86_platform_device *dev, intptr_t match_data)
 {
-    char *busid = xf86_get_platform_device_attrib(dev, ODEV_ATTRIB_BUSID);
+    char *path = xf86_get_platform_device_attrib(dev, ODEV_ATTRIB_PATH);
     ScrnInfoPtr scrn = NULL;
-    int fd;
 
-    fd = drmOpen(NULL, busid);
-    if (fd != -1) {
+    if (TegraProbeHardware(path, dev)) {
         scrn = xf86AllocateScreen(driver, 0);
 
         xf86AddEntityToScreen(scrn, entity_num);
@@ -805,11 +875,6 @@ TegraPlatformProbe(DriverPtr driver, int entity_num, int flags,
         scrn->LeaveVT = TegraLeaveVT;
         scrn->FreeScreen = TegraFreeScreen;
         scrn->ValidMode = TegraValidMode;
-
-        xf86DrvMsg(scrn->scrnIndex, X_INFO, "using %s\n",
-                   busid ? busid : "default device");
-
-        drmClose(fd);
     }
 
     return scrn != NULL;
@@ -838,7 +903,7 @@ TegraProbe(DriverPtr drv, int flags)
 
     for (i = 0; i < numDevSections; i++) {
         dev = xf86FindOptionValue(devSections[i]->options, "device");
-        if (TegraProbeHardware(dev)) {
+        if (TegraProbeHardware(dev, NULL)) {
             int entity = xf86ClaimFbSlot(drv, 0, devSections[i], TRUE);
             scrn = xf86ConfigFbEntity(scrn, 0, entity, NULL, NULL, NULL,
                                       NULL);
@@ -926,3 +991,7 @@ static XF86ModuleVersionInfo VersRec = {
 };
 
 _X_EXPORT XF86ModuleData opentegraModuleData = { &VersRec, Setup, NULL };
+
+/* vim: set et sts=4 sw=4 ts=4: */
+
+

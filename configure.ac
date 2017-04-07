@@ -34,7 +34,6 @@ AC_SYS_LARGEFILE
 
 # Initialize Automake
 AM_INIT_AUTOMAKE([foreign no-dist-gzip dist-xz])
-AM_MAINTAINER_MODE
 
 # Initialize libtool
 AC_DISABLE_STATIC
@@ -70,7 +69,7 @@ AM_CONDITIONAL(HAVE_XEXTPROTO_71, [ test "$HAVE_XEXTPROTO_71" = "yes" ])
 
 AC_HEADER_STDC
 
-PKG_CHECK_MODULES(DRM, [libdrm >= 2.2])
+PKG_CHECK_MODULES(DRM, [libdrm >= 2.4.46])
 AM_CONDITIONAL(DRM, test "x$DRM" = xyes)
 
 PKG_CHECK_MODULES(UDEV, [libudev], [udev=yes], [udev=no])
