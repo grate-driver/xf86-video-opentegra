@@ -68,8 +68,7 @@ typedef struct {
 #endif
     drmEventContext event_context;
     struct dumb_bo *front_bo;
-    Bool need_sw_cursor;
-    Bool want_sw_cursor;
+    Bool sw_cursor;
 
     Bool shadow_enable;
     void *shadow_fb;
