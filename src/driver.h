@@ -31,7 +31,6 @@
 #include <drm.h>
 #include <xf86drm.h>
 #include <damage.h>
-#include <exa.h>
 
 #include "drmmode_display.h"
 
@@ -74,17 +73,12 @@ typedef struct _TegraRec
     Bool dirty_enabled;
 
     uint32_t cursor_width, cursor_height;
-
-    ExaDriverPtr exa;
 } TegraRec, *TegraPtr;
 
 #define TegraPTR(p) ((TegraPtr)((p)->driverPrivate))
 
 void TegraDRI2ScreenInit(ScreenPtr pScreen);
 void TegraDRI2ScreenExit(ScreenPtr pScreen);
-
-void TegraEXAScreenInit(ScreenPtr pScreen);
-void TegraEXAScreenExit(ScreenPtr pScreen);
 
 void TegraVideoScreenInit(ScreenPtr pScreen);
 void TegraVideoScreenExit(ScreenPtr pScreen);
