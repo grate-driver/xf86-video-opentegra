@@ -10,7 +10,6 @@
 #include <X11/extensions/Xv.h>
 
 #include "driver.h"
-#include "compat-api.h"
 
 typedef struct TegraXvPort {
 } TegraXvPort;
