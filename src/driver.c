@@ -671,7 +671,6 @@ TegraCloseScreen(CLOSE_SCREEN_ARGS_DECL)
     if (pScrn->vtSema)
         TegraLeaveVT(VT_FUNC_ARGS);
 
-    TegraDRI2ScreenExit(pScreen);
     TegraVideoScreenExit(pScreen);
 
     pScreen->CreateScreenResources = tegra->createScreenResources;
@@ -788,7 +787,6 @@ TegraScreenInit(SCREEN_INIT_ARGS_DECL)
                           HARDWARE_CURSOR_ARGB);
 
     TegraVideoScreenInit(pScreen);
-    TegraDRI2ScreenInit(pScreen);
 
     /* Must force it before EnterVT, so we are in control of VT and
      * later memory should be bound when allocating, e.g rotate_mem */

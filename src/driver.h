@@ -52,7 +52,6 @@ typedef struct
 
 typedef struct _TegraRec
 {
-    char *path;
     int fd;
 
     EntPtr entityPrivate;
@@ -76,9 +75,6 @@ typedef struct _TegraRec
 } TegraRec, *TegraPtr;
 
 #define TegraPTR(p) ((TegraPtr)((p)->driverPrivate))
-
-void TegraDRI2ScreenInit(ScreenPtr pScreen);
-void TegraDRI2ScreenExit(ScreenPtr pScreen);
 
 void TegraVideoScreenInit(ScreenPtr pScreen);
 void TegraVideoScreenExit(ScreenPtr pScreen);
