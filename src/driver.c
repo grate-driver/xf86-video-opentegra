@@ -680,6 +680,8 @@ TegraCloseScreen(CLOSE_SCREEN_ARGS_DECL)
 
     TegraVideoScreenExit(pScreen);
     TegraEXAScreenExit(pScreen);
+    TegraDRI2ScreenExit(pScreen);
+    TegraVBlankScreenExit(pScreen);
 
     drm_tegra_close(tegra->drm);
 
@@ -798,6 +800,8 @@ TegraScreenInit(SCREEN_INIT_ARGS_DECL)
 
     TegraVideoScreenInit(pScreen);
     TegraEXAScreenInit(pScreen);
+    TegraDRI2ScreenInit(pScreen);
+    TegraVBlankScreenInit(pScreen);
 
     /* Must force it before EnterVT, so we are in control of VT and
      * later memory should be bound when allocating, e.g rotate_mem */

@@ -53,6 +53,7 @@ typedef struct
 
 typedef struct _TegraRec
 {
+    char *path;
     int fd;
 
     EntPtr entityPrivate;
@@ -68,6 +69,8 @@ typedef struct _TegraRec
     void *driver;
 
     drmmode_rec drmmode;
+
+    drmEventContext event_context;
 
     DamagePtr damage;
     Bool dirty_enabled;
@@ -86,5 +89,11 @@ void TegraVideoScreenExit(ScreenPtr pScreen);
 
 void TegraEXAScreenInit(ScreenPtr pScreen);
 void TegraEXAScreenExit(ScreenPtr pScreen);
+
+void TegraDRI2ScreenInit(ScreenPtr pScreen);
+void TegraDRI2ScreenExit(ScreenPtr pScreen);
+
+Bool TegraVBlankScreenInit(ScreenPtr screen);
+void TegraVBlankScreenExit(ScreenPtr screen);
 
 /* vim: set et sts=4 sw=4 ts=4: */

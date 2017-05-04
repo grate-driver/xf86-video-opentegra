@@ -245,6 +245,8 @@ drmmode_ConvertToKMode(ScrnInfoPtr scrn, drmModeModeInfo *kmode,
 static void
 drmmode_crtc_dpms(xf86CrtcPtr crtc, int mode)
 {
+    drmmode_crtc_private_ptr drmmode_crtc = crtc->driver_private;
+    drmmode_crtc->dpms_mode = mode;
 }
 
 static Bool
@@ -574,6 +576,7 @@ drmmode_crtc_init(ScrnInfoPtr pScrn, drmmode_ptr drmmode, int num)
     drmmode_crtc = xnfcalloc(sizeof(drmmode_crtc_private_rec), 1);
     drmmode_crtc->mode_crtc = drmModeGetCrtc(drmmode->fd, drmmode->mode_res->crtcs[num]);
     drmmode_crtc->drmmode = drmmode;
+    drmmode_crtc->crtc_pipe = num;
     crtc->driver_private = drmmode_crtc;
 }
 

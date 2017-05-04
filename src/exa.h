@@ -38,6 +38,10 @@ typedef struct _TegraEXARec{
     ExaDriverPtr driver;
 } *TegraEXAPtr;
 
+typedef struct {
+    struct drm_tegra_bo *bo;
+} TegraPixmapRec, *TegraPixmapPtr;
+
 #endif
 
 /* vim: set et sts=4 sw=4 ts=4: */

@@ -33,6 +33,7 @@ opentegra_drv_ladir = @moduledir@/drivers
 
 opentegra_drv_la_SOURCES = \
 	compat-api.h \
+	dri2.c \
 	driver.c \
 	driver.h \
 	drmmode_display.c \
@@ -40,5 +41,6 @@ opentegra_drv_la_SOURCES = \
 	host1x.h \
 	xv.c \
 	exa.c \
-	exa.h
-
+	exa.h \
+	vblank.c \
+	vblank.h

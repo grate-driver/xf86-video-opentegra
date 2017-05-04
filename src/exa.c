@@ -61,10 +61,6 @@ static const uint8_t rop3[] = {
     0xff, /* GXset */
 };
 
-typedef struct {
-    struct drm_tegra_bo *bo;
-} TegraPixmapRec, *TegraPixmapPtr;
-
 static inline unsigned int TegraEXAPitch(unsigned int width, unsigned int bpp)
 {
     /*
