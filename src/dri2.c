@@ -3,13 +3,14 @@
 #endif
 
 #include <time.h>
-#include "list.h"
 #include "xf86.h"
 #include "xf86Crtc.h"
+#include "list.h"
 #include "driver.h"
 #include "dri2.h"
-#include "vblank.h"
+
 #include "compat-api.h"
+#include "vblank.h"
 
 enum tegra_dri2_frame_event_type {
     MS_DRI2_QUEUE_SWAP,
