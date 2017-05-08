@@ -32,9 +32,12 @@
 #include <unistd.h>
 #include <xf86.h>
 #include <xf86Crtc.h>
+#include <list.h>
 #include <poll.h>
 #include "driver.h"
 #include "drmmode_display.h"
+
+#include "compat-api.h"
 #include "vblank.h"
 
 /**
@@ -255,6 +258,7 @@ tegra_crtc_msc_to_kernel_msc(xf86CrtcPtr crtc, uint64_t expect)
 /**
  * Check for pending DRM events and process them.
  */
+#if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,19,0,0,0)
 static void
 tegra_drm_socket_handler(int fd, int ready, void *data)
 {
@@ -267,6 +271,22 @@ tegra_drm_socket_handler(int fd, int ready, void *data)
 
     drmHandleEvent(tegra->fd, &tegra->event_context);
 }
+#else
+static void
+tegra_drm_wakeup_handler(void *data, int err, void *mask)
+{
+    ScreenPtr screen = data;
+    ScrnInfoPtr scrn = xf86ScreenToScrn(screen);
+    TegraPtr tegra = TegraPTR(scrn);
+    fd_set *read_mask = mask;
+
+    if (data == NULL || err < 0)
+        return;
+
+    if (FD_ISSET(tegra->fd, read_mask))
+        drmHandleEvent(tegra->fd, &tegra->event_context);
+}
+#endif
 
 /*
  * Enqueue a potential drm response; when the associated response
@@ -401,7 +421,13 @@ TegraVBlankScreenInit(ScreenPtr screen)
      * feedback on every server generation, so perform the
      * registration within ScreenInit and not PreInit.
      */
+#if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,19,0,0,0)
     SetNotifyFd(tegra->fd, tegra_drm_socket_handler, X_NOTIFY_READ, screen);
+#else
+    AddGeneralSocket(tegra->fd);
+    RegisterBlockAndWakeupHandlers((BlockHandlerProcPtr)NoopDDA,
+                                   tegra_drm_wakeup_handler, screen);
+#endif
 
     return TRUE;
 }
@@ -414,5 +440,11 @@ TegraVBlankScreenExit(ScreenPtr screen)
 
     tegra_drm_abort_scrn(scrn);
 
+#if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,19,0,0,0)
     RemoveNotifyFd(tegra->fd);
+#else
+    RemoveBlockAndWakeupHandlers((BlockHandlerProcPtr)NoopDDA,
+                                 tegra_drm_wakeup_handler, screen);
+    RemoveGeneralSocket(tegra->fd);
+#endif
 }

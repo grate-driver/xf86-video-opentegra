@@ -45,14 +45,6 @@
 
 #include <cursorstr.h>
 
-/* DPMS */
-#ifdef HAVE_XEXTPROTO_71
-#include <X11/extensions/dpmsconst.h>
-#else
-#define DPMS_SERVER
-#include <X11/extensions/dpms.h>
-#endif
-
 #include "driver.h"
 #include "compat-api.h"
 
@@ -470,6 +462,12 @@ drmmode_load_cursor_argb_check(xf86CrtcPtr crtc, CARD32 *image)
 }
 
 static void
+drmmode_load_cursor_argb(xf86CrtcPtr crtc, CARD32 *image)
+{
+    drmmode_load_cursor_argb_check(crtc, image);
+}
+
+static void
 drmmode_hide_cursor(xf86CrtcPtr crtc)
 {
     TegraPtr tegra = TegraPTR(crtc->scrn);
@@ -554,7 +552,10 @@ static const xf86CrtcFuncsRec drmmode_crtc_funcs = {
     .set_cursor_position = drmmode_set_cursor_position,
     .show_cursor = drmmode_show_cursor,
     .hide_cursor = drmmode_hide_cursor,
+#if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,15,99,902,0)
     .load_cursor_argb_check = drmmode_load_cursor_argb_check,
+#endif
+    .load_cursor_argb = drmmode_load_cursor_argb,
 
     .gamma_set = drmmode_crtc_gamma_set,
     .destroy = NULL, /* XXX */
