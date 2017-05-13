@@ -486,7 +486,7 @@ void TegraEXAScreenInit(ScreenPtr pScreen)
         goto free_priv;
     }
 
-    err = tegra_stream_create(tegra->drm, priv->gr2d, &priv->cmds, 32768);
+    err = tegra_stream_create(tegra->drm, priv->gr2d, &priv->cmds, 16384);
     if (err < 0) {
         ErrorMsg("failed to create command stream: %d\n", err);
         goto close_gr2d;

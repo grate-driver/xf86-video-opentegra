@@ -107,6 +107,11 @@ int tegra_stream_create(struct drm_tegra *drm,
     stream->buffer_size = words_num;
     stream->channel     = channel;
 
+    if (words_num > 16384) {
+        ErrorMsg("Maximum number of words is 16384\n");
+        return -1;
+    }
+
     if (tegra_allocate_cmdbuf(drm, &stream->buffer, words_num))
         goto err_buffer_alloc;
 
