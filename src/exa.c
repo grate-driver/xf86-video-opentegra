@@ -36,10 +36,8 @@
 #define EXA_ALIGN(offset, align) \
     (((offset) + (align) - 1) & ~((align) - 1))
 
-#define ROP3_SRCCOPY 0xcc
-
 #define ErrorMsg(fmt, args...) \
-    xf86DrvMsg(pScrn->scrnIndex, X_ERROR, "%s:%d/%s(): " #fmt, __FILE__, \
+    xf86DrvMsg(pScrn->scrnIndex, X_ERROR, "%s:%d/%s(): " fmt, __FILE__, \
                __LINE__, __func__, ##args)
 
 static const uint8_t rop3[] = {
@@ -226,12 +224,7 @@ static Bool TegraEXAPrepareSolid(PixmapPtr pPixmap, int op, Pixel planemask,
     TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pPixmap);
     unsigned int bpp = pPixmap->drawable.bitsPerPixel;
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
-    struct drm_tegra_pushbuf *pb;
-    uint32_t value;
     int err;
-
-    if (!tegra->gr2d)
-        return FALSE;
 
     /*
      * It should be possible to support this, but let's bail for now
@@ -254,103 +247,53 @@ static Bool TegraEXAPrepareSolid(PixmapPtr pPixmap, int op, Pixel planemask,
     if (bpp != 32 && bpp != 16)
         return FALSE;
 
-    err = drm_tegra_job_new(&tegra->job, tegra->gr2d);
+    err = tegra_stream_begin(&tegra->cmds);
     if (err < 0)
-        return FALSE;
+            return FALSE;
 
-    err = drm_tegra_pushbuf_new(&tegra->pushbuf, tegra->job, tegra->bo, 0);
-    if (err < 0)
-        goto free_job;
+    tegra_stream_push_setclass(&tegra->cmds, HOST1X_CLASS_GR2D);
+    tegra_stream_push(&tegra->cmds, HOST1X_OPCODE_MASK(0x9, 0x9));
+    tegra_stream_push(&tegra->cmds, 0x0000003a); /* trigger */
+    tegra_stream_push(&tegra->cmds, 0x00000000); /* cmdsel */
+    tegra_stream_push(&tegra->cmds, HOST1X_OPCODE_NONINCR(0x35, 1));
+    tegra_stream_push(&tegra->cmds, color);
+    tegra_stream_push(&tegra->cmds, HOST1X_OPCODE_MASK(0x1e, 0x7));
+    tegra_stream_push(&tegra->cmds, 0x00000000); /* controlsecond */
+    tegra_stream_push(&tegra->cmds, /* controlmain */
+                      ((bpp >> 4) << 16) | /* bytes per pixel */
+                      (1 << 6) |           /* fill mode */
+                      (1 << 2)             /* turbo-fill */);
+    tegra_stream_push(&tegra->cmds, rop3[op]); /* ropfade */
+    tegra_stream_push(&tegra->cmds, HOST1X_OPCODE_MASK(0x2b, 0x9));
+    tegra_stream_push_reloc(&tegra->cmds, priv->bo,
+                            exaGetPixmapOffset(pPixmap));
+    tegra_stream_push(&tegra->cmds, exaGetPixmapPitch(pPixmap));
+    tegra_stream_push(&tegra->cmds, HOST1X_OPCODE_NONINCR(0x46, 1));
+    tegra_stream_push(&tegra->cmds, 0); /* non-tiled */
 
-    pb = tegra->pushbuf;
-
-    *pb->ptr++ = HOST1X_OPCODE_SETCL(0, HOST1X_CLASS_GR2D, 0);
-    *pb->ptr++ = HOST1X_OPCODE_MASK(0x9, 0x9);
-    *pb->ptr++ = 0x0000003a; /* trigger */
-    *pb->ptr++ = 0x00000000; /* cmdsel */
-
-    *pb->ptr++ = HOST1X_OPCODE_NONINCR(0x35, 1);
-    *pb->ptr++ = color;
-
-    /* 4 or 2 bytes per pixel */
-    if (bpp == 32)
-        value = 2 << 16;
-    else
-        value = 1 << 16;
-
-    /* fill mode, turbo-fill */
-    value |= (1 << 6) | (1 << 2);
-
-    *pb->ptr++ = HOST1X_OPCODE_MASK(0x1e, 0x7);
-    *pb->ptr++ = 0x00000000; /* controlsecond */
-    *pb->ptr++ = value; /* controlmain */
-    *pb->ptr++ = rop3[op]; /* ropfade */
-
-    *pb->ptr++ = HOST1X_OPCODE_MASK(0x2b, 0x9);
-
-    err = drm_tegra_pushbuf_relocate(pb, priv->bo,
-                  exaGetPixmapOffset(pPixmap), 0);
-    if (err < 0)
-        goto free_job;
-
-    *pb->ptr++ = 0xdeadbeef;
-    *pb->ptr++ = exaGetPixmapPitch(pPixmap);
-
-    /* non-tiled */
-    *pb->ptr++ = HOST1X_OPCODE_NONINCR(0x46, 1);
-    *pb->ptr++ = 0;
+    if (tegra->cmds.status != TEGRADRM_STREAM_CONSTRUCT)
+            return FALSE;
 
     return TRUE;
-
-free_job:
-    drm_tegra_job_free(tegra->job);
-    tegra->pushbuf = NULL;
-    tegra->job = NULL;
-
-    return FALSE;
 }
 
 static void TegraEXASolid(PixmapPtr pPixmap, int x1, int y1, int x2, int y2)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pPixmap->drawable.pScreen);
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
-    struct drm_tegra_pushbuf *pb;
-    int err;
 
-    pb = tegra->pushbuf;
-
-    *pb->ptr++ = HOST1X_OPCODE_MASK(0x38, 0x5);
-    *pb->ptr++ = (y2 - y1) << 16 | (x2 - x1);
-    *pb->ptr++ = y1 << 16 | x1;
-
-    err = drm_tegra_pushbuf_sync(pb, DRM_TEGRA_SYNCPT_COND_OP_DONE);
-    if (err < 0)
-        ErrorMsg("failed to insert syncpoint increment: %d\n", err);
+    tegra_stream_push(&tegra->cmds, HOST1X_OPCODE_MASK(0x38, 0x5));
+    tegra_stream_push(&tegra->cmds, (y2 - y1) << 16 | (x2 - x1));
+    tegra_stream_push(&tegra->cmds, y1 << 16 | x1);
 }
 
 static void TegraEXADoneSolid(PixmapPtr pPixmap)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pPixmap->drawable.pScreen);
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
-    struct drm_tegra_fence *fence;
-    int err;
 
-    err = drm_tegra_job_submit(tegra->job, &fence);
-    if (err < 0) {
-        ErrorMsg("failed to submit job: %d\n", err);
-        goto free_job;
-    }
-
-    err = drm_tegra_fence_wait(fence);
-    if (err < 0)
-        ErrorMsg("failed to wait for fence: %d\n", err);
-
-    drm_tegra_fence_free(fence);
-
-free_job:
-    drm_tegra_job_free(tegra->job);
-    tegra->pushbuf = NULL;
-    tegra->job = NULL;
+    tegra_stream_end(&tegra->cmds);
+    tegra_stream_flush(&tegra->cmds);
 }
 
 static Bool TegraEXAPrepareCopy(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
@@ -360,11 +303,7 @@ static Bool TegraEXAPrepareCopy(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
     TegraPixmapPtr src = exaGetPixmapDriverPrivate(pSrcPixmap);
     TegraPixmapPtr dst = exaGetPixmapDriverPrivate(pDstPixmap);
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
-    struct drm_tegra_pushbuf *pb;
     int err;
-
-    if (!tegra->gr2d)
-        return FALSE;
 
     /*
      * It should be possible to support this, but let's bail for now
@@ -389,66 +328,39 @@ static Bool TegraEXAPrepareCopy(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
         pDstPixmap->drawable.bitsPerPixel != 32)
         return FALSE;
 
-    err = drm_tegra_job_new(&tegra->job, tegra->gr2d);
-    if (err < 0) {
-        ErrorMsg("failed to create job: %d\n", err);
-        return FALSE;
-    }
+    err = tegra_stream_begin(&tegra->cmds);
+    if (err < 0)
+            return FALSE;
 
-    err = drm_tegra_pushbuf_new(&tegra->pushbuf, tegra->job, tegra->bo, 0);
-    if (err < 0) {
-        ErrorMsg("failed to create push buffer: %d\n", err);
-        goto free_job;
-    }
-
-    pb = tegra->pushbuf;
-
-    *pb->ptr++ = HOST1X_OPCODE_SETCL(0, HOST1X_CLASS_GR2D, 0);
-    *pb->ptr++ = HOST1X_OPCODE_MASK(0x9, 0x9);
-    *pb->ptr++ = 0x0000003a; /* trigger */
-    *pb->ptr++ = 0x00000000; /* cmdsel */
-
-    *pb->ptr++ = HOST1X_OPCODE_MASK(0x01e, 0x5);
-    *pb->ptr++ = 0x00000000; /* controlsecond */
-    *pb->ptr++ = rop3[op]; /* ropfade */
-
-    *pb->ptr++ = HOST1X_OPCODE_NONINCR(0x046, 1);
+    tegra_stream_push_setclass(&tegra->cmds, HOST1X_CLASS_GR2D);
+    tegra_stream_push(&tegra->cmds, HOST1X_OPCODE_MASK(0x9, 0x9));
+    tegra_stream_push(&tegra->cmds, 0x0000003a); /* trigger */
+    tegra_stream_push(&tegra->cmds, 0x00000000); /* cmdsel */
+    tegra_stream_push(&tegra->cmds, HOST1X_OPCODE_MASK(0x01e, 0x5));
+    tegra_stream_push(&tegra->cmds, 0x00000000); /* controlsecond */
+    tegra_stream_push(&tegra->cmds, rop3[op]); /* ropfade */
+    tegra_stream_push(&tegra->cmds, HOST1X_OPCODE_NONINCR(0x046, 1));
     /*
      * [20:20] destination write tile mode (0: linear, 1: tiled)
      * [ 0: 0] tile mode Y/RGB (0: linear, 1: tiled)
      */
-    *pb->ptr++ = 0x00000000; /* tilemode */
+    tegra_stream_push(&tegra->cmds, 0x00000000); /* tilemode */
+    tegra_stream_push(&tegra->cmds, HOST1X_OPCODE_MASK(0x2b, 0x149));
 
-    *pb->ptr++ = HOST1X_OPCODE_MASK(0x2b, 0x149);
+    tegra_stream_push_reloc(&tegra->cmds, dst->bo,
+                            exaGetPixmapOffset(pDstPixmap));
+    tegra_stream_push(&tegra->cmds,
+                      exaGetPixmapPitch(pDstPixmap)); /* dstst */
 
-    err = drm_tegra_pushbuf_relocate(pb, dst->bo,
-              exaGetPixmapOffset(pDstPixmap), 0);
-    if (err < 0) {
-        ErrorMsg("destination pixmap relocation failed: %d\n", err);
-        goto free_job;
-    }
+    tegra_stream_push_reloc(&tegra->cmds, src->bo,
+                            exaGetPixmapOffset(pSrcPixmap));
+    tegra_stream_push(&tegra->cmds,
+                      exaGetPixmapPitch(pSrcPixmap)); /* srcst */
 
-    *pb->ptr++ = 0xdeadbeef; /* dstba */
-    *pb->ptr++ = exaGetPixmapPitch(pDstPixmap); /* dstst */
-
-    err = drm_tegra_pushbuf_relocate(pb, src->bo,
-              exaGetPixmapOffset(pSrcPixmap), 0);
-    if (err < 0) {
-        ErrorMsg("source pixmap relocation failed: %d\n", err);
-        goto free_job;
-    }
-
-    *pb->ptr++ = 0xdeadbeef; /* srcba */
-    *pb->ptr++ = exaGetPixmapPitch(pSrcPixmap); /* srcst */
+    if (tegra->cmds.status != TEGRADRM_STREAM_CONSTRUCT)
+            return FALSE;
 
     return TRUE;
-
-free_job:
-    drm_tegra_job_free(tegra->job);
-    tegra->pushbuf = NULL;
-    tegra->job = NULL;
-
-    return FALSE;
 }
 
 static void TegraEXACopy(PixmapPtr pDstPixmap, int srcX, int srcY, int dstX,
@@ -456,11 +368,7 @@ static void TegraEXACopy(PixmapPtr pDstPixmap, int srcX, int srcY, int dstX,
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pDstPixmap->drawable.pScreen);
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
-    struct drm_tegra_pushbuf *pb;
-    int err;
     uint32_t controlmain;
-
-    pb = tegra->pushbuf;
 
     /*
      * [20:20] source color depth (0: mono, 1: same)
@@ -482,55 +390,28 @@ static void TegraEXACopy(PixmapPtr pDstPixmap, int srcX, int srcY, int dstX,
         dstY += height - 1;
     }
 
-    *pb->ptr++ = HOST1X_OPCODE_INCR(0x01f, 1);
-    *pb->ptr++ = controlmain;
-
-    *pb->ptr++ = HOST1X_OPCODE_INCR(0x37, 0x4);
-    *pb->ptr++ = height << 16 | width; /* srcsize */
-    *pb->ptr++ = height << 16 | width; /* dstsize */
-    *pb->ptr++ = srcY << 16 | srcX; /* srcps */
-    *pb->ptr++ = dstY << 16 | dstX; /* dstps */
-
-    err = drm_tegra_pushbuf_sync(pb, DRM_TEGRA_SYNCPT_COND_OP_DONE);
-    if (err < 0)
-        ErrorMsg("failed to insert syncpoint increment: %d\n", err);
+    tegra_stream_push(&tegra->cmds, HOST1X_OPCODE_INCR(0x01f, 1));
+    tegra_stream_push(&tegra->cmds, controlmain);
+    tegra_stream_push(&tegra->cmds, HOST1X_OPCODE_INCR(0x37, 0x4));
+    tegra_stream_push(&tegra->cmds, height << 16 | width); /* srcsize */
+    tegra_stream_push(&tegra->cmds, height << 16 | width); /* dstsize */
+    tegra_stream_push(&tegra->cmds, srcY << 16 | srcX); /* srcps */
+    tegra_stream_push(&tegra->cmds, dstY << 16 | dstX); /* dstps */
 }
 
 static void TegraEXADoneCopy(PixmapPtr pDstPixmap)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pDstPixmap->drawable.pScreen);
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
-    struct drm_tegra_fence *fence;
-    int err;
 
-    err = drm_tegra_job_submit(tegra->job, &fence);
-    if (err < 0) {
-        ErrorMsg("failed to submit job: %d\n", err);
-        goto free_job;
-    }
-
-    err = drm_tegra_fence_wait(fence);
-    if (err < 0)
-        ErrorMsg("failed to wait for fence: %d\n", err);
-
-    drm_tegra_fence_free(fence);
-
-free_job:
-    drm_tegra_job_free(tegra->job);
-    tegra->pushbuf = NULL;
-    tegra->job = NULL;
+    tegra_stream_end(&tegra->cmds);
+    tegra_stream_flush(&tegra->cmds);
 }
 
 static Bool TegraEXACheckComposite(int op, PicturePtr pSrcPicture,
                                    PicturePtr pMaskPicture,
                                    PicturePtr pDstPicture)
 {
-    ScrnInfoPtr pScrn = xf86ScreenToScrn(pDstPicture->pDrawable->pScreen);
-    TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
-
-    if (!tegra->gr2d)
-        return FALSE;
-
     /*
      * It should be possible to support all GX* raster operations given the
      * mapping in the rop3 table, but none other than GXcopy have been
@@ -548,12 +429,6 @@ static Bool TegraEXAPrepareComposite(int op, PicturePtr pSrcPicture,
                                      PicturePtr pDstPicture, PixmapPtr pSrc,
                                      PixmapPtr pMask, PixmapPtr pDst)
 {
-    ScrnInfoPtr pScrn = xf86ScreenToScrn(pDst->drawable.pScreen);
-    TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
-
-    if (!tegra->gr2d)
-        return FALSE;
-
     /*
      * It should be possible to support all GX* raster operations given the
      * mapping in the rop3 table, but none other than GXcopy have been
@@ -611,9 +486,9 @@ void TegraEXAScreenInit(ScreenPtr pScreen)
         goto free_priv;
     }
 
-    err = drm_tegra_bo_new(&priv->bo, tegra->drm, 0, 4096);
+    err = tegra_stream_create(tegra->drm, priv->gr2d, &priv->cmds, 32768);
     if (err < 0) {
-        ErrorMsg("failed to create buffer: %d\n", err);
+        ErrorMsg("failed to create command stream: %d\n", err);
         goto close_gr2d;
     }
 
@@ -656,7 +531,7 @@ void TegraEXAScreenInit(ScreenPtr pScreen)
 
     if (!exaDriverInit(pScreen, exa)) {
         ErrorMsg("EXA initialization failed\n");
-        goto put_bo;
+        goto destroy_stream;
     }
 
     priv->driver = exa;
@@ -664,8 +539,8 @@ void TegraEXAScreenInit(ScreenPtr pScreen)
 
     return;
 
-put_bo:
-    drm_tegra_bo_unref(priv->bo);
+destroy_stream:
+    tegra_stream_destroy(&priv->cmds);
 close_gr2d:
     drm_tegra_channel_close(priv->gr2d);
 free_priv:
@@ -684,8 +559,8 @@ void TegraEXAScreenExit(ScreenPtr pScreen)
         exaDriverFini(pScreen);
         free(priv->driver);
 
+        tegra_stream_destroy(&priv->cmds);
         drm_tegra_channel_close(priv->gr2d);
-        drm_tegra_bo_unref(priv->bo);
         free(priv);
     }
 }
