@@ -141,6 +141,7 @@ static void TegraEXADestroyPixmap(ScreenPtr pScreen, void *driverPriv)
     TegraPixmapPtr priv = driverPriv;
 
     drm_tegra_bo_unref(priv->bo);
+    free(priv->fallback);
     free(priv);
 }
 
@@ -200,6 +201,11 @@ static Bool TegraEXAModifyPixmapHeader(PixmapPtr pPixmap, int width,
     pPixmap->devKind = TegraEXAPitch(width, bpp);
     size = pPixmap->devKind * height;
 
+    if (priv->fallback) {
+        free(priv->fallback);
+        priv->fallback = NULL;
+    }
+
     if (priv->bo) {
         drm_tegra_bo_unref(priv->bo);
         priv->bo = NULL;
@@ -208,11 +214,19 @@ static Bool TegraEXAModifyPixmapHeader(PixmapPtr pPixmap, int width,
     if (!priv->bo) {
         err = drm_tegra_bo_new(&priv->bo, tegra->drm, 0, size);
         if (err < 0) {
-            ErrorMsg("failed to allocate %ux%u (%zu) buffer object: %d\n",
-                     width, height, size, err);
-            return FALSE;
+            priv->fallback = malloc(size);
+
+            ErrorMsg("failed to allocate %ux%u (%zu) buffer object: %d, "
+                     "fallback allocation %s\n",
+                     width, height, size, err,
+                     priv->fallback ? "succeed" : "failed");
+
+            if (!priv->fallback)
+                return FALSE;
         }
     }
+
+    pPixmap->devPrivate.ptr = priv->fallback;
 
     return TRUE;
 }
