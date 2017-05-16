@@ -67,7 +67,7 @@ static inline unsigned int TegraEXAPitch(unsigned int width, unsigned int bpp)
      * buffer's pitch is too small (which happens for very small, low-bpp
      * pixmaps).
      */
-    return EXA_ALIGN((width * bpp + 7) / 8, 16);
+    return EXA_ALIGN((width * bpp + 7) / 8, 64);
 }
 
 static int TegraEXAMarkSync(ScreenPtr pScreen)
