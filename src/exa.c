@@ -254,11 +254,7 @@ static Bool TegraEXAPrepareSolid(PixmapPtr pPixmap, int op, Pixel planemask,
     if (op != GXcopy)
         return FALSE;
 
-    /*
-     * Support only 32-bit fills for now. Adding support for 16-bit fills
-     * should be easy.
-     */
-    if (bpp != 32 && bpp != 16)
+    if (bpp != 32 && bpp != 16 && bpp != 8)
         return FALSE;
 
     err = tegra_stream_begin(&tegra->cmds);
@@ -317,6 +313,7 @@ static Bool TegraEXAPrepareCopy(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
     TegraPixmapPtr src = exaGetPixmapDriverPrivate(pSrcPixmap);
     TegraPixmapPtr dst = exaGetPixmapDriverPrivate(pDstPixmap);
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
+    unsigned int bpp;
     int err;
 
     /*
@@ -334,12 +331,14 @@ static Bool TegraEXAPrepareCopy(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
         return FALSE;
 
     /*
-     * Support only 32-bit to 32-bit copies for now. The hardware should be
-     * able to do 32-bit to 16-bit copies as well, but some restrictions
-     * apply.
+     * Some restrictions apply to the hardware accelerated copying.
      */
-    if (pSrcPixmap->drawable.bitsPerPixel != 32 ||
-        pDstPixmap->drawable.bitsPerPixel != 32)
+    bpp = pSrcPixmap->drawable.bitsPerPixel;
+
+    if (bpp != 32 && bpp != 16 && bpp != 8)
+        return FALSE;
+
+    if (pDstPixmap->drawable.bitsPerPixel != bpp)
         return FALSE;
 
     err = tegra_stream_begin(&tegra->cmds);
@@ -390,7 +389,7 @@ static void TegraEXACopy(PixmapPtr pDstPixmap, int srcX, int srcY, int dstX,
      * [10:10] y-direction (0: increment, 1: decrement)
      * [9:9] x-direction (0: increment, 1: decrement)
      */
-    controlmain = (1 << 20) | (2 << 16);
+    controlmain = (1 << 20) | ((pDstPixmap->drawable.bitsPerPixel >> 4) << 16);
 
     if (dstX > srcX) {
         controlmain |= 1 << 9;
