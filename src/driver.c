@@ -204,7 +204,10 @@ FreeRec(ScrnInfoPtr pScrn)
         if (!(tegra->pEnt->location.type == BUS_PLATFORM &&
               (tegra->pEnt->location.id.plat->flags & XF86_PDEV_SERVER_FD)))
 #endif
+        {
+            drm_tegra_close(tegra->drm);
             close(tegra->fd);
+        }
 
     free(tegra->Options);
     free(tegra);
@@ -682,8 +685,6 @@ TegraCloseScreen(CLOSE_SCREEN_ARGS_DECL)
     TegraEXAScreenExit(pScreen);
     TegraDRI2ScreenExit(pScreen);
     TegraVBlankScreenExit(pScreen);
-
-    drm_tegra_close(tegra->drm);
 
     pScreen->CreateScreenResources = tegra->createScreenResources;
     pScreen->BlockHandler = tegra->BlockHandler;

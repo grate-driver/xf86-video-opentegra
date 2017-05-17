@@ -40,6 +40,7 @@ typedef struct _TegraEXARec{
 
 typedef struct {
     struct drm_tegra_bo *bo;
+    void *fallback;
 } TegraPixmapRec, *TegraPixmapPtr;
 
 #endif
