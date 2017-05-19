@@ -786,6 +786,9 @@ void TegraDRI2ScreenInit(ScreenPtr screen)
     TegraPtr tegra = TegraPTR(scrn);
     DRI2InfoRec info;
 
+    if (tegra->dri2_enabled)
+        return;
+
     if (!xf86LoaderCheckSymbol("DRI2Version"))
         return;
 
@@ -820,9 +823,19 @@ void TegraDRI2ScreenInit(ScreenPtr screen)
     info.driverNames = NULL;
 
     DRI2ScreenInit(screen, &info);
+
+    tegra->dri2_enabled = TRUE;
 }
 
 void TegraDRI2ScreenExit(ScreenPtr screen)
 {
+    ScrnInfoPtr scrn = xf86ScreenToScrn(screen);
+    TegraPtr tegra = TegraPTR(scrn);
+
+    if (!tegra->dri2_enabled)
+        return;
+
     DRI2CloseScreen(screen);
+
+    tegra->dri2_enabled = FALSE;
 }

@@ -79,6 +79,8 @@ typedef struct _TegraRec
 
     TegraEXAPtr exa;
 
+    Bool dri2_enabled;
+
     struct drm_tegra *drm;
 } TegraRec, *TegraPtr;
 
