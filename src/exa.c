@@ -133,6 +133,9 @@ static void *TegraEXACreatePixmap2(ScreenPtr pScreen, int width, int height,
      */
     *new_fb_pitch = TegraEXAPitch(width, bitsPerPixel);
 
+    if (usage_hint == TEGRA_DRI_USAGE_HINT)
+        pixmap->dri = TRUE;
+
     return pixmap;
 }
 
@@ -214,7 +217,8 @@ static Bool TegraEXAModifyPixmapHeader(PixmapPtr pPixmap, int width,
     if (!priv->bo) {
         err = drm_tegra_bo_new(&priv->bo, tegra->drm, 0, size);
         if (err < 0) {
-            priv->fallback = malloc(size);
+            if (!priv->dri)
+                priv->fallback = malloc(size);
 
             ErrorMsg("failed to allocate %ux%u (%zu) buffer object: %d, "
                      "fallback allocation %s\n",

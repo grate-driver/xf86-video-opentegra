@@ -162,7 +162,7 @@ tegra_dri2_create_buffer(DrawablePtr drawable, unsigned int attachment,
                                       pixmap_width,
                                       pixmap_height,
                                       pixmap_cpp,
-                                      0);
+                                      TEGRA_DRI_USAGE_HINT);
         if (pixmap == NULL) {
             free(private);
             free(buffer);

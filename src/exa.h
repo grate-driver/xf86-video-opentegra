@@ -31,6 +31,8 @@
 
 #include "tegra_stream.h"
 
+#define TEGRA_DRI_USAGE_HINT ('D' << 16 | 'R' << 8 | 'I')
+
 typedef struct _TegraEXARec{
     struct drm_tegra_channel *gr2d;
     struct tegra_stream cmds;
@@ -41,6 +43,7 @@ typedef struct _TegraEXARec{
 typedef struct {
     struct drm_tegra_bo *bo;
     void *fallback;
+    Bool dri;
 } TegraPixmapRec, *TegraPixmapPtr;
 
 #endif
