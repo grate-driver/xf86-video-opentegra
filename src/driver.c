@@ -60,6 +60,7 @@
 
 #include "compat-api.h"
 #include "driver.h"
+#include "xv.h"
 
 static SymTabRec Chipsets[] = {
     { 0, "kms" },
@@ -681,7 +682,6 @@ TegraCloseScreen(CLOSE_SCREEN_ARGS_DECL)
     if (pScrn->vtSema)
         TegraLeaveVT(VT_FUNC_ARGS);
 
-    TegraVideoScreenExit(pScreen);
     TegraEXAScreenExit(pScreen);
     TegraDRI2ScreenExit(pScreen);
     TegraVBlankScreenExit(pScreen);
@@ -716,6 +716,7 @@ TegraScreenInit(SCREEN_INIT_ARGS_DECL)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pScreen);
     TegraPtr tegra = TegraPTR(pScrn);
+    XF86VideoAdaptorPtr xv_adaptor;
     VisualPtr visual;
 
     pScrn->pScreen = pScreen;
@@ -799,7 +800,6 @@ TegraScreenInit(SCREEN_INIT_ARGS_DECL)
                           HARDWARE_CURSOR_SOURCE_MASK_INTERLEAVE_64 |
                           HARDWARE_CURSOR_ARGB);
 
-    TegraVideoScreenInit(pScreen);
     TegraEXAScreenInit(pScreen);
     TegraDRI2ScreenInit(pScreen);
     TegraVBlankScreenInit(pScreen);
@@ -829,6 +829,13 @@ TegraScreenInit(SCREEN_INIT_ARGS_DECL)
 
     if (serverGeneration == 1)
         xf86ShowUnusedOptions(pScrn->scrnIndex, pScrn->options);
+
+    xv_adaptor = TegraXvInit(pScreen);
+    if (xv_adaptor != NULL)
+        xf86XVScreenInit(pScreen, &xv_adaptor, 1);
+    else
+        xf86DrvMsg(pScrn->scrnIndex, X_ERROR,
+                    "Failed to initialize XV support.\n");
 
     return TegraEnterVT(VT_FUNC_ARGS);
 }
