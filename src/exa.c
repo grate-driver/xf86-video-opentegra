@@ -164,23 +164,19 @@ static Bool TegraEXAModifyPixmapHeader(PixmapPtr pPixmap, int width,
     if (!ret)
         return ret;
 
+    drm_tegra_bo_unref(priv->bo);
+    free(priv->fallback);
+
+    priv->bo = NULL;
+    priv->fallback = NULL;
+
     if (pPixData) {
         void *scanout;
 
         scanout = drmmode_map_front_bo(&tegra->drmmode);
 
         if (pPixData == scanout) {
-            uint32_t handle = tegra->drmmode.front_bo->handle;
-
-            size = pPixmap->drawable.width * pPixmap->drawable.height *
-                   pPixmap->drawable.bitsPerPixel / 8;
-
-            err = drm_tegra_bo_wrap(&priv->bo, tegra->drm, handle, 0, size);
-            if (err < 0)
-                return FALSE;
-
-            drm_tegra_bo_ref(priv->bo);
-
+            priv->bo = drmmode_get_front_bo(&tegra->drmmode);
             return TRUE;
         }
 
@@ -191,9 +187,6 @@ static Bool TegraEXAModifyPixmapHeader(PixmapPtr pPixmap, int width,
         pPixmap->devPrivate.ptr = pPixData;
         pPixmap->devKind = devKind;
 
-        drm_tegra_bo_unref(priv->bo);
-        priv->bo = NULL;
-
         return FALSE;
     }
 
@@ -203,16 +196,6 @@ static Bool TegraEXAModifyPixmapHeader(PixmapPtr pPixmap, int width,
     bpp = pPixmap->drawable.bitsPerPixel;
     pPixmap->devKind = TegraEXAPitch(width, bpp);
     size = pPixmap->devKind * height;
-
-    if (priv->fallback) {
-        free(priv->fallback);
-        priv->fallback = NULL;
-    }
-
-    if (priv->bo) {
-        drm_tegra_bo_unref(priv->bo);
-        priv->bo = NULL;
-    }
 
     if (!size)
         return FALSE;

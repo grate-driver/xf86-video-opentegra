@@ -55,11 +55,12 @@
 #include <X11/extensions/dpms.h>
 #endif
 
+#include <libdrm/tegra.h>
+
 struct dumb_bo {
+    struct drm_tegra_bo *bo;
     uint32_t handle;
-    uint32_t size;
     void *ptr;
-    int map_count;
     uint32_t pitch;
 };
 
@@ -157,6 +158,7 @@ extern void drmmode_uevent_fini(ScrnInfoPtr scrn, drmmode_ptr drmmode);
 
 Bool drmmode_create_initial_bos(ScrnInfoPtr pScrn, drmmode_ptr drmmode);
 void *drmmode_map_front_bo(drmmode_ptr drmmode);
+struct drm_tegra_bo *drmmode_get_front_bo(drmmode_ptr drmmode);
 Bool drmmode_map_cursor_bos(ScrnInfoPtr pScrn, drmmode_ptr drmmode);
 void drmmode_free_bos(ScrnInfoPtr pScrn, drmmode_ptr drmmode);
 void drmmode_get_default_bpp(ScrnInfoPtr pScrn, drmmode_ptr drmmmode, int *depth, int *bpp);
