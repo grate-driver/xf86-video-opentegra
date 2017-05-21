@@ -728,6 +728,15 @@ tegra_dri2_schedule_swap(ClientPtr client, DrawablePtr draw,
     return TRUE;
 }
 
+static Bool
+tegra_dri2_frame_info_match(void *data, void *match_data)
+{
+    tegra_dri2_frame_event_ptr info = data;
+    tegra_dri2_frame_event_ptr match = match_data;
+
+    return (info == match);
+}
+
 static int
 tegra_dri2_frame_event_client_gone(void *data, XID id)
 {
@@ -738,6 +747,8 @@ tegra_dri2_frame_event_client_gone(void *data, XID id)
             xorg_list_first_entry(&resource->list,
                                   tegra_dri2_frame_event_rec,
                                   client_resource);
+
+        tegra_drm_abort(NULL, tegra_dri2_frame_info_match, info);
 
         xorg_list_del(&info->client_resource);
         info->client = NULL;
