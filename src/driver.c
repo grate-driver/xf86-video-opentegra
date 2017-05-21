@@ -800,10 +800,6 @@ TegraScreenInit(SCREEN_INIT_ARGS_DECL)
                           HARDWARE_CURSOR_SOURCE_MASK_INTERLEAVE_64 |
                           HARDWARE_CURSOR_ARGB);
 
-    TegraEXAScreenInit(pScreen);
-    TegraDRI2ScreenInit(pScreen);
-    TegraVBlankScreenInit(pScreen);
-
     /* Must force it before EnterVT, so we are in control of VT and
      * later memory should be bound when allocating, e.g rotate_mem */
     pScrn->vtSema = TRUE;
@@ -836,6 +832,10 @@ TegraScreenInit(SCREEN_INIT_ARGS_DECL)
     else
         xf86DrvMsg(pScrn->scrnIndex, X_ERROR,
                     "Failed to initialize XV support.\n");
+
+    TegraEXAScreenInit(pScreen);
+    TegraDRI2ScreenInit(pScreen);
+    TegraVBlankScreenInit(pScreen);
 
     return TegraEnterVT(VT_FUNC_ARGS);
 }
