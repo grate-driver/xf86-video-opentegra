@@ -454,7 +454,7 @@ TegraPreInit(ScrnInfoPtr pScrn, int flags)
     if (!xf86SetDefaultVisual(pScrn, -1))
         return FALSE;
 
-    if (xf86ReturnOptValBool(tegra->Options, OPTION_SW_CURSOR, FALSE))
+    if (xf86ReturnOptValBool(tegra->Options, OPTION_SW_CURSOR, TRUE))
         tegra->drmmode.sw_cursor = TRUE;
 
     ret = drmGetCap(tegra->fd, DRM_CAP_DUMB_PREFER_SHADOW, &value);
