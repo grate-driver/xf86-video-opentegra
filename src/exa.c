@@ -214,6 +214,9 @@ static Bool TegraEXAModifyPixmapHeader(PixmapPtr pPixmap, int width,
         priv->bo = NULL;
     }
 
+    if (!size)
+        return FALSE;
+
     if (!priv->bo) {
         err = drm_tegra_bo_new(&priv->bo, tegra->drm, 0, size);
         if (err < 0) {
