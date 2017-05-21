@@ -658,6 +658,8 @@ tegra_dri2_schedule_swap(ClientPtr client, DrawablePtr draw,
             xf86DrvMsg(scrn->scrnIndex, X_WARNING,
                        "divisor 0 get vblank counter failed: %s\n",
                        strerror(errno));
+            tegra_drm_abort_seq(scrn, seq);
+            frame_info = NULL;
             goto blit_fallback;
         }
 
@@ -707,6 +709,8 @@ tegra_dri2_schedule_swap(ClientPtr client, DrawablePtr draw,
         xf86DrvMsg(scrn->scrnIndex, X_WARNING,
                    "final get vblank counter failed: %s\n",
                    strerror(errno));
+        tegra_drm_abort_seq(scrn, seq);
+        frame_info = NULL;
         goto blit_fallback;
     }
 
