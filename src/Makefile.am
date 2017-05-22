@@ -33,6 +33,8 @@ opentegra_drv_ladir = @moduledir@/drivers
 
 opentegra_drv_la_SOURCES = \
 	compat-api.h \
+	common_helpers.c \
+	common_helpers.h \
 	dri2.c \
 	driver.c \
 	driver.h \

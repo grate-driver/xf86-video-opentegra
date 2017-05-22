@@ -10,6 +10,7 @@
 #include "dri2.h"
 
 #include "compat-api.h"
+#include "common_helpers.h"
 #include "vblank.h"
 
 enum tegra_dri2_frame_event_type {
@@ -291,7 +292,7 @@ static int
 tegra_dri2_get_msc(DrawablePtr draw, CARD64 *ust, CARD64 *msc)
 {
     int ret;
-    xf86CrtcPtr crtc = tegra_dri2_crtc_covering_drawable(draw);
+    xf86CrtcPtr crtc = tegra_crtc_covering_drawable(draw);
 
     /* Drawable not displayed, make up a *monotonic* value */
     if (crtc == NULL) {
@@ -443,7 +444,7 @@ tegra_dri2_schedule_wait_msc(ClientPtr client, DrawablePtr draw,
     tegra_dri2_frame_event_ptr wait_info;
     drmVBlank vbl;
     int ret;
-    xf86CrtcPtr crtc = tegra_dri2_crtc_covering_drawable(draw);
+    xf86CrtcPtr crtc = tegra_crtc_covering_drawable(draw);
     drmmode_crtc_private_ptr drmmode_crtc;
     CARD64 current_msc, current_ust, request_msc;
     uint32_t seq;
@@ -586,7 +587,7 @@ tegra_dri2_schedule_swap(ClientPtr client, DrawablePtr draw,
     TegraPtr tegra = TegraPTR(scrn);
     drmVBlank vbl;
     int ret;
-    xf86CrtcPtr crtc = tegra_dri2_crtc_covering_drawable(draw);
+    xf86CrtcPtr crtc = tegra_crtc_covering_drawable(draw);
     drmmode_crtc_private_ptr drmmode_crtc;
     tegra_dri2_frame_event_ptr frame_info = NULL;
     uint64_t current_msc, current_ust;

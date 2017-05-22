@@ -388,6 +388,11 @@ int drm_get_overlay_plane(int drm_fd, int crtc_pipe, uint32_t format,
     uint32_t id = 0;
     int i, j;
 
+    if (drmSetClientCap(drm_fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1)) {
+        ErrorMsg("Failed to set universal planes CAP\n");
+        goto err;
+    }
+
     res = drmModeGetPlaneResources(drm_fd);
     if (!res)
         goto err;
@@ -423,7 +428,7 @@ int drm_get_overlay_plane(int drm_fd, int crtc_pipe, uint32_t format,
 err:
     ErrorMsg("Failed to get overlay plane\n");
 
-    return -EFAULT;;
+    return -EFAULT;
 }
 
 int drm_get_primary_plane(int drm_fd, int crtc_pipe, uint32_t *plane_id)
@@ -432,6 +437,11 @@ int drm_get_primary_plane(int drm_fd, int crtc_pipe, uint32_t *plane_id)
     drmModePlane *p;
     uint32_t id = 0;
     int i;
+
+    if (drmSetClientCap(drm_fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1)) {
+        ErrorMsg("Failed to set universal planes CAP\n");
+        goto err;
+    }
 
     res = drmModeGetPlaneResources(drm_fd);
     if (!res)

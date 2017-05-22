@@ -716,7 +716,6 @@ TegraScreenInit(SCREEN_INIT_ARGS_DECL)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pScreen);
     TegraPtr tegra = TegraPTR(pScrn);
-    XF86VideoAdaptorPtr xv_adaptor;
     VisualPtr visual;
 
     pScrn->pScreen = pScreen;
@@ -830,13 +829,7 @@ TegraScreenInit(SCREEN_INIT_ARGS_DECL)
     if (serverGeneration == 1)
         xf86ShowUnusedOptions(pScrn->scrnIndex, pScrn->options);
 
-    xv_adaptor = TegraXvInit(pScreen);
-    if (xv_adaptor != NULL)
-        xf86XVScreenInit(pScreen, &xv_adaptor, 1);
-    else
-        xf86DrvMsg(pScrn->scrnIndex, X_ERROR,
-                    "Failed to initialize XV support.\n");
-
+    TegraXvScreenInit(pScreen);
     TegraDRI2ScreenInit(pScreen);
     TegraVBlankScreenInit(pScreen);
 

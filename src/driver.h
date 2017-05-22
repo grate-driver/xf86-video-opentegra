@@ -86,6 +86,8 @@ typedef struct _TegraRec
 
 #define TegraPTR(p) ((TegraPtr)((p)->driverPrivate))
 
+void TegraXvScreenInit(ScreenPtr pScreen);
+
 void TegraEXAScreenInit(ScreenPtr pScreen);
 void TegraEXAScreenExit(ScreenPtr pScreen);
 
