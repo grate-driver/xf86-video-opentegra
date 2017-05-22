@@ -36,10 +36,12 @@ opentegra_drv_la_SOURCES = \
 	dri2.c \
 	driver.c \
 	driver.h \
+	drm_plane.c \
 	drmmode_display.c \
 	drmmode_display.h \
 	host1x.h \
 	xv.c \
+	xv.h \
 	exa.c \
 	exa.h \
 	vblank.c \

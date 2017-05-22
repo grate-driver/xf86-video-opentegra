@@ -133,6 +133,9 @@ static void *TegraEXACreatePixmap2(ScreenPtr pScreen, int width, int height,
      */
     *new_fb_pitch = TegraEXAPitch(width, bitsPerPixel);
 
+    if (usage_hint == TEGRA_DRI_USAGE_HINT)
+        pixmap->dri = TRUE;
+
     return pixmap;
 }
 
@@ -161,23 +164,19 @@ static Bool TegraEXAModifyPixmapHeader(PixmapPtr pPixmap, int width,
     if (!ret)
         return ret;
 
+    drm_tegra_bo_unref(priv->bo);
+    free(priv->fallback);
+
+    priv->bo = NULL;
+    priv->fallback = NULL;
+
     if (pPixData) {
         void *scanout;
 
         scanout = drmmode_map_front_bo(&tegra->drmmode);
 
         if (pPixData == scanout) {
-            uint32_t handle = tegra->drmmode.front_bo->handle;
-
-            size = pPixmap->drawable.width * pPixmap->drawable.height *
-                   pPixmap->drawable.bitsPerPixel / 8;
-
-            err = drm_tegra_bo_wrap(&priv->bo, tegra->drm, handle, 0, size);
-            if (err < 0)
-                return FALSE;
-
-            drm_tegra_bo_ref(priv->bo);
-
+            priv->bo = drmmode_get_front_bo(&tegra->drmmode);
             return TRUE;
         }
 
@@ -187,9 +186,6 @@ static Bool TegraEXAModifyPixmapHeader(PixmapPtr pPixmap, int width,
          */
         pPixmap->devPrivate.ptr = pPixData;
         pPixmap->devKind = devKind;
-
-        drm_tegra_bo_unref(priv->bo);
-        priv->bo = NULL;
 
         return FALSE;
     }
@@ -201,20 +197,14 @@ static Bool TegraEXAModifyPixmapHeader(PixmapPtr pPixmap, int width,
     pPixmap->devKind = TegraEXAPitch(width, bpp);
     size = pPixmap->devKind * height;
 
-    if (priv->fallback) {
-        free(priv->fallback);
-        priv->fallback = NULL;
-    }
-
-    if (priv->bo) {
-        drm_tegra_bo_unref(priv->bo);
-        priv->bo = NULL;
-    }
+    if (!size)
+        return FALSE;
 
     if (!priv->bo) {
         err = drm_tegra_bo_new(&priv->bo, tegra->drm, 0, size);
         if (err < 0) {
-            priv->fallback = malloc(size);
+            if (!priv->dri)
+                priv->fallback = malloc(size);
 
             ErrorMsg("failed to allocate %ux%u (%zu) buffer object: %d, "
                      "fallback allocation %s\n",

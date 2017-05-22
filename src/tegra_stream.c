@@ -81,7 +81,6 @@ static int tegra_allocate_cmdbuf(struct drm_tegra *drm,
     ret = drm_tegra_bo_map(buffer->bo, &stub);
     if (ret) {
         ErrorMsg("drm_tegra_bo_map() failed %d\n", ret);
-        drm_tegra_bo_unref(buffer->bo);
     }
 
     return ret;

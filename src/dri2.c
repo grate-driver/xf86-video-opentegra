@@ -162,7 +162,7 @@ tegra_dri2_create_buffer(DrawablePtr drawable, unsigned int attachment,
                                       pixmap_width,
                                       pixmap_height,
                                       pixmap_cpp,
-                                      0);
+                                      TEGRA_DRI_USAGE_HINT);
         if (pixmap == NULL) {
             free(private);
             free(buffer);
@@ -658,6 +658,8 @@ tegra_dri2_schedule_swap(ClientPtr client, DrawablePtr draw,
             xf86DrvMsg(scrn->scrnIndex, X_WARNING,
                        "divisor 0 get vblank counter failed: %s\n",
                        strerror(errno));
+            tegra_drm_abort_seq(scrn, seq);
+            frame_info = NULL;
             goto blit_fallback;
         }
 
@@ -707,6 +709,8 @@ tegra_dri2_schedule_swap(ClientPtr client, DrawablePtr draw,
         xf86DrvMsg(scrn->scrnIndex, X_WARNING,
                    "final get vblank counter failed: %s\n",
                    strerror(errno));
+        tegra_drm_abort_seq(scrn, seq);
+        frame_info = NULL;
         goto blit_fallback;
     }
 
@@ -724,6 +728,15 @@ tegra_dri2_schedule_swap(ClientPtr client, DrawablePtr draw,
     return TRUE;
 }
 
+static Bool
+tegra_dri2_frame_info_match(void *data, void *match_data)
+{
+    tegra_dri2_frame_event_ptr info = data;
+    tegra_dri2_frame_event_ptr match = match_data;
+
+    return (info == match);
+}
+
 static int
 tegra_dri2_frame_event_client_gone(void *data, XID id)
 {
@@ -734,6 +747,8 @@ tegra_dri2_frame_event_client_gone(void *data, XID id)
             xorg_list_first_entry(&resource->list,
                                   tegra_dri2_frame_event_rec,
                                   client_resource);
+
+        tegra_drm_abort(NULL, tegra_dri2_frame_info_match, info);
 
         xorg_list_del(&info->client_resource);
         info->client = NULL;
@@ -786,6 +801,9 @@ void TegraDRI2ScreenInit(ScreenPtr screen)
     TegraPtr tegra = TegraPTR(scrn);
     DRI2InfoRec info;
 
+    if (tegra->dri2_enabled)
+        return;
+
     if (!xf86LoaderCheckSymbol("DRI2Version"))
         return;
 
@@ -820,9 +838,19 @@ void TegraDRI2ScreenInit(ScreenPtr screen)
     info.driverNames = NULL;
 
     DRI2ScreenInit(screen, &info);
+
+    tegra->dri2_enabled = TRUE;
 }
 
 void TegraDRI2ScreenExit(ScreenPtr screen)
 {
+    ScrnInfoPtr scrn = xf86ScreenToScrn(screen);
+    TegraPtr tegra = TegraPTR(scrn);
+
+    if (!tegra->dri2_enabled)
+        return;
+
     DRI2CloseScreen(screen);
+
+    tegra->dri2_enabled = FALSE;
 }

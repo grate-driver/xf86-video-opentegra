@@ -60,6 +60,7 @@
 
 #include "compat-api.h"
 #include "driver.h"
+#include "xv.h"
 
 static SymTabRec Chipsets[] = {
     { 0, "kms" },
@@ -453,7 +454,7 @@ TegraPreInit(ScrnInfoPtr pScrn, int flags)
     if (!xf86SetDefaultVisual(pScrn, -1))
         return FALSE;
 
-    if (xf86ReturnOptValBool(tegra->Options, OPTION_SW_CURSOR, FALSE))
+    if (xf86ReturnOptValBool(tegra->Options, OPTION_SW_CURSOR, TRUE))
         tegra->drmmode.sw_cursor = TRUE;
 
     ret = drmGetCap(tegra->fd, DRM_CAP_DUMB_PREFER_SHADOW, &value);
@@ -681,7 +682,6 @@ TegraCloseScreen(CLOSE_SCREEN_ARGS_DECL)
     if (pScrn->vtSema)
         TegraLeaveVT(VT_FUNC_ARGS);
 
-    TegraVideoScreenExit(pScreen);
     TegraEXAScreenExit(pScreen);
     TegraDRI2ScreenExit(pScreen);
     TegraVBlankScreenExit(pScreen);
@@ -716,6 +716,7 @@ TegraScreenInit(SCREEN_INIT_ARGS_DECL)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pScreen);
     TegraPtr tegra = TegraPTR(pScrn);
+    XF86VideoAdaptorPtr xv_adaptor;
     VisualPtr visual;
 
     pScrn->pScreen = pScreen;
@@ -799,11 +800,6 @@ TegraScreenInit(SCREEN_INIT_ARGS_DECL)
                           HARDWARE_CURSOR_SOURCE_MASK_INTERLEAVE_64 |
                           HARDWARE_CURSOR_ARGB);
 
-    TegraVideoScreenInit(pScreen);
-    TegraEXAScreenInit(pScreen);
-    TegraDRI2ScreenInit(pScreen);
-    TegraVBlankScreenInit(pScreen);
-
     /* Must force it before EnterVT, so we are in control of VT and
      * later memory should be bound when allocating, e.g rotate_mem */
     pScrn->vtSema = TRUE;
@@ -829,6 +825,17 @@ TegraScreenInit(SCREEN_INIT_ARGS_DECL)
 
     if (serverGeneration == 1)
         xf86ShowUnusedOptions(pScrn->scrnIndex, pScrn->options);
+
+    xv_adaptor = TegraXvInit(pScreen);
+    if (xv_adaptor != NULL)
+        xf86XVScreenInit(pScreen, &xv_adaptor, 1);
+    else
+        xf86DrvMsg(pScrn->scrnIndex, X_ERROR,
+                    "Failed to initialize XV support.\n");
+
+    TegraEXAScreenInit(pScreen);
+    TegraDRI2ScreenInit(pScreen);
+    TegraVBlankScreenInit(pScreen);
 
     return TegraEnterVT(VT_FUNC_ARGS);
 }
