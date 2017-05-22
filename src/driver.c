@@ -790,6 +790,10 @@ TegraScreenInit(SCREEN_INIT_ARGS_DECL)
 
     xf86SetBlackWhitePixels(pScreen);
 
+    /* EXA must be initialized before the cursor! Otherwise there are
+     * graphics corruptions and Xorg assertions fail. */
+    TegraEXAScreenInit(pScreen);
+
     xf86SetBackingStore(pScreen);
     xf86SetSilkenMouse(pScreen);
     miDCInitialize(pScreen, xf86GetPointerScreenFuncs());
@@ -833,7 +837,6 @@ TegraScreenInit(SCREEN_INIT_ARGS_DECL)
         xf86DrvMsg(pScrn->scrnIndex, X_ERROR,
                     "Failed to initialize XV support.\n");
 
-    TegraEXAScreenInit(pScreen);
     TegraDRI2ScreenInit(pScreen);
     TegraVBlankScreenInit(pScreen);
 
