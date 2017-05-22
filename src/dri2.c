@@ -1,17 +1,4 @@
-#ifdef HAVE_CONFIG_H
-#  include "config.h"
-#endif
-
-#include <time.h>
-#include "xf86.h"
-#include "xf86Crtc.h"
-#include "list.h"
 #include "driver.h"
-#include "dri2.h"
-
-#include "compat-api.h"
-#include "common_helpers.h"
-#include "vblank.h"
 
 enum tegra_dri2_frame_event_type {
     MS_DRI2_QUEUE_SWAP,
@@ -436,7 +423,7 @@ tegra_dri2_frame_event_abort(void *data)
 static int
 tegra_dri2_schedule_wait_msc(ClientPtr client, DrawablePtr draw,
                              CARD64 target_msc, CARD64 divisor,
-                             CARD64 remainder)
+                             CARD64 _remainder)
 {
     ScreenPtr screen = draw->pScreen;
     ScrnInfoPtr scrn = xf86ScreenToScrn(screen);
@@ -524,14 +511,14 @@ tegra_dri2_schedule_wait_msc(ClientPtr client, DrawablePtr draw,
         DRM_VBLANK_ABSOLUTE | DRM_VBLANK_EVENT | drmmode_crtc_vblank_pipe(drmmode_crtc->crtc_pipe);
 
     request_msc = current_msc - (current_msc % divisor) +
-        remainder;
+        _remainder;
     /*
      * If calculated remainder is larger than requested remainder,
      * it means we've passed the last point where
      * seq % divisor == remainder, so we need to wait for the next time
      * that will happen.
      */
-    if ((current_msc % divisor) >= remainder)
+    if ((current_msc % divisor) >= _remainder)
         request_msc += divisor;
 
     seq = tegra_drm_queue_alloc(crtc, wait_info,
@@ -580,7 +567,7 @@ static int
 tegra_dri2_schedule_swap(ClientPtr client, DrawablePtr draw,
                          DRI2BufferPtr front, DRI2BufferPtr back,
                          CARD64 *target_msc, CARD64 divisor,
-                         CARD64 remainder, DRI2SwapEventPtr func, void *data)
+                         CARD64 _remainder, DRI2SwapEventPtr func, void *data)
 {
     ScreenPtr screen = draw->pScreen;
     ScrnInfoPtr scrn = xf86ScreenToScrn(screen);
@@ -672,7 +659,7 @@ tegra_dri2_schedule_swap(ClientPtr client, DrawablePtr draw,
 
     /*
      * If we get here, target_msc has already passed or we don't have one,
-     * and we need to queue an event that will satisfy the divisor/remainder
+     * and we need to queue an event that will satisfy the divisor/_remainder
      * equation.
      */
     vbl.request.type = (DRM_VBLANK_ABSOLUTE |
@@ -681,7 +668,7 @@ tegra_dri2_schedule_swap(ClientPtr client, DrawablePtr draw,
                         drmmode_crtc_vblank_pipe(drmmode_crtc->crtc_pipe));
 
     request_msc = current_msc - (current_msc % divisor) +
-        remainder;
+        _remainder;
 
     /*
      * If the calculated deadline vbl.request.sequence is smaller than

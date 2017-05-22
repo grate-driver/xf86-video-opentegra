@@ -20,19 +20,7 @@
  * OF THIS SOFTWARE.
  */
 
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
-
-#include <drm.h>
-#include <xorg-server.h>
-#include <xf86.h>
-#include <xf86drm.h>
-#include <xf86Crtc.h>
-
-#include "compat-api.h"
-#include "common_helpers.h"
-#include "drmmode_display.h"
+#include "driver.h"
 
 void tegra_box_intersect(BoxPtr dest, BoxPtr a, BoxPtr b)
 {

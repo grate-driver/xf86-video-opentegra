@@ -22,24 +22,7 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
-
-#include <fcntl.h>
-
-#include <X11/extensions/Xv.h>
-#include <drm_fourcc.h>
-
-#include "xorg-server.h"
-#include "xf86.h"
-#include "xf86Crtc.h"
-#include "fourcc.h"
-
-#include "compat-api.h"
-#include "common_helpers.h"
 #include "driver.h"
-#include "xv.h"
 
 #define ErrorMsg(fmt, args...) \
     xf86DrvMsg(scrn->scrnIndex, X_ERROR, "%s:%d/%s(): " fmt, __FILE__, \
@@ -77,7 +60,7 @@ typedef struct TegraXvAdaptor {
     TegraVideo private;
 } TegraXvAdaptor, *TegraXvAdaptorPtr;
 
-static XvImageRec XvImages[] = {
+static XF86ImageRec XvImages[] = {
     XVIMAGE_YUY2,
     XVIMAGE_YV12,
     XVIMAGE_I420,
@@ -91,7 +74,7 @@ static XF86VideoFormatRec XvFormats[] = {
     },
 };
 
-static XvAttributeRec XvAttributes[] = {
+static XF86AttributeRec XvAttributes[] = {
     {
         .flags      = XvSettable | XvGettable,
         .min_value  = 0,
@@ -384,7 +367,7 @@ static int TegraVideoOverlayPutImage(ScrnInfoPtr scrn,
                                      unsigned char *buf,
                                      short width,
                                      short height,
-                                     Bool sync,
+                                     Bool vblankSync,
                                      RegionPtr clipBoxes,
                                      void *data, DrawablePtr draw)
 {
@@ -423,7 +406,7 @@ static int TegraVideoOverlayPutImage(ScrnInfoPtr scrn,
     if (!visible)
         return Success;
 
-    if (sync)
+    if (vblankSync)
         TegraVideoVSync(priv, scrn, best_id);
 
     drm_copy_data_to_fb(priv->fb, buf, format == FOURCC_I420);
@@ -501,7 +484,7 @@ void TegraXvScreenInit(ScreenPtr pScreen)
     adaptor = xnfcalloc(1, sizeof(*adaptor));
 
     adaptor->xv.type                 = XvWindowMask | XvInputMask | XvImageMask;
-    adaptor->xv.name                 = "Opentegra Video Overlay";
+    adaptor->xv.name                 = (char *)"Opentegra Video Overlay";
     adaptor->xv.nEncodings           = 1;
     adaptor->xv.pEncodings           = XvEncoding;
     adaptor->xv.pFormats             = XvFormats;

@@ -29,38 +29,9 @@
  *
  */
 
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
-
-#include <unistd.h>
-#include <fcntl.h>
-
-#include "xf86.h"
-#include "xf86_OSproc.h"
-#include "compiler.h"
-#ifdef XSERVER_PLATFORM_BUS
-#include "xf86platformBus.h"
-#endif
-#include "mipointer.h"
-#include "micmap.h"
-
-#include <X11/extensions/randr.h>
-
-#include "dixstruct.h"
-#include "scrnintstr.h"
-
-#include "fb.h"
-#include "shadow.h"
-
-#include "xorg-server.h"
-#include "xf86Crtc.h"
-#include "xf86drm.h"
-#include "xf86drmMode.h"
-
-#include "compat-api.h"
 #include "driver.h"
-#include "xv.h"
+
+struct xf86_platform_device;
 
 static SymTabRec Chipsets[] = {
     { 0, "kms" },

@@ -25,28 +25,7 @@
  *
  */
 
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
-
-#include <errno.h>
-#include <sys/ioctl.h>
-#include <sys/mman.h>
-#include <unistd.h>
-#include "xf86str.h"
-#include "X11/Xatom.h"
-#include "micmap.h"
-#include "xf86cmap.h"
-#include "xf86DDC.h"
-
-#include <xf86drm.h>
-#include "xf86Crtc.h"
-#include "drmmode_display.h"
-
-#include <cursorstr.h>
-
 #include "driver.h"
-#include "compat-api.h"
 
 #define ALIGN(offset, align) \
     (((offset) + (align) - 1) & ~((align) - 1))
@@ -1266,7 +1245,7 @@ static void drmmode_load_palette(ScrnInfoPtr pScrn, int numColors,
 {
     xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(pScrn);
     uint16_t lut_r[256], lut_g[256], lut_b[256];
-    int index, j, i;
+    int idx, j, i;
     int c;
 
     for (c = 0; c < xf86_config->num_crtc; c++) {
@@ -1282,38 +1261,38 @@ static void drmmode_load_palette(ScrnInfoPtr pScrn, int numColors,
         switch(pScrn->depth) {
         case 15:
             for (i = 0; i < numColors; i++) {
-                index = indices[i];
+                idx = indices[i];
                 for (j = 0; j < 8; j++) {
-                    lut_r[index * 8 + j] = colors[index].red << 6;
-                    lut_g[index * 8 + j] = colors[index].green << 6;
-                    lut_b[index * 8 + j] = colors[index].blue << 6;
+                    lut_r[idx * 8 + j] = colors[idx].red << 6;
+                    lut_g[idx * 8 + j] = colors[idx].green << 6;
+                    lut_b[idx * 8 + j] = colors[idx].blue << 6;
                 }
             }
          break;
 
          case 16:
              for (i = 0; i < numColors; i++) {
-                 index = indices[i];
+                 idx = indices[i];
 
                   if (i <= 31) {
                       for (j = 0; j < 8; j++) {
-                          lut_r[index * 8 + j] = colors[index].red << 6;
-                          lut_b[index * 8 + j] = colors[index].blue << 6;
+                          lut_r[idx * 8 + j] = colors[idx].red << 6;
+                          lut_b[idx * 8 + j] = colors[idx].blue << 6;
                       }
                   }
 
                   for (j = 0; j < 4; j++) {
-                      lut_g[index * 4 + j] = colors[index].green << 6;
+                      lut_g[idx * 4 + j] = colors[idx].green << 6;
                   }
               }
           break;
 
           default:
               for (i = 0; i < numColors; i++) {
-                  index = indices[i];
-                  lut_r[index] = colors[index].red << 6;
-                  lut_g[index] = colors[index].green << 6;
-                  lut_b[index] = colors[index].blue << 6;
+                  idx = indices[i];
+                  lut_r[idx] = colors[idx].red << 6;
+                  lut_g[idx] = colors[idx].green << 6;
+                  lut_b[idx] = colors[idx].blue << 6;
               }
               break;
           }

@@ -25,8 +25,6 @@
 #ifndef TEGRA_XV_H
 #define TEGRA_XV_H
 
-#include "xf86xv.h"
-
 typedef struct drm_overlay_fb {
     uint32_t fb_id;
     uint32_t format;

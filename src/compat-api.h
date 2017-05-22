@@ -107,4 +107,8 @@
 #define xorg_list_for_each_entry_safe	list_for_each_entry_safe
 #endif
 
+#if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,14,99,2,0)
+#define DamageUnregister(d, dd) DamageUnregister(dd)
+#endif
+
 #endif

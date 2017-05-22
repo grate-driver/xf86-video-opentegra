@@ -25,21 +25,7 @@
  * Support for tracking the DRM's vblank events.
  */
 
-#ifdef HAVE_CONFIG_H
-#  include "config.h"
-#endif
-
-#include <unistd.h>
-#include <xf86.h>
-#include <xf86Crtc.h>
-#include <list.h>
-#include <poll.h>
 #include "driver.h"
-#include "drmmode_display.h"
-
-#include "compat-api.h"
-#include "common_helpers.h"
-#include "vblank.h"
 
 /**
  * Tracking for outstanding events queued to the kernel.
@@ -196,7 +182,7 @@ uint32_t
 tegra_drm_queue_alloc(xf86CrtcPtr crtc,
                       void *data,
                       tegra_drm_handler_proc handler,
-                      tegra_drm_abort_proc abort)
+                      tegra_drm_abort_proc abort_proc)
 {
     ScreenPtr screen = crtc->randr_crtc->pScreen;
     ScrnInfoPtr scrn = xf86ScreenToScrn(screen);
@@ -213,7 +199,7 @@ tegra_drm_queue_alloc(xf86CrtcPtr crtc,
     q->crtc = crtc;
     q->data = data;
     q->handler = handler;
-    q->abort = abort;
+    q->abort = abort_proc;
 
     xorg_list_add(&q->list, &tegra_drm_queue);
 

@@ -22,26 +22,7 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include <errno.h>
-#include <fcntl.h>
-#include <stdlib.h>
-#include <sys/ioctl.h>
-#include <sys/mman.h>
-#include <unistd.h>
-
-#include <X11/extensions/Xv.h>
-
-#include <drm.h>
-#include <drm_fourcc.h>
-
-#include <libdrm/tegra_drm.h>
-
-#include "xorg-server.h"
-#include "xf86.h"
-
 #include "driver.h"
-#include "compat-api.h"
-#include "xv.h"
 
 #define FD_INVALID  UINT32_MAX
 
@@ -354,7 +335,7 @@ void drm_free_overlay_fb(int drm_fd, drm_overlay_fb *fb)
     free(fb);
 }
 
-static int plane_type(int drm_fd, int plane_id)
+static int drm_plane_type(int drm_fd, int plane_id)
 {
     drmModeObjectPropertiesPtr props;
     drmModePropertyPtr prop;
@@ -403,7 +384,7 @@ int drm_get_overlay_plane(int drm_fd, int crtc_pipe, uint32_t format,
             continue;
 
         if (!p->crtc_id && (p->possible_crtcs & (1 << crtc_pipe))) {
-            if (plane_type(drm_fd, p->plane_id) == DRM_PLANE_TYPE_OVERLAY) {
+            if (drm_plane_type(drm_fd, p->plane_id) == DRM_PLANE_TYPE_OVERLAY) {
                 for (j = 0; j < p->count_formats; j++) {
                     if (p->formats[j] == format) {
                         id = p->plane_id;
@@ -453,7 +434,7 @@ int drm_get_primary_plane(int drm_fd, int crtc_pipe, uint32_t *plane_id)
             continue;
 
         if (p->possible_crtcs & (1 << crtc_pipe)) {
-            if (plane_type(drm_fd, p->plane_id) == DRM_PLANE_TYPE_PRIMARY) {
+            if (drm_plane_type(drm_fd, p->plane_id) == DRM_PLANE_TYPE_PRIMARY) {
                 id = p->plane_id;
                 break;
             }

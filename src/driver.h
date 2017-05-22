@@ -27,13 +27,78 @@
  *
  */
 
-#include <errno.h>
-#include <drm.h>
-#include <xf86drm.h>
-#include <damage.h>
+#ifndef OPENTEGRA_DRIVER_H
+#define OPENTEGRA_DRIVER_H
 
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+
+#ifdef HAVE_UDEV
+#include <libudev.h>
+#endif
+
+#include <errno.h>
+#include <fcntl.h>
+#include <poll.h>
+#include <time.h>
+#include <unistd.h>
+
+#include <sys/ioctl.h>
+#include <sys/mman.h>
+
+#include <libdrm/drm.h>
+#include <libdrm/drm_fourcc.h>
+#include <libdrm/tegra_drm.h>
+
+#include <X11/extensions/Xv.h>
+#include <X11/extensions/randr.h>
+#include <X11/Xatom.h>
+
+/* DPMS */
+#ifdef HAVE_XEXTPROTO_71
+#include <X11/extensions/dpmsconst.h>
+#else
+#define DPMS_SERVER
+#include <X11/extensions/dpms.h>
+#endif
+
+#include <xorg/compiler.h>
+#include <xorg/cursorstr.h>
+#include <xorg/damage.h>
+#include <xorg/exa.h>
+#include <xorg/fb.h>
+#include <xorg/fourcc.h>
+#include <xorg/list.h>
+#include <xorg/mipointer.h>
+#include <xorg/micmap.h>
+#include <xorg/shadow.h>
+#include <xorg/xorgVersion.h>
+#include <xorg/xorg-server.h>
+#include <xorg/xf86.h>
+#include <xorg/xf86cmap.h>
+#include <xorg/xf86Crtc.h>
+#include <xorg/xf86DDC.h>
+#include <xorg/xf86_OSproc.h>
+#include <xorg/xf86str.h>
+#include <xorg/xf86xv.h>
+
+#ifdef XSERVER_PLATFORM_BUS
+#include <xorg/xf86platformBus.h>
+#endif
+
+#include <xf86drm.h>
+#include <xf86drmMode.h>
+
+#include "common_helpers.h"
+#include "compat-api.h"
 #include "drmmode_display.h"
+#include "dri2.h"
+#include "tegra_stream.h"
 #include "exa.h"
+#include "host1x.h"
+#include "vblank.h"
+#include "xv.h"
 
 #ifdef LONG64
 #  define FMT_CARD32 "x"
@@ -96,5 +161,7 @@ void TegraDRI2ScreenExit(ScreenPtr pScreen);
 
 Bool TegraVBlankScreenInit(ScreenPtr screen);
 void TegraVBlankScreenExit(ScreenPtr screen);
+
+#endif
 
 /* vim: set et sts=4 sw=4 ts=4: */
