@@ -22,16 +22,7 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#ifdef HAVE_CONFIG_H
-#  include "config.h"
-#endif
-
-#include "xf86.h"
-
-#include "host1x.h"
 #include "driver.h"
-#include "exa.h"
-#include "compat-api.h"
 
 #define EXA_ALIGN(offset, align) \
     (((offset) + (align) - 1) & ~((align) - 1))
@@ -82,7 +73,7 @@ static void TegraEXAWaitMarker(ScreenPtr pScreen, int marker)
     /* TODO: implement */
 }
 
-static Bool TegraEXAPrepareAccess(PixmapPtr pPix, int index)
+static Bool TegraEXAPrepareAccess(PixmapPtr pPix, int idx)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pPix->drawable.pScreen);
     TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pPix);
@@ -97,7 +88,7 @@ static Bool TegraEXAPrepareAccess(PixmapPtr pPix, int index)
     return TRUE;
 }
 
-static void TegraEXAFinishAccess(PixmapPtr pPix, int index)
+static void TegraEXAFinishAccess(PixmapPtr pPix, int idx)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pPix->drawable.pScreen);
     TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pPix);
@@ -277,14 +268,15 @@ static Bool TegraEXAPrepareSolid(PixmapPtr pPixmap, int op, Pixel planemask,
     return TRUE;
 }
 
-static void TegraEXASolid(PixmapPtr pPixmap, int x1, int y1, int x2, int y2)
+static void TegraEXASolid(PixmapPtr pPixmap,
+                          int px1, int py1, int px2, int py2)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pPixmap->drawable.pScreen);
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
 
     tegra_stream_push(&tegra->cmds, HOST1X_OPCODE_MASK(0x38, 0x5));
-    tegra_stream_push(&tegra->cmds, (y2 - y1) << 16 | (x2 - x1));
-    tegra_stream_push(&tegra->cmds, y1 << 16 | x1);
+    tegra_stream_push(&tegra->cmds, (py2 - py1) << 16 | (px2 - px1));
+    tegra_stream_push(&tegra->cmds, py1 << 16 | px1);
 }
 
 static void TegraEXADoneSolid(PixmapPtr pPixmap)

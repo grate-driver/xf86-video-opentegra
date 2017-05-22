@@ -25,8 +25,6 @@
 #ifndef TEGRA_XV_H
 #define TEGRA_XV_H
 
-#include "xf86xv.h"
-
 typedef struct drm_overlay_fb {
     uint32_t fb_id;
     uint32_t format;
@@ -57,8 +55,6 @@ int drm_get_overlay_plane(int drm_fd, int crtc_pipe, uint32_t format,
 int drm_get_primary_plane(int drm_fd, int crtc_pipe, uint32_t *plane_id);
 
 void drm_copy_data_to_fb(drm_overlay_fb *fb, uint8_t *data, int swap);
-
-XF86VideoAdaptorPtr TegraXvInit(ScreenPtr pScreen);
 
 #define TEGRA_VIDEO_OVERLAY_MAX_WIDTH   4096
 #define TEGRA_VIDEO_OVERLAY_MAX_HEIGHT  4096

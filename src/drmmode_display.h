@@ -28,12 +28,6 @@
 #ifndef DRMMODE_DISPLAY_H
 #define DRMMODE_DISPLAY_H
 
-#include "xf86drmMode.h"
-#include "xorgVersion.h"
-#ifdef HAVE_UDEV
-#include "libudev.h"
-#endif
-
 /* the perfect storm */
 #if XF86_CRTC_VERSION >= 5
 #  if defined(HAVE_DRMPRIMEFDTOHANDLE)
@@ -42,20 +36,6 @@
 #    endif
 #  endif
 #endif
-
-#if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,14,99,2,0)
-#define DamageUnregister(d, dd) DamageUnregister(dd)
-#endif
-
-/* DPMS */
-#ifdef HAVE_XEXTPROTO_71
-#include <X11/extensions/dpmsconst.h>
-#else
-#define DPMS_SERVER
-#include <X11/extensions/dpms.h>
-#endif
-
-#include <libdrm/tegra.h>
 
 struct dumb_bo {
     struct drm_tegra_bo *bo;

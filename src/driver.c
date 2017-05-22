@@ -29,38 +29,9 @@
  *
  */
 
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
-
-#include <unistd.h>
-#include <fcntl.h>
-
-#include "xf86.h"
-#include "xf86_OSproc.h"
-#include "compiler.h"
-#ifdef XSERVER_PLATFORM_BUS
-#include "xf86platformBus.h"
-#endif
-#include "mipointer.h"
-#include "micmap.h"
-
-#include <X11/extensions/randr.h>
-
-#include "dixstruct.h"
-#include "scrnintstr.h"
-
-#include "fb.h"
-#include "shadow.h"
-
-#include "xorg-server.h"
-#include "xf86Crtc.h"
-#include "xf86drm.h"
-#include "xf86drmMode.h"
-
-#include "compat-api.h"
 #include "driver.h"
-#include "xv.h"
+
+struct xf86_platform_device;
 
 static SymTabRec Chipsets[] = {
     { 0, "kms" },
@@ -716,7 +687,6 @@ TegraScreenInit(SCREEN_INIT_ARGS_DECL)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pScreen);
     TegraPtr tegra = TegraPTR(pScrn);
-    XF86VideoAdaptorPtr xv_adaptor;
     VisualPtr visual;
 
     pScrn->pScreen = pScreen;
@@ -790,6 +760,10 @@ TegraScreenInit(SCREEN_INIT_ARGS_DECL)
 
     xf86SetBlackWhitePixels(pScreen);
 
+    /* EXA must be initialized before the cursor! Otherwise there are
+     * graphics corruptions and Xorg assertions fail. */
+    TegraEXAScreenInit(pScreen);
+
     xf86SetBackingStore(pScreen);
     xf86SetSilkenMouse(pScreen);
     miDCInitialize(pScreen, xf86GetPointerScreenFuncs());
@@ -826,14 +800,7 @@ TegraScreenInit(SCREEN_INIT_ARGS_DECL)
     if (serverGeneration == 1)
         xf86ShowUnusedOptions(pScrn->scrnIndex, pScrn->options);
 
-    xv_adaptor = TegraXvInit(pScreen);
-    if (xv_adaptor != NULL)
-        xf86XVScreenInit(pScreen, &xv_adaptor, 1);
-    else
-        xf86DrvMsg(pScrn->scrnIndex, X_ERROR,
-                    "Failed to initialize XV support.\n");
-
-    TegraEXAScreenInit(pScreen);
+    TegraXvScreenInit(pScreen);
     TegraDRI2ScreenInit(pScreen);
     TegraVBlankScreenInit(pScreen);
 

@@ -25,16 +25,11 @@
 #ifndef __TEGRA_EXA_H
 #define __TEGRA_EXA_H
 
-#include <xorg/exa.h>
-
-#include <libdrm/tegra.h>
-
-#include "tegra_stream.h"
-
 #define TEGRA_DRI_USAGE_HINT ('D' << 16 | 'R' << 8 | 'I')
 
 typedef struct _TegraEXARec{
     struct drm_tegra_channel *gr2d;
+    struct drm_tegra_bo *offscreen;
     struct tegra_stream cmds;
 
     ExaDriverPtr driver;
@@ -43,6 +38,7 @@ typedef struct _TegraEXARec{
 typedef struct {
     struct drm_tegra_bo *bo;
     void *fallback;
+    Bool offscreen;
     Bool dri;
 } TegraPixmapRec, *TegraPixmapPtr;
 

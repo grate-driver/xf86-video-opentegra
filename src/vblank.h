@@ -53,10 +53,6 @@ void tegra_drm_abort(ScrnInfoPtr scrn,
                      void *match_data);
 void tegra_drm_abort_seq(ScrnInfoPtr scrn, uint32_t seq);
 
-xf86CrtcPtr tegra_dri2_crtc_covering_drawable(DrawablePtr pDraw);
-xf86CrtcPtr tegra_covering_crtc(ScrnInfoPtr scrn, BoxPtr box,
-                                xf86CrtcPtr desired, BoxPtr crtc_box_ret);
-
 int tegra_get_crtc_ust_msc(xf86CrtcPtr crtc, CARD64 *ust, CARD64 *msc);
 
 uint32_t tegra_crtc_msc_to_kernel_msc(xf86CrtcPtr crtc, uint64_t expect);

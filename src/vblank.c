@@ -25,20 +25,7 @@
  * Support for tracking the DRM's vblank events.
  */
 
-#ifdef HAVE_CONFIG_H
-#  include "config.h"
-#endif
-
-#include <unistd.h>
-#include <xf86.h>
-#include <xf86Crtc.h>
-#include <list.h>
-#include <poll.h>
 #include "driver.h"
-#include "drmmode_display.h"
-
-#include "compat-api.h"
-#include "vblank.h"
 
 /**
  * Tracking for outstanding events queued to the kernel.
@@ -53,107 +40,6 @@
  */
 static struct xorg_list tegra_drm_queue;
 static uint32_t tegra_drm_seq;
-
-static void tegra_box_intersect(BoxPtr dest, BoxPtr a, BoxPtr b)
-{
-    dest->x1 = a->x1 > b->x1 ? a->x1 : b->x1;
-    dest->x2 = a->x2 < b->x2 ? a->x2 : b->x2;
-    if (dest->x1 >= dest->x2) {
-        dest->x1 = dest->x2 = dest->y1 = dest->y2 = 0;
-        return;
-    }
-
-    dest->y1 = a->y1 > b->y1 ? a->y1 : b->y1;
-    dest->y2 = a->y2 < b->y2 ? a->y2 : b->y2;
-    if (dest->y1 >= dest->y2)
-        dest->x1 = dest->x2 = dest->y1 = dest->y2 = 0;
-}
-
-static void tegra_crtc_box(xf86CrtcPtr crtc, BoxPtr crtc_box)
-{
-    if (crtc->enabled) {
-        crtc_box->x1 = crtc->x;
-        crtc_box->x2 =
-            crtc->x + xf86ModeWidth(&crtc->mode, crtc->rotation);
-        crtc_box->y1 = crtc->y;
-        crtc_box->y2 =
-            crtc->y + xf86ModeHeight(&crtc->mode, crtc->rotation);
-    } else
-        crtc_box->x1 = crtc_box->x2 = crtc_box->y1 = crtc_box->y2 = 0;
-}
-
-static int tegra_box_area(BoxPtr box)
-{
-    return (int)(box->x2 - box->x1) * (int)(box->y2 - box->y1);
-}
-
-static Bool
-tegra_crtc_on(xf86CrtcPtr crtc)
-{
-    drmmode_crtc_private_ptr drmmode_crtc = crtc->driver_private;
-
-    return crtc->enabled && drmmode_crtc->dpms_mode == DPMSModeOn;
-}
-
-/*
- * Return the crtc covering 'box'. If two crtcs cover a portion of
- * 'box', then prefer 'desired'. If 'desired' is NULL, then prefer the crtc
- * with greater coverage
- */
-
-xf86CrtcPtr
-tegra_covering_crtc(ScrnInfoPtr scrn,
-                    BoxPtr box, xf86CrtcPtr desired, BoxPtr crtc_box_ret)
-{
-    xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(scrn);
-    xf86CrtcPtr crtc, best_crtc;
-    int coverage, best_coverage;
-    int c;
-    BoxRec crtc_box, cover_box;
-
-    best_crtc = NULL;
-    best_coverage = 0;
-    crtc_box_ret->x1 = 0;
-    crtc_box_ret->x2 = 0;
-    crtc_box_ret->y1 = 0;
-    crtc_box_ret->y2 = 0;
-    for (c = 0; c < xf86_config->num_crtc; c++) {
-        crtc = xf86_config->crtc[c];
-
-        /* If the CRTC is off, treat it as not covering */
-        if (!tegra_crtc_on(crtc))
-            continue;
-
-        tegra_crtc_box(crtc, &crtc_box);
-        tegra_box_intersect(&cover_box, &crtc_box, box);
-        coverage = tegra_box_area(&cover_box);
-        if (coverage && crtc == desired) {
-            *crtc_box_ret = crtc_box;
-            return crtc;
-        }
-        if (coverage > best_coverage) {
-            *crtc_box_ret = crtc_box;
-            best_crtc = crtc;
-            best_coverage = coverage;
-        }
-    }
-    return best_crtc;
-}
-
-xf86CrtcPtr
-tegra_dri2_crtc_covering_drawable(DrawablePtr pDraw)
-{
-    ScreenPtr pScreen = pDraw->pScreen;
-    ScrnInfoPtr pScrn = xf86ScreenToScrn(pScreen);
-    BoxRec box, crtcbox;
-
-    box.x1 = pDraw->x;
-    box.y1 = pDraw->y;
-    box.x2 = box.x1 + pDraw->width;
-    box.y2 = box.y1 + pDraw->height;
-
-    return tegra_covering_crtc(pScrn, &box, NULL, &crtcbox);
-}
 
 static uint32_t
 drmmode_crtc_vblank_pipe(int crtc_id)
@@ -296,7 +182,7 @@ uint32_t
 tegra_drm_queue_alloc(xf86CrtcPtr crtc,
                       void *data,
                       tegra_drm_handler_proc handler,
-                      tegra_drm_abort_proc abort)
+                      tegra_drm_abort_proc abort_proc)
 {
     ScreenPtr screen = crtc->randr_crtc->pScreen;
     ScrnInfoPtr scrn = xf86ScreenToScrn(screen);
@@ -313,7 +199,7 @@ tegra_drm_queue_alloc(xf86CrtcPtr crtc,
     q->crtc = crtc;
     q->data = data;
     q->handler = handler;
-    q->abort = abort;
+    q->abort = abort_proc;
 
     xorg_list_add(&q->list, &tegra_drm_queue);
 
