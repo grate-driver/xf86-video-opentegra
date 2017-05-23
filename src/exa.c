@@ -463,6 +463,11 @@ void TegraEXAScreenInit(ScreenPtr pScreen)
     TegraEXAPtr priv;
     int err;
 
+    if (tegra->drmmode.shadow_enable) {
+        ErrorMsg("using \"Shadow Framebuffer\" - acceleration disabled\n");
+        return;
+    }
+
     exa = exaDriverAlloc();
     if (!exa) {
         ErrorMsg("EXA allocation failed\n");
