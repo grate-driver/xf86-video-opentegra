@@ -221,34 +221,20 @@ static Bool TegraVideoOverlayCreateFB(TegraVideoPtr priv, ScrnInfoPtr scrn,
                                       uint32_t width, uint32_t height)
 {
     TegraPtr tegra = TegraPTR(scrn);
-    drm_overlay_fb *fb = priv->fb;
 
-    if (!fb)
-        goto create_fb;
+    if (priv->fb &&
+        priv->fb->format == drm_format &&
+        priv->fb->width  == width &&
+        priv->fb->height == height)
+            return TRUE;
 
-    if (fb->format != drm_format)
-        goto recreate_fb;
+    drm_free_overlay_fb(tegra->fd, priv->fb);
 
-    if (fb->width != width)
-        goto recreate_fb;
-
-    if (fb->height != height)
-        goto recreate_fb;
-
-    return TRUE;
-
-recreate_fb:
-    drm_free_overlay_fb(tegra->fd, fb);
-
-create_fb:
-    fb = drm_create_fb(tegra->fd, drm_format, width, height);
-
-    if (fb == NULL) {
+    priv->fb = drm_create_fb(tegra->fd, drm_format, width, height);
+    if (priv->fb == NULL) {
         ErrorMsg("Failed to create framebuffer\n");
         return FALSE;
     }
-
-    priv->fb = fb;
 
     return TRUE;
 }
