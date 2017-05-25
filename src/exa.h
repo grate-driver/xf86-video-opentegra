@@ -29,7 +29,6 @@
 
 typedef struct _TegraEXARec{
     struct drm_tegra_channel *gr2d;
-    struct drm_tegra_bo *offscreen;
     struct tegra_stream cmds;
 
     ExaDriverPtr driver;
@@ -38,7 +37,6 @@ typedef struct _TegraEXARec{
 typedef struct {
     struct drm_tegra_bo *bo;
     void *fallback;
-    Bool offscreen;
     Bool dri;
 } TegraPixmapRec, *TegraPixmapPtr;
 
