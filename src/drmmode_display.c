@@ -27,9 +27,6 @@
 
 #include "driver.h"
 
-#define ALIGN(offset, align) \
-    (((offset) + (align) - 1) & ~((align) - 1))
-
 static struct dumb_bo *
 dumb_bo_create(struct drm_tegra *drm,
                const unsigned width, const unsigned height,
@@ -42,7 +39,7 @@ dumb_bo_create(struct drm_tegra *drm,
     if (!bo)
         return NULL;
 
-    bo->pitch = ALIGN(width * bpp / 8, 16);
+    bo->pitch = TEGRA_ALIGN(width * bpp / 8, 16);
 
     ret = drm_tegra_bo_new(&bo->bo, drm, 0, bo->pitch * height);
     if (ret)

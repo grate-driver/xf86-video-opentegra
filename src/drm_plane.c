@@ -38,7 +38,7 @@
 static size_t page_align(size_t size)
 {
     int pagesize = getpagesize();
-    return (((size - 1) / pagesize) + 1) * pagesize;
+    return TEGRA_ALIGN(size, pagesize);
 }
 
 static void mmap_gem(int drm_fd, int gem_fd, void **map, size_t size)

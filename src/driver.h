@@ -108,6 +108,9 @@
 
 #define TEGRA_ARRAY_SIZE(x) (sizeof(x) / sizeof(*x))
 
+#define __TEGRA_ALIGN_MASK(x, mask) (((x) + (mask)) & ~(mask))
+#define TEGRA_ALIGN(x, a)           __TEGRA_ALIGN_MASK(x, (typeof(x))(a) - 1)
+
 typedef struct
 {
     int lastInstance;
