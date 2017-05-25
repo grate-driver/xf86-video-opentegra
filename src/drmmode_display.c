@@ -1526,6 +1526,11 @@ void drmmode_get_default_bpp(ScrnInfoPtr pScrn, drmmode_ptr drmmode, int *depth,
     bo = dumb_bo_create(tegra->drm, mode_res->min_width,
                         mode_res->min_height, 32);
     if (!bo) {
+        ErrorF("It looks like CONFIG_DRM_TEGRA_STAGING isn't enabled in "
+               "the kernel config, opentegra requires it to be enabled\n");
+    }
+
+    if (!bo) {
         *bpp = 24;
         goto out;
     }
