@@ -36,57 +36,6 @@
                __FILE__, __LINE__, __func__, ##args)
 
 /*
- * Default configuration for new streams
- *
- * DEFAULT_BUFFER_SIZE_WORDS - Define the size of command buffer
- */
-
-#define DEFAULT_BUFFER_SIZE_WORDS   8192
-
-/*
- * tegra_release_cmdbuf(buffer)
- *
- * This function releases given command buffer.
- */
-
-static void tegra_release_cmdbuf(struct tegra_command_buffer *buffer)
-{
-    drm_tegra_bo_unmap(buffer->bo);
-    drm_tegra_bo_unref(buffer->bo);
-}
-
-/*
- * tegra_allocate_cmdbuf(buffer)
- *
- * This function allocates and initializes a command buffer.
- */
-
-static int tegra_allocate_cmdbuf(struct drm_tegra *drm,
-                                 struct tegra_command_buffer *buffer,
-                                 uint32_t words_num)
-{
-    void *stub;
-    int ret;
-
-    /* Allocate and map memory for opcodes. */
-
-    ret = drm_tegra_bo_new(&buffer->bo, drm, 0, sizeof(uint32_t) * words_num);
-    if (ret) {
-        ErrorMsg("drm_tegra_bo_new() failed %d\n", ret);
-        return ret;
-    }
-
-    /* Bump mmap refcount to avoid expensive CMA re-mappings. */
-
-    ret = drm_tegra_bo_map(buffer->bo, &stub);
-    if (ret) {
-        ErrorMsg("drm_tegra_bo_map() failed %d\n", ret);
-    }
-
-    return ret;
-}
-
-/*
  * tegra_stream_create(channel)
  *
  * Create a stream for given channel. This function preallocates several
@@ -100,25 +49,11 @@ int tegra_stream_create(struct drm_tegra *drm,
                         struct tegra_stream *stream,
                         uint32_t words_num)
 {
-    words_num = words_num ? words_num : DEFAULT_BUFFER_SIZE_WORDS;
-
-    stream->status      = TEGRADRM_STREAM_FREE;
-    stream->buffer_size = words_num;
-    stream->channel     = channel;
-
-    if (words_num > 16383) {
-        ErrorMsg("Maximum number of words is 16383\n");
-        return -1;
-    }
-
-    if (tegra_allocate_cmdbuf(drm, &stream->buffer, words_num))
-        goto err_buffer_alloc;
+    stream->status    = TEGRADRM_STREAM_FREE;
+    stream->channel   = channel;
+    stream->num_words = words_num;
 
     return 0;
-
-err_buffer_alloc:
-    tegra_release_cmdbuf(&stream->buffer);
-    return -1;
 }
 
 /*
@@ -132,7 +67,6 @@ void tegra_stream_destroy(struct tegra_stream *stream)
     if (!stream)
         return;
 
-    tegra_release_cmdbuf(&stream->buffer);
     drm_tegra_job_free(stream->job);
 }
 
@@ -222,21 +156,22 @@ int tegra_stream_begin(struct tegra_stream *stream)
         return -1;
     }
 
-    ret = drm_tegra_pushbuf_new(&stream->buffer.pushbuf, stream->job,
-                                stream->buffer.bo, 0);
+    ret = drm_tegra_pushbuf_new(&stream->buffer.pushbuf, stream->job);
     if (ret != 0) {
         ErrorMsg("drm_tegra_pushbuf_new() failed %d\n", ret);
         drm_tegra_job_free(stream->job);
         return -1;
     }
 
+    ret = drm_tegra_pushbuf_prepare(stream->buffer.pushbuf, stream->num_words);
+    if (ret != 0) {
+        ErrorMsg("drm_tegra_pushbuf_prepare() failed %d\n", ret);
+        drm_tegra_job_free(stream->job);
+        return -1;
+    }
+
     stream->class_id = 0;
     stream->status = TEGRADRM_STREAM_CONSTRUCT;
-
-    /* include following in num words:
-     *  - syncpoint increment at the end of the stream (2 words)
-     */
-    stream->num_words = stream->buffer_size - 2;
 
     return 0;
 }
@@ -258,12 +193,6 @@ int tegra_stream_push_reloc(struct tegra_stream *stream,
         return -1;
     }
 
-    if (stream->num_words == 0) {
-        stream->status = TEGRADRM_STREAM_CONSTRUCTION_FAILED;
-        ErrorMsg("Commands buffer is full\n");
-        return -1;
-    }
-
     ret = drm_tegra_pushbuf_relocate(stream->buffer.pushbuf,
                                      bo, offset, 0);
     if (ret != 0) {
@@ -271,9 +200,6 @@ int tegra_stream_push_reloc(struct tegra_stream *stream,
         ErrorMsg("drm_tegra_pushbuf_relocate() failed %d\n", ret);
         return -1;
     }
-
-    stream->num_words--;
-    *stream->buffer.pushbuf->ptr++ = 0xDEADBEEF;
 
     return 0;
 }
@@ -286,18 +212,20 @@ int tegra_stream_push_reloc(struct tegra_stream *stream,
 
 int tegra_stream_push(struct tegra_stream *stream, uint32_t word)
 {
+    int ret;
+
     if (!(stream && stream->status == TEGRADRM_STREAM_CONSTRUCT)) {
         ErrorMsg("Stream status isn't CONSTRUCT\n");
         return -1;
     }
 
-    if (stream->num_words == 0) {
+    ret = drm_tegra_pushbuf_prepare(stream->buffer.pushbuf, 1);
+    if (ret != 0) {
         stream->status = TEGRADRM_STREAM_CONSTRUCTION_FAILED;
-        ErrorMsg("Commands buffer is full\n");
+        ErrorMsg("drm_tegra_pushbuf_prepare() failed %d\n", ret);
         return -1;
     }
 
-    stream->num_words--;
     *stream->buffer.pushbuf->ptr++ = word;
 
     return 0;
@@ -338,12 +266,6 @@ int tegra_stream_end(struct tegra_stream *stream)
 
     if (!(stream && stream->status == TEGRADRM_STREAM_CONSTRUCT)) {
         ErrorMsg("Stream status isn't CONSTRUCT\n");
-        return -1;
-    }
-
-    if (stream->num_words == stream->buffer_size) {
-        stream->status = TEGRADRM_STREAM_CONSTRUCTION_FAILED;
-        ErrorMsg("Commands buffer is full\n");
         return -1;
     }
 
@@ -395,9 +317,10 @@ int tegra_stream_push_words(struct tegra_stream *stream, const void *addr,
         return -1;
     }
 
-    if (stream->num_words < words) {
+    ret = drm_tegra_pushbuf_prepare(stream->buffer.pushbuf, words);
+    if (ret != 0) {
         stream->status = TEGRADRM_STREAM_CONSTRUCTION_FAILED;
-        ErrorMsg("Commands buffer is full\n");
+        ErrorMsg("drm_tegra_pushbuf_prepare() failed %d\n", ret);
         return -1;
     }
 
@@ -407,8 +330,6 @@ int tegra_stream_push_words(struct tegra_stream *stream, const void *addr,
         ErrorMsg("HOST1X class not specified\n");
         return -1;
     }
-
-    stream->num_words -= words;
 
     /* Copy the contents */
     pushbuf_ptr = stream->buffer.pushbuf->ptr;
