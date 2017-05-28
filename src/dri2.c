@@ -788,6 +788,10 @@ void TegraDRI2ScreenInit(ScreenPtr screen)
     ScrnInfoPtr scrn = xf86ScreenToScrn(screen);
     TegraPtr tegra = TegraPTR(scrn);
     DRI2InfoRec info;
+    const char *drivernames[2] = {
+        "tegra", /* DRI */
+        "tegra", /* VDPAU */
+    };
 
     if (tegra->dri2_enabled)
         return;
@@ -822,8 +826,8 @@ void TegraDRI2ScreenInit(ScreenPtr screen)
     info.ScheduleWaitMSC = tegra_dri2_schedule_wait_msc;
 
     /* These two will be filled in by dri2.c */
-    info.numDrivers = 0;
-    info.driverNames = NULL;
+    info.numDrivers = 2;
+    info.driverNames = drivernames;
 
     DRI2ScreenInit(screen, &info);
 
