@@ -24,9 +24,6 @@
 
 #include "driver.h"
 
-#define EXA_ALIGN(offset, align) \
-    (((offset) + (align) - 1) & ~((align) - 1))
-
 #define ErrorMsg(fmt, args...) \
     xf86DrvMsg(pScrn->scrnIndex, X_ERROR, "%s:%d/%s(): " fmt, __FILE__, \
                __LINE__, __func__, ##args)
@@ -58,7 +55,7 @@ static inline unsigned int TegraEXAPitch(unsigned int width, unsigned int bpp)
      * buffer's pitch is too small (which happens for very small, low-bpp
      * pixmaps).
      */
-    return EXA_ALIGN((width * bpp + 7) / 8, 64);
+    return TEGRA_ALIGN((width * bpp + 7) / 8, 64);
 }
 
 static int TegraEXAMarkSync(ScreenPtr pScreen)

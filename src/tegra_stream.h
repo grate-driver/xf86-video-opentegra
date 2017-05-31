@@ -39,7 +39,6 @@ enum tegra_stream_status {
 };
 
 struct tegra_command_buffer {
-    struct drm_tegra_bo *bo;
     struct drm_tegra_pushbuf *pushbuf;
 };
 
@@ -51,7 +50,6 @@ struct tegra_stream {
 
     struct tegra_command_buffer buffer;
     int num_words;
-    uint32_t buffer_size;
     uint32_t class_id;
 };
 
