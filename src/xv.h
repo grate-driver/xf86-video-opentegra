@@ -25,37 +25,6 @@
 #ifndef TEGRA_XV_H
 #define TEGRA_XV_H
 
-typedef struct drm_overlay_fb {
-    uint32_t fb_id;
-    uint32_t format;
-    uint32_t width;
-    uint32_t height;
-    union {
-        uint32_t bo_y_id;
-        uint32_t bo_id;
-    };
-    union {
-        void *bo_y_mmap;
-        void *bo_mmap;
-    };
-    uint32_t bo_cb_id;
-    uint32_t bo_cr_id;
-    void *bo_cb_mmap;
-    void *bo_cr_mmap;
-} drm_overlay_fb;
-
-drm_overlay_fb * drm_create_fb(int drm_fd, uint32_t drm_format,
-                               uint32_t width, uint32_t height);
-
-void drm_free_overlay_fb(int drm_fd, drm_overlay_fb *fb);
-
-int drm_get_overlay_plane(int drm_fd, int crtc_pipe, uint32_t format,
-                          uint32_t *plane_id);
-
-int drm_get_primary_plane(int drm_fd, int crtc_pipe, uint32_t *plane_id);
-
-void drm_copy_data_to_fb(drm_overlay_fb *fb, uint8_t *data, int swap);
-
 #define TEGRA_VIDEO_OVERLAY_MAX_WIDTH   4096
 #define TEGRA_VIDEO_OVERLAY_MAX_HEIGHT  4096
 
