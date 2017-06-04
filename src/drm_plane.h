@@ -47,6 +47,12 @@ typedef struct drm_overlay_fb {
 drm_overlay_fb * drm_create_fb(int drm_fd, uint32_t drm_format,
                                uint32_t width, uint32_t height);
 
+drm_overlay_fb * drm_create_fb_from_handle(int drm_fd, uint32_t drm_format,
+                                           uint32_t width, uint32_t height,
+                                           uint32_t *bo_handles,
+                                           uint32_t *pitches,
+                                           uint32_t *offsets);
+
 void drm_free_overlay_fb(int drm_fd, drm_overlay_fb *fb);
 
 int drm_get_overlay_plane(int drm_fd, int crtc_pipe, uint32_t format,

@@ -33,6 +33,7 @@
 static Atom xvColorKey;
 
 typedef struct TegraOverlay {
+    drm_overlay_fb *fb;
     uint32_t plane_id;
     Bool visible;
     Bool ready;
@@ -51,7 +52,11 @@ typedef struct TegraOverlay {
 
 typedef struct TegraVideo {
     TegraOverlay overlay[2];
+    drm_overlay_fb *old_fb;
     drm_overlay_fb *fb;
+
+    uint8_t passthrough_data[PASSTHROUGH_DATA_SIZE];
+    Bool passthrough;
 } TegraVideo, *TegraVideoPtr;
 
 typedef struct TegraXvAdaptor {
@@ -65,6 +70,10 @@ static XF86ImageRec XvImages[] = {
     XVIMAGE_YV12,
     XVIMAGE_I420,
     XVIMAGE_UYVY,
+    XVMC_YV12,
+    XVMC_RGB565,
+    XVMC_XRGB8888,
+    XVMC_XBGR8888,
 };
 
 static XF86VideoFormatRec XvFormats[] = {
@@ -102,6 +111,13 @@ static Bool xv_fourcc_valid(int format_id)
     case FOURCC_I420:
     case FOURCC_UYVY:
         return TRUE;
+
+    case FOURCC_PASSTHROUGH_YV12:
+    case FOURCC_PASSTHROUGH_RGB565:
+    case FOURCC_PASSTHROUGH_XRGB8888:
+    case FOURCC_PASSTHROUGH_XBGR8888:
+        return TRUE;
+
     default:
         break;
     }
@@ -114,12 +130,28 @@ static uint32_t xv_fourcc_to_drm(int format_id)
     switch (format_id) {
     case FOURCC_YUY2:
         return DRM_FORMAT_YUYV;
+
     case FOURCC_YV12:
         return DRM_FORMAT_YUV420;
+
     case FOURCC_I420:
         return DRM_FORMAT_YUV420;
+
     case FOURCC_UYVY:
         return DRM_FORMAT_UYVY;
+
+    case FOURCC_PASSTHROUGH_YV12:
+        return DRM_FORMAT_YUV420;
+
+    case FOURCC_PASSTHROUGH_RGB565:
+        return DRM_FORMAT_RGB565;
+
+    case FOURCC_PASSTHROUGH_XRGB8888:
+        return DRM_FORMAT_XRGB8888;
+
+    case FOURCC_PASSTHROUGH_XBGR8888:
+        return DRM_FORMAT_XBGR8888;
+
     default:
         FatalError("%s: Shouldn't be here; format_id %d\n",
                    __FUNCTION__, format_id);
@@ -172,7 +204,8 @@ static void TegraVideoOverlayShow(TegraVideoPtr priv,
         overlay->dst_x == dst_x &&
         overlay->dst_y == dst_y &&
         overlay->dst_w == dst_w &&
-        overlay->dst_h == dst_h)
+        overlay->dst_h == dst_h &&
+        overlay->fb    == fb)
             return;
 
     overlay->src_x = src_x;
@@ -183,6 +216,7 @@ static void TegraVideoOverlayShow(TegraVideoPtr priv,
     overlay->dst_y = dst_y;
     overlay->dst_w = dst_w;
     overlay->dst_h = dst_h;
+    overlay->fb    = fb;
 
     ret = drmModeSetPlane(tegra->fd,
                           overlay->plane_id,
@@ -214,29 +248,127 @@ static void TegraVideoOverlayClose(TegraVideoPtr priv, ScrnInfoPtr scrn,
         ErrorMsg("Failed to close overlay\n");
 
     overlay->visible = FALSE;
+    overlay->fb      = NULL;
+}
+
+static void TegraVideoDestroyFramebuffer(TegraVideoPtr priv, ScrnInfoPtr scrn,
+                                         drm_overlay_fb **fb)
+{
+    TegraPtr tegra = TegraPTR(scrn);
+
+    drm_free_overlay_fb(tegra->fd, *fb);
+    *fb = NULL;
+}
+
+static Bool TegraCloseBo(ScrnInfoPtr scrn, uint32_t handle)
+{
+    TegraPtr tegra = TegraPTR(scrn);
+    struct drm_gem_close args;
+    int ret;
+
+    memset(&args, 0, sizeof(args));
+    args.handle = handle;
+
+    ret = drmIoctl(tegra->fd, DRM_IOCTL_GEM_CLOSE, &args);
+    if (ret < 0) {
+            ErrorMsg("Failed to close GEM %s\n", strerror(-ret));
+            return ret;
+    }
+
+    return TRUE;
+}
+
+static Bool TegraImportBo(ScrnInfoPtr scrn, uint32_t flink, uint32_t *handle)
+{
+    TegraPtr tegra = TegraPTR(scrn);
+    struct drm_gem_open args;
+    int ret;
+
+    memset(&args, 0, sizeof(args));
+    args.name = flink;
+
+    ret = drmIoctl(tegra->fd, DRM_IOCTL_GEM_OPEN, &args);
+    if (ret < 0) {
+            ErrorMsg("Failed to open GEM by name %s\n", strerror(-ret));
+            return ret;
+    }
+
+    *handle = args.handle;
+
+    return TRUE;
 }
 
 static Bool TegraVideoOverlayCreateFB(TegraVideoPtr priv, ScrnInfoPtr scrn,
                                       uint32_t drm_format,
-                                      uint32_t width, uint32_t height)
+                                      uint32_t width, uint32_t height,
+                                      Bool passthrough,
+                                      uint8_t *passthrough_data)
 {
-    TegraPtr tegra = TegraPTR(scrn);
+    TegraPtr tegra     = TegraPTR(scrn);
+    uint32_t *flinks   = (uint32_t*) (passthrough_data +  0);
+    uint32_t *pitches  = (uint32_t*) (passthrough_data + 12);
+    uint32_t *offsets  = (uint32_t*) (passthrough_data + 24);
+    uint32_t bo_handles[3];
+    drm_overlay_fb *fb;
+    int i = 0;
 
     if (priv->fb &&
-        priv->fb->format == drm_format &&
-        priv->fb->width  == width &&
-        priv->fb->height == height)
+        priv->fb->format  == drm_format &&
+        priv->fb->width   == width &&
+        priv->fb->height  == height &&
+        priv->passthrough == passthrough)
+    {
+        if (!passthrough)
             return TRUE;
 
-    drm_free_overlay_fb(tegra->fd, priv->fb);
-
-    priv->fb = drm_create_fb(tegra->fd, drm_format, width, height);
-    if (priv->fb == NULL) {
-        ErrorMsg("Failed to create framebuffer\n");
-        return FALSE;
+        if (memcmp(passthrough_data, priv->passthrough_data,
+                   PASSTHROUGH_DATA_SIZE) == 0)
+            return TRUE;
     }
 
+    if (passthrough) {
+        switch (drm_format) {
+        case DRM_FORMAT_YUV420:
+            i = 3;
+            break;
+        default:
+            i = 1;
+        }
+
+        for (; i > 0; i--) {
+            if (!TegraImportBo(scrn, flinks[i - 1], &bo_handles[i - 1]))
+                goto fail;
+        }
+
+        fb = drm_create_fb_from_handle(tegra->fd, drm_format, width, height,
+                                       bo_handles, pitches, offsets);
+    } else {
+        fb = drm_create_fb(tegra->fd, drm_format, width, height);
+    }
+
+    if (fb == NULL) {
+        goto fail;
+    }
+
+    if (passthrough) {
+        memcpy(priv->passthrough_data, passthrough_data,
+               PASSTHROUGH_DATA_SIZE);
+    }
+
+    priv->old_fb      = priv->fb;
+    priv->fb          = fb;
+    priv->passthrough = passthrough;
+
     return TRUE;
+
+fail:
+    ErrorMsg("Failed to create framebuffer\n");
+
+    for (; i < TEGRA_ARRAY_SIZE(bo_handles) && i > 0; i--) {
+        TegraCloseBo(scrn, bo_handles[i - 1]);
+    }
+
+    return FALSE;
 }
 
 static void TegraVideoOverlayBestSize(ScrnInfoPtr scrn, Bool motion,
@@ -273,17 +405,13 @@ static int TegraVideoOverlayGetAttribute(ScrnInfoPtr scrn, Atom attribute,
 static void TegraVideoOverlayStop(ScrnInfoPtr scrn, void *data, Bool cleanup)
 {
     TegraVideoPtr priv = data;
-    TegraPtr tegra     = TegraPTR(scrn);
     int id;
-
-    if (!cleanup)
-        return;
 
     for (id = 0; id < TEGRA_ARRAY_SIZE(priv->overlay); id++)
         TegraVideoOverlayClose(priv, scrn, id);
 
-    drm_free_overlay_fb(tegra->fd, priv->fb);
-    priv->fb = NULL;
+    if (cleanup)
+        TegraVideoDestroyFramebuffer(priv, scrn, &priv->fb);
 }
 
 static void TegraVideoOverlayInitialize(TegraVideoPtr priv, ScrnInfoPtr scrn,
@@ -359,6 +487,7 @@ static int TegraVideoOverlayPutImage(ScrnInfoPtr scrn,
 {
     TegraVideoPtr priv = data;
     Bool visible       = FALSE;
+    Bool passthrough   = FALSE;
     int best_coverage  = 0;
     int best_id        = 0;
     int coverage;
@@ -367,8 +496,16 @@ static int TegraVideoOverlayPutImage(ScrnInfoPtr scrn,
     if (!xv_fourcc_valid(format))
         return BadImplementation;
 
+    switch (format) {
+    case FOURCC_PASSTHROUGH_YV12:
+    case FOURCC_PASSTHROUGH_RGB565:
+    case FOURCC_PASSTHROUGH_XRGB8888:
+    case FOURCC_PASSTHROUGH_XBGR8888:
+        passthrough = TRUE;
+    }
+
     if (!TegraVideoOverlayCreateFB(priv, scrn, xv_fourcc_to_drm(format),
-                                   width, height) != Success)
+                                   width, height, passthrough, buf) != Success)
         return BadImplementation;
 
     for (id = 0; id < TEGRA_ARRAY_SIZE(priv->overlay); id++)
@@ -395,7 +532,8 @@ static int TegraVideoOverlayPutImage(ScrnInfoPtr scrn,
     if (vblankSync)
         TegraVideoVSync(priv, scrn, best_id);
 
-    drm_copy_data_to_fb(priv->fb, buf, format == FOURCC_I420);
+    if (!passthrough)
+        drm_copy_data_to_fb(priv->fb, buf, format == FOURCC_I420);
 
     for (id = 0; id < TEGRA_ARRAY_SIZE(priv->overlay); id++)
         TegraVideoOverlayPutImageOnOverlay(priv, scrn, id,
@@ -405,6 +543,8 @@ static int TegraVideoOverlayPutImage(ScrnInfoPtr scrn,
                                            dst_w, dst_h,
                                            width, height,
                                            draw);
+    if (priv->old_fb)
+        TegraVideoDestroyFramebuffer(priv, scrn, &priv->old_fb);
 
     return Success;
 }
@@ -450,6 +590,12 @@ static int TegraVideoOverlayQuery(ScrnInfoPtr scrn,
             offsets[0] = 0;
 
         size = (*w) * (*h) * 2;
+        break;
+    case FOURCC_PASSTHROUGH_YV12:
+    case FOURCC_PASSTHROUGH_RGB565:
+    case FOURCC_PASSTHROUGH_XRGB8888:
+    case FOURCC_PASSTHROUGH_XBGR8888:
+        size = PASSTHROUGH_DATA_SIZE;
         break;
     default:
         return BadValue;

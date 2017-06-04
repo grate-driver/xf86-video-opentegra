@@ -27,7 +27,7 @@
 #define FD_INVALID  UINT32_MAX
 
 #define MUNMAP_VERBOSE(PTR, SIZE)                       \
-    if (munmap(PTR, page_align(SIZE)) != 0)             \
+    if (PTR && munmap(PTR, page_align(SIZE)) != 0)      \
         FatalError("%s: " #PTR " munmap failed: %s\n",  \
                    __FUNCTION__, strerror(errno));
 
@@ -176,24 +176,43 @@ static void close_gem(int drm_fd, uint32_t handle)
         ErrorMsg("Failed to close GEM: %s\n", strerror(-ret));
 }
 
-drm_overlay_fb * drm_create_fb(int drm_fd, uint32_t drm_format,
-                               uint32_t width, uint32_t height)
+static drm_overlay_fb * drm_create_fb_internal(int drm_fd, uint32_t drm_format,
+                                               uint32_t width, uint32_t height,
+                                               uint32_t *bo_handles,
+                                               uint32_t *pitches,
+                                               uint32_t *offsets)
 {
     drm_overlay_fb *fb = NULL;
     uint32_t fb_id = FD_INVALID;
-    uint32_t bo_handles[3];
-    uint32_t pitches[3];
-    uint32_t offsets[3];
+    Bool from_handle;
     int ret;
 
     if (width == 0 || height == 0)
         return NULL;
 
+    from_handle = !!(bo_handles);
+
+    if (from_handle)
+        goto create_framebuffer;
+
+    bo_handles = alloca(sizeof(uint32_t) * 3);
+    if (!bo_handles)
+        return NULL;
+
+    pitches = alloca(sizeof(uint32_t) * 3);
+    if (!pitches)
+        return NULL;
+
+    offsets = alloca(sizeof(uint32_t) * 3);
+    if (!offsets)
+        return NULL;
+
     pitches[0] = fb_pitch(drm_format, width);
-    offsets[0] = 0;
     pitches[1] = fb_pitch_c(drm_format, width);
-    offsets[1] = 0;
     pitches[2] = fb_pitch_c(drm_format, width);
+
+    offsets[0] = 0;
+    offsets[1] = 0;
     offsets[2] = 0;
 
     bo_handles[1] = FD_INVALID;
@@ -238,6 +257,9 @@ create_framebuffer:
     fb->bo_cb_id = bo_handles[1];
     fb->bo_cr_id = bo_handles[2];
 
+    if (from_handle)
+        return fb;
+
     if (!format_planar(drm_format))
         goto non_planar;
 
@@ -271,6 +293,9 @@ non_planar:
     return fb;
 
 error_cleanup:
+    if (from_handle)
+        return NULL;
+
     if (fb != NULL) {
         if (format_planar(drm_format)) {
             if (fb->bo_cr_mmap && fb->bo_cr_mmap != MAP_FAILED)
@@ -308,8 +333,27 @@ error_cleanup:
     return NULL;
 }
 
+drm_overlay_fb * drm_create_fb(int drm_fd, uint32_t drm_format,
+                               uint32_t width, uint32_t height)
+{
+    return drm_create_fb_internal(drm_fd, drm_format, width, height,
+                                  NULL, NULL, NULL);
+}
+
+drm_overlay_fb * drm_create_fb_from_handle(int drm_fd, uint32_t drm_format,
+                                           uint32_t width, uint32_t height,
+                                           uint32_t *bo_handles,
+                                           uint32_t *pitches,
+                                           uint32_t *offsets)
+{
+    return drm_create_fb_internal(drm_fd, drm_format, width, height,
+                                  bo_handles, pitches, offsets);
+}
+
 void drm_free_overlay_fb(int drm_fd, drm_overlay_fb *fb)
 {
+    int ret;
+
     if (fb == NULL)
         return;
 
@@ -330,7 +374,9 @@ void drm_free_overlay_fb(int drm_fd, drm_overlay_fb *fb)
         close_gem(drm_fd, fb->bo_id);
     }
 
-    drmModeRmFB(drm_fd, fb->fb_id);
+    ret = drmModeRmFB(drm_fd, fb->fb_id);
+    if (ret < 0)
+        ErrorMsg("Failed to remove framebuffer %s\n", strerror(-ret));
 
     free(fb);
 }

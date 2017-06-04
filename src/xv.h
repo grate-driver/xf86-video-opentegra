@@ -28,10 +28,12 @@
 #define TEGRA_VIDEO_OVERLAY_MAX_WIDTH   4096
 #define TEGRA_VIDEO_OVERLAY_MAX_HEIGHT  4096
 
-#define FOURCC_PASSTHROUGH_YV12   (('1' << 24) + ('2' << 16) + ('V' << 8) + 'Y')
-#define FOURCC_PASSTHROUGH_RGB565 (('1' << 24) + ('B' << 16) + ('G' << 8) + 'R')
-#define FOURCC_PASSTHROUGH_RGB888 (('X' << 24) + ('B' << 16) + ('G' << 8) + 'R')
-#define FOURCC_PASSTHROUGH_BGR888 (('X' << 24) + ('R' << 16) + ('G' << 8) + 'B')
+#define PASSTHROUGH_DATA_SIZE    36
+
+#define FOURCC_PASSTHROUGH_YV12     (('1' << 24) + ('2' << 16) + ('V' << 8) + 'Y')
+#define FOURCC_PASSTHROUGH_RGB565   (('1' << 24) + ('B' << 16) + ('G' << 8) + 'R')
+#define FOURCC_PASSTHROUGH_XRGB8888 (('X' << 24) + ('B' << 16) + ('G' << 8) + 'R')
+#define FOURCC_PASSTHROUGH_XBGR8888 (('X' << 24) + ('R' << 16) + ('G' << 8) + 'B')
 
 #define XVMC_YV12                                   \
 {                                                   \
@@ -89,12 +91,12 @@
     .scanline_order     = XvTopToBottom,            \
 }
 
-#define XVMC_RGB888                                 \
+#define XVMC_XRGB8888                               \
 {                                                   \
-    .id                 = FOURCC_PASSTHROUGH_RGB888,\
+    .id                 = FOURCC_PASSTHROUGH_XRGB8888,\
     .type               = XvRGB,                    \
     .byte_order         = LSBFirst,                 \
-    .guid               = {'P', 'A', 'S', 'S', 'T', 'H', 'R', 'O', 'U', 'G', 'H', 'R', 'G', 'B', '2', '4'}, \
+    .guid               = {'P', 'A', 'S', 'S', 'T', 'H', 'R', 'O', 'U', 'G', 'H', 'R', 'G', 'B', '3', '2'}, \
     .bits_per_pixel     = 32,                       \
     .format             = XvPacked,                 \
     .num_planes         = 1,                        \
@@ -117,12 +119,12 @@
     .scanline_order     = XvTopToBottom,            \
 }
 
-#define XVMC_BGR888                                 \
+#define XVMC_XBGR8888                               \
 {                                                   \
-    .id                 = FOURCC_PASSTHROUGH_BGR888,\
+    .id                 = FOURCC_PASSTHROUGH_XBGR8888,\
     .type               = XvRGB,                    \
     .byte_order         = LSBFirst,                 \
-    .guid               = {'P', 'A', 'S', 'S', 'T', 'H', 'R', 'O', 'U', 'G', 'H', 'B', 'G', 'R', '2', '4'}, \
+    .guid               = {'P', 'A', 'S', 'S', 'T', 'H', 'R', 'O', 'U', 'G', 'H', 'B', 'G', 'R', '3', '2'}, \
     .bits_per_pixel     = 32,                       \
     .format             = XvPacked,                 \
     .num_planes         = 1,                        \
