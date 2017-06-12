@@ -808,7 +808,8 @@ drmmode_output_set_property(xf86OutputPtr output, Atom property,
                 return FALSE;
 
             memcpy(&atom, value->data, 4);
-            name = NameForAtom(atom);
+            if (!(name = NameForAtom(atom)))
+                return FALSE;
 
             /* search for matching name string, then set its value down */
             for (j = 0; j < p->mode_prop->count_enums; j++) {
