@@ -25,44 +25,15 @@
 #ifndef TEGRA_XV_H
 #define TEGRA_XV_H
 
-typedef struct drm_overlay_fb {
-    uint32_t fb_id;
-    uint32_t format;
-    uint32_t width;
-    uint32_t height;
-    union {
-        uint32_t bo_y_id;
-        uint32_t bo_id;
-    };
-    union {
-        void *bo_y_mmap;
-        void *bo_mmap;
-    };
-    uint32_t bo_cb_id;
-    uint32_t bo_cr_id;
-    void *bo_cb_mmap;
-    void *bo_cr_mmap;
-} drm_overlay_fb;
-
-drm_overlay_fb * drm_create_fb(int drm_fd, uint32_t drm_format,
-                               uint32_t width, uint32_t height);
-
-void drm_free_overlay_fb(int drm_fd, drm_overlay_fb *fb);
-
-int drm_get_overlay_plane(int drm_fd, int crtc_pipe, uint32_t format,
-                          uint32_t *plane_id);
-
-int drm_get_primary_plane(int drm_fd, int crtc_pipe, uint32_t *plane_id);
-
-void drm_copy_data_to_fb(drm_overlay_fb *fb, uint8_t *data, int swap);
-
 #define TEGRA_VIDEO_OVERLAY_MAX_WIDTH   4096
 #define TEGRA_VIDEO_OVERLAY_MAX_HEIGHT  4096
 
-#define FOURCC_PASSTHROUGH_YV12   (('1' << 24) + ('2' << 16) + ('V' << 8) + 'Y')
-#define FOURCC_PASSTHROUGH_RGB565 (('1' << 24) + ('B' << 16) + ('G' << 8) + 'R')
-#define FOURCC_PASSTHROUGH_RGB888 (('X' << 24) + ('B' << 16) + ('G' << 8) + 'R')
-#define FOURCC_PASSTHROUGH_BGR888 (('X' << 24) + ('R' << 16) + ('G' << 8) + 'B')
+#define PASSTHROUGH_DATA_SIZE    36
+
+#define FOURCC_PASSTHROUGH_YV12     (('1' << 24) + ('2' << 16) + ('V' << 8) + 'Y')
+#define FOURCC_PASSTHROUGH_RGB565   (('1' << 24) + ('B' << 16) + ('G' << 8) + 'R')
+#define FOURCC_PASSTHROUGH_XRGB8888 (('X' << 24) + ('B' << 16) + ('G' << 8) + 'R')
+#define FOURCC_PASSTHROUGH_XBGR8888 (('X' << 24) + ('R' << 16) + ('G' << 8) + 'B')
 
 #define XVMC_YV12                                   \
 {                                                   \
@@ -120,12 +91,12 @@ void drm_copy_data_to_fb(drm_overlay_fb *fb, uint8_t *data, int swap);
     .scanline_order     = XvTopToBottom,            \
 }
 
-#define XVMC_RGB888                                 \
+#define XVMC_XRGB8888                               \
 {                                                   \
-    .id                 = FOURCC_PASSTHROUGH_RGB888,\
+    .id                 = FOURCC_PASSTHROUGH_XRGB8888,\
     .type               = XvRGB,                    \
     .byte_order         = LSBFirst,                 \
-    .guid               = {'P', 'A', 'S', 'S', 'T', 'H', 'R', 'O', 'U', 'G', 'H', 'R', 'G', 'B', '2', '4'}, \
+    .guid               = {'P', 'A', 'S', 'S', 'T', 'H', 'R', 'O', 'U', 'G', 'H', 'R', 'G', 'B', '3', '2'}, \
     .bits_per_pixel     = 32,                       \
     .format             = XvPacked,                 \
     .num_planes         = 1,                        \
@@ -148,12 +119,12 @@ void drm_copy_data_to_fb(drm_overlay_fb *fb, uint8_t *data, int swap);
     .scanline_order     = XvTopToBottom,            \
 }
 
-#define XVMC_BGR888                                 \
+#define XVMC_XBGR8888                               \
 {                                                   \
-    .id                 = FOURCC_PASSTHROUGH_BGR888,\
+    .id                 = FOURCC_PASSTHROUGH_XBGR8888,\
     .type               = XvRGB,                    \
     .byte_order         = LSBFirst,                 \
-    .guid               = {'P', 'A', 'S', 'S', 'T', 'H', 'R', 'O', 'U', 'G', 'H', 'B', 'G', 'R', '2', '4'}, \
+    .guid               = {'P', 'A', 'S', 'S', 'T', 'H', 'R', 'O', 'U', 'G', 'H', 'B', 'G', 'R', '3', '2'}, \
     .bits_per_pixel     = 32,                       \
     .format             = XvPacked,                 \
     .num_planes         = 1,                        \

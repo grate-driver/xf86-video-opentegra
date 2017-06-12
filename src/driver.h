@@ -94,6 +94,7 @@
 #include "compat-api.h"
 #include "drmmode_display.h"
 #include "dri2.h"
+#include "drm_plane.h"
 #include "tegra_stream.h"
 #include "exa.h"
 #include "host1x.h"
