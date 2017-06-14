@@ -66,6 +66,7 @@
 #include <xorg/compiler.h>
 #include <xorg/cursorstr.h>
 #include <xorg/damage.h>
+#include <xorg/dri2.h>
 #include <xorg/exa.h>
 #include <xorg/fb.h>
 #include <xorg/fourcc.h>
@@ -93,7 +94,6 @@
 #include "common_helpers.h"
 #include "compat-api.h"
 #include "drmmode_display.h"
-#include "dri2.h"
 #include "drm_plane.h"
 #include "tegra_stream.h"
 #include "exa.h"
