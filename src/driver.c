@@ -386,7 +386,7 @@ TegraPreInit(ScrnInfoPtr pScrn, int flags)
 #endif
     drmmode_get_default_bpp(pScrn, &tegra->drmmode, &defaultdepth, &defaultbpp);
     if (defaultdepth == 24 && defaultbpp == 24)
-	    bppflags = SupportConvert32to24 | Support24bppFb;
+        bppflags = SupportConvert32to24 | Support24bppFb;
     else
         bppflags = PreferConvert24to32 | SupportConvert24to32 | Support32bppFb;
 
@@ -436,11 +436,11 @@ TegraPreInit(ScrnInfoPtr pScrn, int flags)
     tegra->cursor_height = 64;
     ret = drmGetCap(tegra->fd, DRM_CAP_CURSOR_WIDTH, &value);
     if (!ret) {
-	tegra->cursor_width = value;
+        tegra->cursor_width = value;
     }
     ret = drmGetCap(tegra->fd, DRM_CAP_CURSOR_HEIGHT, &value);
     if (!ret) {
-	tegra->cursor_height = value;
+        tegra->cursor_height = value;
     }
 
 
@@ -477,7 +477,7 @@ TegraPreInit(ScrnInfoPtr pScrn, int flags)
     /* Load the required sub modules */
     if (!xf86LoadSubModule(pScrn, "dri2") ||
         !xf86LoadSubModule(pScrn, "fb") ||
-	!xf86LoadSubModule(pScrn, "exa"))
+        !xf86LoadSubModule(pScrn, "exa"))
         return FALSE;
 
     if (tegra->drmmode.shadow_enable) {
