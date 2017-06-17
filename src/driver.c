@@ -171,7 +171,7 @@ FreeRec(ScrnInfoPtr pScrn)
         return;
     pScrn->driverPrivate = NULL;
 
-    if (tegra->fd > 0)
+    if (tegra->fd >= 0)
 #ifdef XF86_PDEV_SERVER_FD
         if (!(tegra->pEnt->location.type == BUS_PLATFORM &&
               (tegra->pEnt->location.id.plat->flags & XF86_PDEV_SERVER_FD)))
@@ -222,12 +222,11 @@ TegraOpenHardware(const char *dev)
     else {
         dev = getenv("KMSDEVICE");
         if ((dev == NULL) || ((fd = open(dev, O_RDWR, 0)) == -1)) {
-            dev = "/dev/dri/card0";
-            fd = open(dev,O_RDWR, 0);
+            fd = drmOpen("tegra", NULL);
         }
     }
 
-    if (fd == -1)
+    if (fd < 0)
         xf86DrvMsg(-1, X_ERROR, "open %s: %s\n", dev, strerror(errno));
 
     return fd;
@@ -248,7 +247,7 @@ TegraProbeHardware(const char *dev, struct xf86_platform_device *platform_dev)
 #endif
 
     fd = TegraOpenHardware(dev);
-    if (fd != -1) {
+    if (fd >= 0) {
         close(fd);
         return TRUE;
     }
