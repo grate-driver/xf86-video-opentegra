@@ -346,6 +346,9 @@ drmmode_set_cursor(xf86CrtcPtr crtc)
         xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(crtc->scrn);
         CursorPtr cursor = xf86_config->cursor;
 
+        if (cursor == NullCursor)
+            return TRUE;
+
         ret =
             drmModeSetCursor2(drmmode->fd, drmmode_crtc->mode_crtc->crtc_id,
                               handle, tegra->cursor_width, tegra->cursor_height,
