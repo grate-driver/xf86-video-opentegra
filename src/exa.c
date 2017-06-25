@@ -60,14 +60,17 @@ static inline unsigned int TegraEXAPitch(unsigned int width, unsigned int bpp)
 
 static int TegraEXAMarkSync(ScreenPtr pScreen)
 {
-    /* TODO: implement */
+    ScrnInfoPtr pScrn = xf86ScreenToScrn(pScreen);
+    TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
 
-    return 0;
+    /* yes, we are converting pointer to integer, it is fine on ARM */
+    return (intptr_t) ((void *) tegra_stream_get_fence(&tegra->cmds));
 }
 
 static void TegraEXAWaitMarker(ScreenPtr pScreen, int marker)
 {
-    /* TODO: implement */
+    struct drm_tegra_fence *fence = (void *) marker;
+    tegra_stream_put_fence(fence);
 }
 
 static Bool TegraEXAPrepareAccess(PixmapPtr pPix, int idx)
@@ -259,8 +262,10 @@ static Bool TegraEXAPrepareSolid(PixmapPtr pPixmap, int op, Pixel planemask,
     tegra_stream_push(&tegra->cmds, HOST1X_OPCODE_NONINCR(0x46, 1));
     tegra_stream_push(&tegra->cmds, 0); /* non-tiled */
 
-    if (tegra->cmds.status != TEGRADRM_STREAM_CONSTRUCT)
-            return FALSE;
+    if (tegra->cmds.status != TEGRADRM_STREAM_CONSTRUCT) {
+        tegra_stream_cleanup(&tegra->cmds);
+        return FALSE;
+    }
 
     return TRUE;
 }
@@ -282,7 +287,7 @@ static void TegraEXADoneSolid(PixmapPtr pPixmap)
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
 
     tegra_stream_end(&tegra->cmds);
-    tegra_stream_flush(&tegra->cmds);
+    tegra_stream_submit(&tegra->cmds);
 }
 
 static Bool TegraEXAPrepareCopy(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
@@ -349,8 +354,10 @@ static Bool TegraEXAPrepareCopy(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
     tegra_stream_push(&tegra->cmds,
                       exaGetPixmapPitch(pSrcPixmap)); /* srcst */
 
-    if (tegra->cmds.status != TEGRADRM_STREAM_CONSTRUCT)
-            return FALSE;
+    if (tegra->cmds.status != TEGRADRM_STREAM_CONSTRUCT) {
+        tegra_stream_cleanup(&tegra->cmds);
+        return FALSE;
+    }
 
     return TRUE;
 }
@@ -397,7 +404,7 @@ static void TegraEXADoneCopy(PixmapPtr pDstPixmap)
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
 
     tegra_stream_end(&tegra->cmds);
-    tegra_stream_flush(&tegra->cmds);
+    tegra_stream_submit(&tegra->cmds);
 }
 
 static Bool TegraEXACheckComposite(int op, PicturePtr pSrcPicture,

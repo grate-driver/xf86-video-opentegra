@@ -67,7 +67,23 @@ void tegra_stream_destroy(struct tegra_stream *stream)
     if (!stream)
         return;
 
+    drm_tegra_fence_free(stream->fence);
     drm_tegra_job_free(stream->job);
+}
+
+int tegra_stream_cleanup(struct tegra_stream *stream)
+{
+    if (!stream)
+        return -1;
+
+    drm_tegra_fence_free(stream->fence);
+    drm_tegra_job_free(stream->job);
+
+    stream->job = NULL;
+    stream->fence = NULL;
+    stream->status = TEGRADRM_STREAM_FREE;
+
+    return 0;
 }
 
 /*
@@ -86,6 +102,13 @@ int tegra_stream_flush(struct tegra_stream *stream)
 
     if (!stream)
         return -1;
+
+    /* Flush previously submitted async job if any */
+    if (stream->fence) {
+        drm_tegra_fence_wait_timeout(stream->fence, 1000);
+        drm_tegra_fence_free(stream->fence);
+        stream->fence = NULL;
+    }
 
     /* Reflushing is fine */
     if (stream->status == TEGRADRM_STREAM_FREE)
@@ -113,12 +136,69 @@ int tegra_stream_flush(struct tegra_stream *stream)
     drm_tegra_fence_free(fence);
 
 cleanup:
+    tegra_stream_cleanup(stream);
+
+    return result;
+}
+
+int tegra_stream_submit(struct tegra_stream *stream)
+{
+    int result = 0;
+
+    if (!stream)
+        return -1;
+
+    /* Destroy previously submitted, but unused jobs fence */
+    drm_tegra_fence_free(stream->fence);
+    stream->fence = NULL;
+
+    /* Resubmitting is fine */
+    if (stream->status == TEGRADRM_STREAM_FREE)
+        return 0;
+
+    /* Return error if stream is constructed badly */
+    if (stream->status != TEGRADRM_STREAM_READY) {
+        result = -1;
+        goto cleanup;
+    }
+
+    result = drm_tegra_job_submit(stream->job, &stream->fence);
+    if (result != 0) {
+        ErrorMsg("drm_tegra_job_submit() failed %d\n", result);
+        result = -1;
+    }
+
+cleanup:
     drm_tegra_job_free(stream->job);
 
     stream->job = NULL;
     stream->status = TEGRADRM_STREAM_FREE;
 
     return result;
+}
+
+struct drm_tegra_fence * tegra_stream_get_fence(struct tegra_stream *stream)
+{
+    struct drm_tegra_fence *fence;
+
+    if (!stream)
+        return NULL;
+
+    fence = stream->fence;
+    /* this fence isn't ours anymore */
+    stream->fence = NULL;
+
+    return fence;
+}
+
+void tegra_stream_put_fence(struct drm_tegra_fence *fence)
+{
+    int result = drm_tegra_fence_wait_timeout(fence, 1000);
+    if (result != 0) {
+        ErrorMsg("drm_tegra_fence_wait_timeout() failed %d\n", result);
+    }
+
+    drm_tegra_fence_free(fence);
 }
 
 /*
