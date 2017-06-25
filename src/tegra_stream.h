@@ -69,6 +69,7 @@ int tegra_stream_create(struct drm_tegra *drm,
 void tegra_stream_destroy(struct tegra_stream *stream);
 int tegra_stream_begin(struct tegra_stream *stream);
 int tegra_stream_end(struct tegra_stream *stream);
+int tegra_stream_cleanup(struct tegra_stream *stream);
 int tegra_stream_flush(struct tegra_stream *stream);
 int tegra_stream_submit(struct tegra_stream *stream);
 struct drm_tegra_fence * tegra_stream_get_fence(struct tegra_stream *stream);

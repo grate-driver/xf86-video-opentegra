@@ -262,8 +262,10 @@ static Bool TegraEXAPrepareSolid(PixmapPtr pPixmap, int op, Pixel planemask,
     tegra_stream_push(&tegra->cmds, HOST1X_OPCODE_NONINCR(0x46, 1));
     tegra_stream_push(&tegra->cmds, 0); /* non-tiled */
 
-    if (tegra->cmds.status != TEGRADRM_STREAM_CONSTRUCT)
-            return FALSE;
+    if (tegra->cmds.status != TEGRADRM_STREAM_CONSTRUCT) {
+        tegra_stream_cleanup(&tegra->cmds);
+        return FALSE;
+    }
 
     return TRUE;
 }
@@ -352,8 +354,10 @@ static Bool TegraEXAPrepareCopy(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
     tegra_stream_push(&tegra->cmds,
                       exaGetPixmapPitch(pSrcPixmap)); /* srcst */
 
-    if (tegra->cmds.status != TEGRADRM_STREAM_CONSTRUCT)
-            return FALSE;
+    if (tegra->cmds.status != TEGRADRM_STREAM_CONSTRUCT) {
+        tegra_stream_cleanup(&tegra->cmds);
+        return FALSE;
+    }
 
     return TRUE;
 }
