@@ -70,6 +70,21 @@ void tegra_stream_destroy(struct tegra_stream *stream)
     drm_tegra_job_free(stream->job);
 }
 
+int tegra_stream_cleanup(struct tegra_stream *stream)
+{
+    if (!stream)
+        return -1;
+
+    drm_tegra_fence_free(stream->fence);
+    drm_tegra_job_free(stream->job);
+
+    stream->job = NULL;
+    stream->fence = NULL;
+    stream->status = TEGRADRM_STREAM_FREE;
+
+    return 0;
+}
+
 /*
  * tegra_stream_flush(stream, fence)
  *
@@ -113,10 +128,7 @@ int tegra_stream_flush(struct tegra_stream *stream)
     drm_tegra_fence_free(fence);
 
 cleanup:
-    drm_tegra_job_free(stream->job);
-
-    stream->job = NULL;
-    stream->status = TEGRADRM_STREAM_FREE;
+    tegra_stream_cleanup(stream);
 
     return result;
 }
