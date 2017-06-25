@@ -47,6 +47,7 @@ struct tegra_stream {
 
     struct drm_tegra_job *job;
     struct drm_tegra_channel *channel;
+    struct drm_tegra_fence *fence;
 
     struct tegra_command_buffer buffer;
     int num_words;
@@ -69,6 +70,9 @@ void tegra_stream_destroy(struct tegra_stream *stream);
 int tegra_stream_begin(struct tegra_stream *stream);
 int tegra_stream_end(struct tegra_stream *stream);
 int tegra_stream_flush(struct tegra_stream *stream);
+int tegra_stream_submit(struct tegra_stream *stream);
+struct drm_tegra_fence * tegra_stream_get_fence(struct tegra_stream *stream);
+void tegra_stream_put_fence(struct drm_tegra_fence *fence);
 int tegra_stream_push(struct tegra_stream *stream, uint32_t word);
 int tegra_stream_push_setclass(struct tegra_stream *stream, unsigned class_id);
 int tegra_stream_push_reloc(struct tegra_stream *stream,

@@ -60,14 +60,17 @@ static inline unsigned int TegraEXAPitch(unsigned int width, unsigned int bpp)
 
 static int TegraEXAMarkSync(ScreenPtr pScreen)
 {
-    /* TODO: implement */
+    ScrnInfoPtr pScrn = xf86ScreenToScrn(pScreen);
+    TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
 
-    return 0;
+    /* yes, we are converting pointer to integer, it is fine on ARM */
+    return (intptr_t) ((void *) tegra_stream_get_fence(&tegra->cmds));
 }
 
 static void TegraEXAWaitMarker(ScreenPtr pScreen, int marker)
 {
-    /* TODO: implement */
+    struct drm_tegra_fence *fence = (void *) marker;
+    tegra_stream_put_fence(fence);
 }
 
 static Bool TegraEXAPrepareAccess(PixmapPtr pPix, int idx)
@@ -282,7 +285,7 @@ static void TegraEXADoneSolid(PixmapPtr pPixmap)
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
 
     tegra_stream_end(&tegra->cmds);
-    tegra_stream_flush(&tegra->cmds);
+    tegra_stream_submit(&tegra->cmds);
 }
 
 static Bool TegraEXAPrepareCopy(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
@@ -397,7 +400,7 @@ static void TegraEXADoneCopy(PixmapPtr pDstPixmap)
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
 
     tegra_stream_end(&tegra->cmds);
-    tegra_stream_flush(&tegra->cmds);
+    tegra_stream_submit(&tegra->cmds);
 }
 
 static Bool TegraEXACheckComposite(int op, PicturePtr pSrcPicture,
