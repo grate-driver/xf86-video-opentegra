@@ -273,6 +273,7 @@ static void TegraEXASolid(PixmapPtr pPixmap,
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pPixmap->drawable.pScreen);
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
 
+    tegra_stream_prep(&tegra->cmds, 3);
     tegra_stream_push(&tegra->cmds, HOST1X_OPCODE_MASK(0x38, 0x5));
     tegra_stream_push(&tegra->cmds, (py2 - py1) << 16 | (px2 - px1));
     tegra_stream_push(&tegra->cmds, py1 << 16 | px1);
@@ -386,6 +387,7 @@ static void TegraEXACopy(PixmapPtr pDstPixmap, int srcX, int srcY, int dstX,
         dstY += height - 1;
     }
 
+    tegra_stream_prep(&tegra->cmds, 7);
     tegra_stream_push(&tegra->cmds, HOST1X_OPCODE_INCR(0x01f, 1));
     tegra_stream_push(&tegra->cmds, controlmain);
     tegra_stream_push(&tegra->cmds, HOST1X_OPCODE_INCR(0x37, 0x4));
