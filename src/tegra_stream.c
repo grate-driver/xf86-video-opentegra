@@ -70,6 +70,21 @@ void tegra_stream_destroy(struct tegra_stream *stream)
     drm_tegra_job_free(stream->job);
 }
 
+int tegra_stream_cleanup(struct tegra_stream *stream)
+{
+    if (!stream)
+        return -1;
+
+    drm_tegra_fence_free(stream->fence);
+    drm_tegra_job_free(stream->job);
+
+    stream->job = NULL;
+    stream->fence = NULL;
+    stream->status = TEGRADRM_STREAM_FREE;
+
+    return 0;
+}
+
 /*
  * tegra_stream_flush(stream, fence)
  *
@@ -113,10 +128,7 @@ int tegra_stream_flush(struct tegra_stream *stream)
     drm_tegra_fence_free(fence);
 
 cleanup:
-    drm_tegra_job_free(stream->job);
-
-    stream->job = NULL;
-    stream->status = TEGRADRM_STREAM_FREE;
+    tegra_stream_cleanup(stream);
 
     return result;
 }
@@ -212,17 +224,8 @@ int tegra_stream_push_reloc(struct tegra_stream *stream,
 
 int tegra_stream_push(struct tegra_stream *stream, uint32_t word)
 {
-    int ret;
-
     if (!(stream && stream->status == TEGRADRM_STREAM_CONSTRUCT)) {
         ErrorMsg("Stream status isn't CONSTRUCT\n");
-        return -1;
-    }
-
-    ret = drm_tegra_pushbuf_prepare(stream->buffer.pushbuf, 1);
-    if (ret != 0) {
-        stream->status = TEGRADRM_STREAM_CONSTRUCTION_FAILED;
-        ErrorMsg("drm_tegra_pushbuf_prepare() failed %d\n", ret);
         return -1;
     }
 
@@ -356,4 +359,23 @@ int tegra_stream_push_words(struct tegra_stream *stream, const void *addr,
     stream->buffer.pushbuf->ptr = pushbuf_ptr + words;
 
     return ret ? -1 : 0;
+}
+
+int tegra_stream_prep(struct tegra_stream *stream, uint32_t words)
+{
+    int ret;
+
+    if (!(stream && stream->status == TEGRADRM_STREAM_CONSTRUCT)) {
+        ErrorMsg("Stream status isn't CONSTRUCT\n");
+        return -1;
+    }
+
+    ret = drm_tegra_pushbuf_prepare(stream->buffer.pushbuf, words);
+    if (ret != 0) {
+        stream->status = TEGRADRM_STREAM_CONSTRUCTION_FAILED;
+        ErrorMsg("drm_tegra_pushbuf_prepare() failed %d\n", ret);
+        return -1;
+    }
+
+    return 0;
 }
