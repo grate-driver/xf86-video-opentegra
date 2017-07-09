@@ -28,6 +28,7 @@
 #ifndef TEGRA_STREAM_H_
 #define TEGRA_STREAM_H_
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <libdrm/tegra.h>
 
@@ -51,6 +52,8 @@ struct tegra_stream {
     struct tegra_command_buffer buffer;
     int num_words;
     uint32_t class_id;
+
+    bool op_done_synced;
 };
 
 struct tegra_reloc {
@@ -79,5 +82,7 @@ struct tegra_reloc tegra_reloc(const void *var_ptr, struct drm_tegra_bo *bo,
 int tegra_stream_push_words(struct tegra_stream *stream, const void *addr,
                             unsigned words, int num_relocs, ...);
 int tegra_stream_prep(struct tegra_stream *stream, uint32_t words);
+int tegra_stream_sync(struct tegra_stream *stream,
+                      enum drm_tegra_syncpt_cond cond);
 
 #endif
