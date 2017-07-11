@@ -75,11 +75,9 @@ int tegra_stream_cleanup(struct tegra_stream *stream)
     if (!stream)
         return -1;
 
-    drm_tegra_fence_free(stream->fence);
     drm_tegra_job_free(stream->job);
 
     stream->job = NULL;
-    stream->fence = NULL;
     stream->status = TEGRADRM_STREAM_FREE;
 
     return 0;
