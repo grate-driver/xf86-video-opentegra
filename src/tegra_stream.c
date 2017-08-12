@@ -182,6 +182,7 @@ int tegra_stream_begin(struct tegra_stream *stream)
 
     stream->class_id = 0;
     stream->status = TEGRADRM_STREAM_CONSTRUCT;
+    stream->op_done_synced = false;
 
     return 0;
 }
@@ -228,6 +229,7 @@ int tegra_stream_push(struct tegra_stream *stream, uint32_t word)
     }
 
     *stream->buffer.pushbuf->ptr++ = word;
+    stream->op_done_synced = false;
 
     return 0;
 }
@@ -270,6 +272,9 @@ int tegra_stream_end(struct tegra_stream *stream)
         return -1;
     }
 
+    if (stream->op_done_synced)
+        goto ready;
+
     ret = drm_tegra_pushbuf_sync(stream->buffer.pushbuf,
                                  DRM_TEGRA_SYNCPT_COND_OP_DONE);
     if (ret != 0) {
@@ -278,7 +283,9 @@ int tegra_stream_end(struct tegra_stream *stream)
         return -1;
     }
 
+ready:
     stream->status = TEGRADRM_STREAM_READY;
+    stream->op_done_synced = false;
 
     return 0;
 }
@@ -374,6 +381,29 @@ int tegra_stream_prep(struct tegra_stream *stream, uint32_t words)
         ErrorMsg("drm_tegra_pushbuf_prepare() failed %d\n", ret);
         return -1;
     }
+
+    return 0;
+}
+
+int tegra_stream_sync(struct tegra_stream *stream,
+                      enum drm_tegra_syncpt_cond cond)
+{
+    int ret;
+
+    if (!(stream && stream->status == TEGRADRM_STREAM_CONSTRUCT)) {
+        ErrorMsg("Stream status isn't CONSTRUCT\n");
+        return -1;
+    }
+
+    ret = drm_tegra_pushbuf_sync(stream->buffer.pushbuf, cond);
+    if (ret != 0) {
+        stream->status = TEGRADRM_STREAM_CONSTRUCTION_FAILED;
+        ErrorMsg("drm_tegra_pushbuf_sync() failed %d\n", ret);
+        return -1;
+    }
+
+    if (cond == DRM_TEGRA_SYNCPT_COND_OP_DONE)
+        stream->op_done_synced = true;
 
     return 0;
 }

@@ -277,6 +277,7 @@ static void TegraEXASolid(PixmapPtr pPixmap,
     tegra_stream_push(&tegra->cmds, HOST1X_OPCODE_MASK(0x38, 0x5));
     tegra_stream_push(&tegra->cmds, (py2 - py1) << 16 | (px2 - px1));
     tegra_stream_push(&tegra->cmds, py1 << 16 | px1);
+    tegra_stream_sync(&tegra->cmds, DRM_TEGRA_SYNCPT_COND_OP_DONE);
 }
 
 static void TegraEXADoneSolid(PixmapPtr pPixmap)
@@ -395,6 +396,7 @@ static void TegraEXACopy(PixmapPtr pDstPixmap, int srcX, int srcY, int dstX,
     tegra_stream_push(&tegra->cmds, height << 16 | width); /* dstsize */
     tegra_stream_push(&tegra->cmds, srcY << 16 | srcX); /* srcps */
     tegra_stream_push(&tegra->cmds, dstY << 16 | dstX); /* dstps */
+    tegra_stream_sync(&tegra->cmds, DRM_TEGRA_SYNCPT_COND_OP_DONE);
 }
 
 static void TegraEXADoneCopy(PixmapPtr pDstPixmap)
