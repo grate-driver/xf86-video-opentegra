@@ -492,6 +492,120 @@ drmmode_set_scanout_pixmap(xf86CrtcPtr crtc, PixmapPtr ppix)
 }
 #endif
 
+static void *
+drmmode_shadow_allocate(xf86CrtcPtr crtc, int width, int height)
+{
+    TegraPtr tegra = TegraPTR(crtc->scrn);
+    drmmode_crtc_private_ptr drmmode_crtc = crtc->driver_private;
+    drmmode_ptr drmmode = drmmode_crtc->drmmode;
+    int ret;
+
+    drmmode_crtc->rotate_bo = dumb_bo_create(tegra->drm, width, height,
+                                             crtc->scrn->bitsPerPixel);
+    if (!drmmode_crtc->rotate_bo) {
+        xf86DrvMsg(crtc->scrn->scrnIndex, X_ERROR,
+               "Couldn't allocate shadow memory for rotated CRTC\n");
+        return NULL;
+    }
+
+    ret = drmModeAddFB(drmmode->fd, width, height, crtc->scrn->depth,
+                       crtc->scrn->bitsPerPixel,
+                       drmmode_crtc->rotate_bo->pitch,
+                       drmmode_crtc->rotate_bo->handle,
+                       &drmmode_crtc->rotate_fb_id);
+
+    if (ret) {
+        ErrorF("failed to add rotate fb\n");
+        dumb_bo_destroy(drmmode_crtc->rotate_bo);
+        return NULL;
+    }
+
+    return drmmode_crtc->rotate_bo;
+}
+
+static PixmapPtr
+drmmode_create_pixmap_header(ScreenPtr pScreen, int width, int height,
+                             int depth, int bitsPerPixel, int devKind,
+                             void *pPixData)
+{
+    PixmapPtr pixmap;
+
+    /* width and height of 0 means don't allocate any pixmap data */
+    pixmap = (*pScreen->CreatePixmap)(pScreen, 0, 0, depth, 0);
+
+    if (pixmap) {
+        if ((*pScreen->ModifyPixmapHeader)(pixmap, width, height, depth,
+                                           bitsPerPixel, devKind, pPixData))
+            return pixmap;
+        (*pScreen->DestroyPixmap)(pixmap);
+    }
+    return NullPixmap;
+}
+
+static PixmapPtr
+drmmode_shadow_create(xf86CrtcPtr crtc, void *data, int width, int height)
+{
+    ScrnInfoPtr scrn = crtc->scrn;
+    drmmode_crtc_private_ptr drmmode_crtc = crtc->driver_private;
+    drmmode_ptr drmmode = drmmode_crtc->drmmode;
+    uint32_t rotate_pitch;
+    PixmapPtr rotate_pixmap;
+    void *pPixData = NULL;
+
+    if (!data) {
+        data = drmmode_shadow_allocate(crtc, width, height);
+        if (!data) {
+            xf86DrvMsg(scrn->scrnIndex, X_ERROR,
+                       "Couldn't allocate shadow pixmap for rotated CRTC\n");
+            return NULL;
+        }
+    }
+
+    if (!drmmode_crtc->rotate_bo) {
+        xf86DrvMsg(scrn->scrnIndex, X_ERROR,
+                   "Couldn't allocate shadow pixmap for rotated CRTC\n");
+        return NULL;
+    }
+
+    dumb_bo_map(drmmode->fd, drmmode_crtc->rotate_bo);
+
+    pPixData = drmmode_crtc->rotate_bo->ptr;
+    rotate_pitch = drmmode_crtc->rotate_bo->pitch,
+
+    rotate_pixmap = drmmode_create_pixmap_header(scrn->pScreen,
+                                                 width, height,
+                                                 scrn->depth,
+                                                 scrn->bitsPerPixel,
+                                                 rotate_pitch,
+                                                 pPixData);
+
+    if (rotate_pixmap == NULL) {
+        xf86DrvMsg(scrn->scrnIndex, X_ERROR,
+                   "Couldn't allocate shadow pixmap for rotated CRTC\n");
+        return NULL;
+    }
+
+    return rotate_pixmap;
+}
+
+static void
+drmmode_shadow_destroy(xf86CrtcPtr crtc, PixmapPtr rotate_pixmap, void *data)
+{
+    drmmode_crtc_private_ptr drmmode_crtc = crtc->driver_private;
+    drmmode_ptr drmmode = drmmode_crtc->drmmode;
+
+    if (rotate_pixmap)
+        rotate_pixmap->drawable.pScreen->DestroyPixmap(rotate_pixmap);
+
+    if (data) {
+        drmModeRmFB(drmmode->fd, drmmode_crtc->rotate_fb_id);
+        drmmode_crtc->rotate_fb_id = 0;
+
+        dumb_bo_destroy(drmmode_crtc->rotate_bo);
+        drmmode_crtc->rotate_bo = NULL;
+    }
+}
+
 static const xf86CrtcFuncsRec drmmode_crtc_funcs = {
     .dpms = drmmode_crtc_dpms,
     .set_mode_major = drmmode_set_mode_major,
@@ -509,6 +623,9 @@ static const xf86CrtcFuncsRec drmmode_crtc_funcs = {
 #ifdef TEGRA_OUTPUT_SLAVE_SUPPORT
     .set_scanout_pixmap = drmmode_set_scanout_pixmap,
 #endif
+    .shadow_allocate = drmmode_shadow_allocate,
+    .shadow_create = drmmode_shadow_create,
+    .shadow_destroy = drmmode_shadow_destroy,
 };
 
 static void

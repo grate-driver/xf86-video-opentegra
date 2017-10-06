@@ -74,9 +74,12 @@ typedef struct {
     int hw_id;
     struct dumb_bo *cursor_bo;
     Bool cursor_up;
-    unsigned rotate_fb_id;
     uint16_t lut_r[256], lut_g[256], lut_b[256];
     DamagePtr slave_damage;
+
+    struct dumb_bo *rotate_bo;
+    unsigned rotate_fb_id;
+
     /**
      * @{ MSC (vblank count) handling for the PRESENT extension.
      *
