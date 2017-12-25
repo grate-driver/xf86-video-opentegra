@@ -161,29 +161,6 @@ static uint32_t xv_fourcc_to_drm(int format_id)
     return 0xFFFFFFFF;
 }
 
-static void TegraVideoVSync(TegraVideoPtr priv, ScrnInfoPtr scrn, int id)
-{
-    TegraOverlayPtr overlay = &priv->overlay[id];
-    TegraPtr tegra          = TegraPTR(scrn);
-    int ret;
-
-    drmVBlank vblank = {
-        .request = {
-            .type = DRM_VBLANK_RELATIVE,
-            .sequence = 1,
-        },
-    };
-
-    if (!overlay->ready)
-        return;
-
-    vblank.request.type |= id << DRM_VBLANK_HIGH_CRTC_SHIFT,
-
-    ret = drmWaitVBlank(tegra->fd, &vblank);
-    if (ret < 0)
-        ErrorMsg("DRM VBlank failed: %s\n", strerror(-ret));
-}
-
 static void TegraVideoOverlayShow(TegraVideoPtr priv,
                                   ScrnInfoPtr scrn,
                                   int overlay_id,
@@ -488,8 +465,6 @@ static int TegraVideoOverlayPutImage(ScrnInfoPtr scrn,
     TegraVideoPtr priv = data;
     Bool visible       = FALSE;
     Bool passthrough   = FALSE;
-    int best_coverage  = 0;
-    int best_id        = 0;
     int coverage;
     int id;
 
@@ -519,18 +494,10 @@ static int TegraVideoOverlayPutImage(ScrnInfoPtr scrn,
             TegraVideoOverlayClose(priv, scrn, id);
         else
             visible = TRUE;
-
-        if (coverage > best_coverage) {
-            best_coverage = coverage;
-            best_id = id;
-        }
     }
 
     if (!visible)
         return Success;
-
-    if (vblankSync)
-        TegraVideoVSync(priv, scrn, best_id);
 
     if (!passthrough)
         drm_copy_data_to_fb(priv->fb, buf, format == FOURCC_I420);
