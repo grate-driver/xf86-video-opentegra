@@ -180,6 +180,8 @@ tegra_dri2_create_buffer(DrawablePtr drawable, unsigned int attachment,
         return NULL;
     }
 
+    drm_tegra_bo_forbid_caching(tegra->bo);
+
     buffer->pitch = pixmap->devKind;
     buffer->driverPrivate = private;
     private->refcnt = 1;
