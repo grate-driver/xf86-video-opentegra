@@ -24,11 +24,13 @@
 # _ladir passes a dummy rpath to libtool so the thing will actually link
 # TODO: -nostdlib/-Bstatic/-lgcc platform magic, not installing the .a, etc.
 
+SUBDIRS = TLSF
+
 AM_CFLAGS = $(XORG_CFLAGS) $(DRM_CFLAGS) $(UDEV_CFLAGS) $(CWARNFLAGS)
 
 opentegra_drv_la_LTLIBRARIES = opentegra_drv.la
 opentegra_drv_la_LDFLAGS = -module -avoid-version
-opentegra_drv_la_LIBADD = @UDEV_LIBS@ @DRM_LIBS@
+opentegra_drv_la_LIBADD = @UDEV_LIBS@ @DRM_LIBS@ TLSF/libtlsf.la
 opentegra_drv_ladir = @moduledir@/drivers
 
 # enable fp16 for the 3d attributes

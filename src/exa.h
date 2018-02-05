@@ -46,11 +46,19 @@ typedef struct tegra_exa_scratch {
     unsigned ops;
 } TegraEXAScratch, *TegraEXAScratchPtr;
 
+typedef struct {
+    struct xorg_list entry;
+    struct drm_tegra_bo *bo;
+    unsigned int alloc_cnt;
+    void *ptr;
+} TegraPixmapPool, *TegraPixmapPoolPtr;
+
 typedef struct _TegraEXARec{
     struct drm_tegra_channel *gr2d;
     struct drm_tegra_channel *gr3d;
     struct tegra_stream cmds;
     TegraEXAScratch scratch;
+    struct xorg_list mem_pools;
 
     ExaDriverPtr driver;
 } *TegraEXAPtr;
@@ -59,7 +67,12 @@ typedef struct {
     struct tegra_fence *fence;
     struct drm_tegra_bo *bo;
     void *fallback;
+    void *pool_ptr;
     Bool dri;
+
+    TegraPixmapPoolPtr  pool;
+    unsigned long       pool_offset;
+    unsigned int        pool_align;
 } TegraPixmapRec, *TegraPixmapPtr;
 
 unsigned int TegraEXAPitch(unsigned int width, unsigned int height,
