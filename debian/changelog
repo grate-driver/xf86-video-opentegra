@@ -1,0 +1,5 @@
+xserver-xorg-video-opentegra (9999-grate0) xenial; urgency=medium
+
+  * Initial release
+
+ -- Dmitry Osipenko <digetx@gmail.com>  Fri, 12 Jan 2018 13:45:31 +0000
