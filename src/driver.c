@@ -237,7 +237,7 @@ TegraProbeHardware(const char *dev, struct xf86_platform_device *platform_dev)
 {
     int fd;
 
-#if XSERVER_PLATFORM_BUS
+#ifdef XSERVER_PLATFORM_BUS
 #ifdef XF86_PDEV_SERVER_FD
     if (platform_dev && (platform_dev->flags & XF86_PDEV_SERVER_FD)) {
         fd = xf86_get_platform_device_int_attrib(platform_dev, ODEV_ATTRIB_FD, -1);
