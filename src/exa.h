@@ -27,9 +27,14 @@
 
 #define TEGRA_DRI_USAGE_HINT ('D' << 16 | 'R' << 8 | 'I')
 
+typedef struct tegra_exa_scratch {
+    unsigned ops;
+} TegraEXAScratch, *TegraEXAScratchPtr;
+
 typedef struct _TegraEXARec{
     struct drm_tegra_channel *gr2d;
     struct tegra_stream cmds;
+    TegraEXAScratch scratch;
 
     ExaDriverPtr driver;
 } *TegraEXAPtr;

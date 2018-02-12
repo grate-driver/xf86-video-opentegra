@@ -265,6 +265,8 @@ static Bool TegraEXAPrepareSolid(PixmapPtr pPixmap, int op, Pixel planemask,
         return FALSE;
     }
 
+    tegra->scratch.ops = 0;
+
     return TRUE;
 }
 
@@ -279,6 +281,8 @@ static void TegraEXASolid(PixmapPtr pPixmap,
     tegra_stream_push(&tegra->cmds, (py2 - py1) << 16 | (px2 - px1));
     tegra_stream_push(&tegra->cmds, py1 << 16 | px1);
     tegra_stream_sync(&tegra->cmds, DRM_TEGRA_SYNCPT_COND_OP_DONE);
+
+    tegra->scratch.ops++;
 }
 
 static void TegraEXADoneSolid(PixmapPtr pPixmap)
@@ -286,8 +290,12 @@ static void TegraEXADoneSolid(PixmapPtr pPixmap)
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pPixmap->drawable.pScreen);
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
 
-    tegra_stream_end(&tegra->cmds);
-    tegra_stream_flush(&tegra->cmds);
+    if (tegra->scratch.ops) {
+        tegra_stream_end(&tegra->cmds);
+        tegra_stream_flush(&tegra->cmds);
+    } else {
+        tegra_stream_cleanup(&tegra->cmds);
+    }
 }
 
 static Bool TegraEXAPrepareCopy(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
@@ -360,6 +368,8 @@ static Bool TegraEXAPrepareCopy(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
         return FALSE;
     }
 
+    tegra->scratch.ops = 0;
+
     return TRUE;
 }
 
@@ -399,6 +409,8 @@ static void TegraEXACopy(PixmapPtr pDstPixmap, int srcX, int srcY, int dstX,
     tegra_stream_push(&tegra->cmds, srcY << 16 | srcX); /* srcps */
     tegra_stream_push(&tegra->cmds, dstY << 16 | dstX); /* dstps */
     tegra_stream_sync(&tegra->cmds, DRM_TEGRA_SYNCPT_COND_OP_DONE);
+
+    tegra->scratch.ops++;
 }
 
 static void TegraEXADoneCopy(PixmapPtr pDstPixmap)
@@ -406,8 +418,12 @@ static void TegraEXADoneCopy(PixmapPtr pDstPixmap)
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pDstPixmap->drawable.pScreen);
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
 
-    tegra_stream_end(&tegra->cmds);
-    tegra_stream_flush(&tegra->cmds);
+    if (tegra->scratch.ops) {
+        tegra_stream_end(&tegra->cmds);
+        tegra_stream_flush(&tegra->cmds);
+    } else {
+        tegra_stream_cleanup(&tegra->cmds);
+    }
 }
 
 static Bool TegraEXACheckComposite(int op, PicturePtr pSrcPicture,
