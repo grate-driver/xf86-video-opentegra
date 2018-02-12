@@ -47,7 +47,6 @@ struct tegra_stream {
     enum tegra_stream_status status;
 
     struct drm_tegra_job *job;
-    struct drm_tegra_channel *channel;
 
     struct tegra_command_buffer buffer;
     uint32_t class_id;
@@ -63,11 +62,10 @@ struct tegra_reloc {
 };
 
 /* Stream operations */
-int tegra_stream_create(struct drm_tegra *drm,
-                        struct drm_tegra_channel *channel,
-                        struct tegra_stream *stream);
+int tegra_stream_create(struct tegra_stream *stream);
 void tegra_stream_destroy(struct tegra_stream *stream);
-int tegra_stream_begin(struct tegra_stream *stream);
+int tegra_stream_begin(struct tegra_stream *stream,
+                       struct drm_tegra_channel *channel);
 int tegra_stream_end(struct tegra_stream *stream);
 int tegra_stream_cleanup(struct tegra_stream *stream);
 int tegra_stream_flush(struct tegra_stream *stream);
@@ -82,5 +80,6 @@ int tegra_stream_push_words(struct tegra_stream *stream, const void *addr,
 int tegra_stream_prep(struct tegra_stream *stream, uint32_t words);
 int tegra_stream_sync(struct tegra_stream *stream,
                       enum drm_tegra_syncpt_cond cond);
+int tegra_stream_pushf(struct tegra_stream *stream, float f);
 
 #endif

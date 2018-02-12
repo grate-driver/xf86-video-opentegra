@@ -44,12 +44,9 @@
  * tegra_stream_push().
  */
 
-int tegra_stream_create(struct drm_tegra *drm,
-                        struct drm_tegra_channel *channel,
-                        struct tegra_stream *stream)
+int tegra_stream_create(struct tegra_stream *stream)
 {
-    stream->status    = TEGRADRM_STREAM_FREE;
-    stream->channel   = channel;
+    stream->status = TEGRADRM_STREAM_FREE;
 
     return 0;
 }
@@ -148,7 +145,8 @@ cleanup:
  * function blocks until the stream buffer is ready for use.
  */
 
-int tegra_stream_begin(struct tegra_stream *stream)
+int tegra_stream_begin(struct tegra_stream *stream,
+                       struct drm_tegra_channel *channel)
 {
     int ret;
 
@@ -158,7 +156,7 @@ int tegra_stream_begin(struct tegra_stream *stream)
         return -1;
     }
 
-    ret = drm_tegra_job_new(&stream->job, stream->channel);
+    ret = drm_tegra_job_new(&stream->job, channel);
     if (ret != 0) {
         ErrorMsg("drm_tegra_job_new() failed %d\n", ret);
         return -1;
@@ -397,4 +395,16 @@ int tegra_stream_sync(struct tegra_stream *stream,
         stream->op_done_synced = true;
 
     return 0;
+}
+
+int tegra_stream_pushf(struct tegra_stream *stream, float f)
+{
+    union {
+        uint32_t u;
+        float f;
+    } value;
+
+    value.f = f;
+
+    return tegra_stream_push(stream, value.u);
 }

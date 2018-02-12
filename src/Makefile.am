@@ -31,6 +31,9 @@ opentegra_drv_la_LDFLAGS = -module -avoid-version
 opentegra_drv_la_LIBADD = @UDEV_LIBS@ @DRM_LIBS@
 opentegra_drv_ladir = @moduledir@/drivers
 
+# enable fp16 for the 3d attributes
+opentegra_drv_la_CFLAGS = $(AM_CFLAGS) -mfp16-format=ieee
+
 opentegra_drv_la_SOURCES = \
 	compat-api.h \
 	common_helpers.c \
@@ -52,7 +55,10 @@ opentegra_drv_la_SOURCES = \
 	tegra_stream.h \
 	shaders/prog.h \
 	$(shaders_gen) \
-	tgr_3d.xml.h
+	tgr_3d.xml.h \
+	shaders.h \
+	gr3d.c \
+	gr3d.h
 
 shaders_dir := $(filter %/, $(wildcard $(srcdir)/shaders/*/))
 shaders_gen := $(addsuffix .bin.h, $(shaders_dir:%/=%))
