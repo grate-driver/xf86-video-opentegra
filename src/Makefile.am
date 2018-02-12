@@ -51,7 +51,8 @@ opentegra_drv_la_SOURCES = \
 	tegra_stream.c \
 	tegra_stream.h \
 	shaders/prog.h \
-	$(shaders_gen)
+	$(shaders_gen) \
+	tgr_3d.xml.h
 
 shaders_dir := $(filter %/, $(wildcard $(srcdir)/shaders/*/))
 shaders_gen := $(addsuffix .bin.h, $(shaders_dir:%/=%))
