@@ -77,3 +77,6 @@ core
 # For example, !report.pc overrides *.pc. See 'man gitignore'
 #
 cscope*
+*.tab.h
+*.tab.c
+*.lex.c

@@ -39,6 +39,17 @@ AM_INIT_AUTOMAKE([foreign no-dist-gzip dist-xz])
 AC_DISABLE_STATIC
 AC_PROG_LIBTOOL
 
+# Initialize compiler compiler
+AC_PROG_LEX
+if test "$LEX" = :; then
+	AC_MSG_ERROR([flex not found])
+fi
+
+AC_CHECK_PROGS(YACC, 'bison -y' byacc yacc, :)
+if test "$YACC" = :; then
+	AC_MSG_ERROR([bison not found])
+fi
+
 # Initialize X.Org macros 1.8 or later for MAN_SUBSTS set by XORG_MANPAGE_SECTIONS
 m4_ifndef([XORG_MACROS_VERSION],
 	  [m4_fatal([must install xorg-macros 1.8 or later before running autoconf/autogen])])

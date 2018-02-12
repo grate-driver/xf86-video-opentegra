@@ -50,3 +50,28 @@ opentegra_drv_la_SOURCES = \
 	vblank.h \
 	tegra_stream.c \
 	tegra_stream.h
+
+asm_grammars := $(wildcard $(srcdir)/asm/*.y)
+asm_headers  := $(wildcard $(srcdir)/asm/*.h)
+asm_lexers   := $(wildcard $(srcdir)/asm/*.l)
+
+asm_gen_c := \
+	$(asm_lexers:%.l=%.lex.c) \
+	$(asm_grammars:%.y=%.tab.c)
+
+asm_gen_h := \
+	$(asm_grammars:%.y=%.tab.h)
+
+%.lex.c: $(asm_lexers)
+	$(LEX) -P $(*F) --nounput -o $@ $*.l
+
+%.tab.c %.tab.h: $(asm_grammars)
+	$(YACC) -p $(*F) -b $(*F) -d --debug -o $@ $*.y
+
+BUILT_SOURCES = \
+	$(asm_gen_c) \
+	$(asm_gen_h)
+
+CLEANFILES = \
+	$(asm_gen_c) \
+	$(asm_gen_h)
