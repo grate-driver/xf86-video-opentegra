@@ -46,12 +46,10 @@
 
 int tegra_stream_create(struct drm_tegra *drm,
                         struct drm_tegra_channel *channel,
-                        struct tegra_stream *stream,
-                        uint32_t words_num)
+                        struct tegra_stream *stream)
 {
     stream->status    = TEGRADRM_STREAM_FREE;
     stream->channel   = channel;
-    stream->num_words = words_num;
 
     return 0;
 }
@@ -169,13 +167,6 @@ int tegra_stream_begin(struct tegra_stream *stream)
     ret = drm_tegra_pushbuf_new(&stream->buffer.pushbuf, stream->job);
     if (ret != 0) {
         ErrorMsg("drm_tegra_pushbuf_new() failed %d\n", ret);
-        drm_tegra_job_free(stream->job);
-        return -1;
-    }
-
-    ret = drm_tegra_pushbuf_prepare(stream->buffer.pushbuf, stream->num_words);
-    if (ret != 0) {
-        ErrorMsg("drm_tegra_pushbuf_prepare() failed %d\n", ret);
         drm_tegra_job_free(stream->job);
         return -1;
     }

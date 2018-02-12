@@ -239,6 +239,7 @@ static Bool TegraEXAPrepareSolid(PixmapPtr pPixmap, int op, Pixel planemask,
     if (err < 0)
             return FALSE;
 
+    tegra_stream_prep(&tegra->cmds, 15);
     tegra_stream_push_setclass(&tegra->cmds, HOST1X_CLASS_GR2D);
     tegra_stream_push(&tegra->cmds, HOST1X_OPCODE_MASK(0x9, 0x9));
     tegra_stream_push(&tegra->cmds, 0x0000003a); /* trigger */
@@ -328,6 +329,7 @@ static Bool TegraEXAPrepareCopy(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
     if (err < 0)
             return FALSE;
 
+    tegra_stream_prep(&tegra->cmds, 14);
     tegra_stream_push_setclass(&tegra->cmds, HOST1X_CLASS_GR2D);
     tegra_stream_push(&tegra->cmds, HOST1X_OPCODE_MASK(0x9, 0x9));
     tegra_stream_push(&tegra->cmds, 0x0000003a); /* trigger */
@@ -491,7 +493,7 @@ void TegraEXAScreenInit(ScreenPtr pScreen)
         goto free_priv;
     }
 
-    err = tegra_stream_create(tegra->drm, priv->gr2d, &priv->cmds, 1);
+    err = tegra_stream_create(tegra->drm, priv->gr2d, &priv->cmds);
     if (err < 0) {
         ErrorMsg("failed to create command stream: %d\n", err);
         goto close_gr2d;
