@@ -34,6 +34,7 @@ typedef struct tegra_attrib_bo {
 } TegraEXAAttribBo;
 
 typedef struct tegra_exa_scratch {
+    struct tegra_fence *marker;
     TegraEXAAttribBo *attribs;
     Bool attribs_alloc_err;
     struct drm_tegra *drm;
@@ -55,6 +56,7 @@ typedef struct _TegraEXARec{
 } *TegraEXAPtr;
 
 typedef struct {
+    struct tegra_fence *fence;
     struct drm_tegra_bo *bo;
     void *fallback;
     Bool dri;

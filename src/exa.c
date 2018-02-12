@@ -230,16 +230,59 @@ unsigned int TegraEXAPitch(unsigned int width, unsigned int height,
     return TEGRA_PITCH_ALIGN(width, bpp, alignment);
 }
 
+static void TegraEXAWaitFence(struct tegra_fence *fence)
+{
+    if (tegra_stream_wait_fence(fence) && !fence->gr2d) {
+        /*
+         * XXX: A bit more optimal would be to release buffers
+         *      right after submitting the job, but then BO reservation
+         *      support by kernel driver is required. For now we will
+         *      release buffers when it is known to be safe, i.e. after
+         *      fencing which should happen often enough.
+         */
+        TegraCompositeReleaseAttribBuffers(fence->opaque);
+    }
+}
+
 static int TegraEXAMarkSync(ScreenPtr pScreen)
 {
-    /* TODO: implement */
+    ScrnInfoPtr pScrn = xf86ScreenToScrn(pScreen);
+    TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
+    union {
+        struct tegra_fence *fence;
+        int marker;
+    } data;
 
-    return 0;
+    /* on 32bit ARM size of integer is equal to size of pointer */
+    data.fence = tegra_stream_get_last_fence(&tegra->cmds);
+
+    /*
+     * EXA may take marker multiple times, but it waits only for the
+     * lastly taken marker, so we release the previous marker-fence here.
+     */
+    tegra_stream_put_fence(tegra->scratch.marker);
+    tegra->scratch.marker = data.fence;
+
+    return data.marker;
 }
 
 static void TegraEXAWaitMarker(ScreenPtr pScreen, int marker)
 {
-    /* TODO: implement */
+    ScrnInfoPtr pScrn = xf86ScreenToScrn(pScreen);
+    TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
+    union {
+        struct tegra_fence *fence;
+        int marker;
+    } data;
+
+    data.marker = marker;
+
+    TegraEXAWaitFence(data.fence);
+    tegra_stream_put_fence(data.fence);
+
+    /* if it was a lastly-taken marker, then we've just released it */
+    if (data.fence == tegra->scratch.marker)
+        tegra->scratch.marker = NULL;
 }
 
 static Bool TegraEXAPrepareAccess(PixmapPtr pPix, int idx)
@@ -296,6 +339,16 @@ static void *TegraEXACreatePixmap2(ScreenPtr pScreen, int width, int height,
 static void TegraEXADestroyPixmap(ScreenPtr pScreen, void *driverPriv)
 {
     TegraPixmapPtr priv = driverPriv;
+
+    /*
+     * We have to await the fence to avoid BO re-use while job is in progress,
+     * this will be resolved by BO reservation that right now isn't supported
+     * by kernel driver.
+     */
+    if (priv->fence) {
+        TegraEXAWaitFence(priv->fence);
+        tegra_stream_put_fence(priv->fence);
+    }
 
     drm_tegra_bo_unref(priv->bo);
     free(priv->fallback);
@@ -452,12 +505,22 @@ static void TegraEXASolid(PixmapPtr pPixmap,
 
 static void TegraEXADoneSolid(PixmapPtr pPixmap)
 {
+    TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pPixmap);
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pPixmap->drawable.pScreen);
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
+    struct tegra_fence *fence;
 
-    if (tegra->scratch.ops) {
+    if (tegra->scratch.ops && tegra->cmds.status == TEGRADRM_STREAM_CONSTRUCT) {
+        if (priv->fence && !priv->fence->gr2d)
+            TegraEXAWaitFence(priv->fence);
+
         tegra_stream_end(&tegra->cmds);
-        tegra_stream_flush(&tegra->cmds);
+        fence = tegra_stream_submit(&tegra->cmds, true);
+
+        if (priv->fence != fence) {
+            tegra_stream_put_fence(priv->fence);
+            priv->fence = tegra_stream_ref_fence(fence, &tegra->scratch);
+        }
     } else {
         tegra_stream_cleanup(&tegra->cmds);
     }
@@ -533,6 +596,7 @@ static Bool TegraEXAPrepareCopy(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
         return FALSE;
     }
 
+    tegra->scratch.pSrc = pSrcPixmap;
     tegra->scratch.ops = 0;
 
     return TRUE;
@@ -582,10 +646,32 @@ static void TegraEXADoneCopy(PixmapPtr pDstPixmap)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pDstPixmap->drawable.pScreen);
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
+    struct tegra_fence *fence;
+    TegraPixmapPtr priv;
 
-    if (tegra->scratch.ops) {
+    if (tegra->scratch.ops && tegra->cmds.status == TEGRADRM_STREAM_CONSTRUCT) {
+        if (tegra->scratch.pSrc) {
+            priv = exaGetPixmapDriverPrivate(tegra->scratch.pSrc);
+
+            if (priv->fence && !priv->fence->gr2d) {
+                TegraEXAWaitFence(priv->fence);
+
+                tegra_stream_put_fence(priv->fence);
+                priv->fence = NULL;
+            }
+        }
+
+        priv = exaGetPixmapDriverPrivate(pDstPixmap);
+        if (priv->fence && !priv->fence->gr2d)
+            TegraEXAWaitFence(priv->fence);
+
         tegra_stream_end(&tegra->cmds);
-        tegra_stream_flush(&tegra->cmds);
+        fence = tegra_stream_submit(&tegra->cmds, true);
+
+        if (priv->fence != fence) {
+            tegra_stream_put_fence(priv->fence);
+            priv->fence = tegra_stream_ref_fence(fence, &tegra->scratch);
+        }
     } else {
         tegra_stream_cleanup(&tegra->cmds);
     }
@@ -1166,13 +1252,44 @@ static void TegraEXADoneComposite(PixmapPtr pDst)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pDst->drawable.pScreen);
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
+    struct tegra_fence *fence = NULL;
+    TegraPixmapPtr priv;
 
     if (tegra->scratch.solid2D)
         return TegraEXADoneSolid(pDst);
 
     TegraEXACompositeDraw(tegra);
 
-    if (tegra->scratch.ops) {
+    if (tegra->scratch.ops && tegra->cmds.status == TEGRADRM_STREAM_CONSTRUCT) {
+        if (tegra->scratch.pSrc) {
+            priv = exaGetPixmapDriverPrivate(tegra->scratch.pSrc);
+
+            if (priv->fence && priv->fence->gr2d) {
+                TegraEXAWaitFence(priv->fence);
+
+                tegra_stream_put_fence(priv->fence);
+                priv->fence = NULL;
+            }
+        }
+
+        if (tegra->scratch.pMask) {
+            priv = exaGetPixmapDriverPrivate(tegra->scratch.pMask);
+
+            if (priv->fence && priv->fence->gr2d) {
+                TegraEXAWaitFence(priv->fence);
+
+                tegra_stream_put_fence(priv->fence);
+                priv->fence = NULL;
+            }
+        }
+
+        priv = exaGetPixmapDriverPrivate(pDst);
+        if (priv->fence && priv->fence->gr2d)
+            TegraEXAWaitFence(priv->fence);
+
+        tegra_stream_end(&tegra->cmds);
+        fence = tegra_stream_submit(&tegra->cmds, false);
+
         /*
          * XXX: Glitches may occur due to lack of support for waitchecks
          *      by kernel driver, they are required for 3D engine to complete
@@ -1184,17 +1301,20 @@ static void TegraEXADoneComposite(PixmapPtr pDst)
          *
          *      See TegraGR3D_DrawPrimitives() in gr3d.c
          */
-        tegra_stream_end(&tegra->cmds);
-        tegra_stream_flush(&tegra->cmds);
+        if (priv->fence != fence) {
+            tegra_stream_put_fence(priv->fence);
+            priv->fence = tegra_stream_ref_fence(fence, &tegra->scratch);
+        }
     } else {
         tegra_stream_cleanup(&tegra->cmds);
     }
 
-    TegraCompositeReleaseAttribBuffers(&tegra->scratch);
-
     /* buffer reallocation could fail, cleanup it now */
-    if (tegra->scratch.attribs_alloc_err)
+    if (tegra->scratch.attribs_alloc_err) {
+        tegra_stream_wait_fence(fence);
+        TegraCompositeReleaseAttribBuffers(&tegra->scratch);
         tegra->scratch.attribs_alloc_err = FALSE;
+    }
 }
 
 static Bool
