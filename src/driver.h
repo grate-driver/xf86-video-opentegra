@@ -157,6 +157,8 @@ typedef struct _TegraRec
     Bool dri2_enabled;
 
     struct drm_tegra *drm;
+
+    Bool exa_compositing;
 } TegraRec, *TegraPtr;
 
 #define TegraPTR(p) ((TegraPtr)((p)->driverPrivate))

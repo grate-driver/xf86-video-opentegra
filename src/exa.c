@@ -869,6 +869,12 @@ static Bool TegraEXACheckComposite(int op, PicturePtr pSrcPicture,
                                    PicturePtr pMaskPicture,
                                    PicturePtr pDstPicture)
 {
+    ScrnInfoPtr pScrn = xf86ScreenToScrn(pDstPicture->pDrawable->pScreen);
+    TegraPtr tegra = TegraPTR(pScrn);
+
+    if (!tegra->exa_compositing)
+        return FALSE;
+
     if (!TegraCompositeProgram3D(op, pSrcPicture, pMaskPicture))
         return FALSE;
 
