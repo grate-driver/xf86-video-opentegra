@@ -1343,6 +1343,9 @@ void TegraEXAScreenInit(ScreenPtr pScreen)
         return;
     }
 
+    if (!tegra->exa_enabled)
+        return;
+
     exa = exaDriverAlloc();
     if (!exa) {
         ErrorMsg("EXA allocation failed\n");
@@ -1447,6 +1450,8 @@ void TegraEXAScreenExit(ScreenPtr pScreen)
         drm_tegra_channel_close(priv->gr3d);
         TegraCompositeReleaseAttribBuffers(&priv->scratch);
         free(priv);
+
+        tegra->exa = NULL;
     }
 }
 
