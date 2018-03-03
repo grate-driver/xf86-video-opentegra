@@ -171,15 +171,10 @@ FreeRec(ScrnInfoPtr pScrn)
         return;
     pScrn->driverPrivate = NULL;
 
-    if (tegra->fd >= 0)
-#ifdef XF86_PDEV_SERVER_FD
-        if (!(tegra->pEnt->location.type == BUS_PLATFORM &&
-              (tegra->pEnt->location.id.plat->flags & XF86_PDEV_SERVER_FD)))
-#endif
-        {
-            drm_tegra_close(tegra->drm);
-            close(tegra->fd);
-        }
+    if (tegra->fd >= 0) {
+        drm_tegra_close(tegra->drm);
+        close(tegra->fd);
+    }
 
     free(tegra->Options);
     free(tegra);
@@ -343,10 +338,11 @@ TegraPreInit(ScrnInfoPtr pScrn, int flags)
 #ifdef XSERVER_PLATFORM_BUS
     case BUS_PLATFORM:
 #ifdef XF86_PDEV_SERVER_FD
-        if (pEnt->location.id.plat->flags & XF86_PDEV_SERVER_FD)
+        if (pEnt->location.id.plat->flags & XF86_PDEV_SERVER_FD) {
             tegra->fd = xf86_get_platform_device_int_attrib(
                                     pEnt->location.id.plat, ODEV_ATTRIB_FD, -1);
-        else
+            tegra->fd = dup(tegra->fd);
+        } else
 #endif
         {
             path = xf86_get_platform_device_attrib(pEnt->location.id.plat,
