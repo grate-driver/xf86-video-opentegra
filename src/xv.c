@@ -516,6 +516,44 @@ static int TegraVideoOverlayPutImage(ScrnInfoPtr scrn,
     return Success;
 }
 
+static int TegraVideoOverlayReputImage(ScrnInfoPtr scrn,
+                                     short src_x, short src_y,
+                                     short dst_x, short dst_y,
+                                     short src_w, short src_h,
+                                     short dst_w, short dst_h,
+                                     RegionPtr clipBoxes,
+                                     void *data, DrawablePtr draw)
+{
+    TegraVideoPtr priv = data;
+    Bool visible       = FALSE;
+    int coverage;
+    int id;
+
+    for (id = 0; id < TEGRA_ARRAY_SIZE(priv->overlay); id++) {
+        coverage = tegra_crtc_coverage(draw, id);
+        priv->overlay[id].visible = !!coverage;
+
+        if (!coverage)
+            TegraVideoOverlayClose(priv, scrn, id);
+        else
+            visible = TRUE;
+    }
+
+    if (!visible)
+        return Success;
+
+    for (id = 0; id < TEGRA_ARRAY_SIZE(priv->overlay); id++)
+        TegraVideoOverlayPutImageOnOverlay(priv, scrn, id,
+                                           src_x, src_y,
+                                           dst_x, dst_y,
+                                           src_w, src_h,
+                                           dst_w, dst_h,
+                                           0, 0,
+                                           draw);
+
+    return Success;
+}
+
 static int TegraVideoOverlayQuery(ScrnInfoPtr scrn,
                                   int id,
                                   unsigned short *w, unsigned short *h,
@@ -597,6 +635,7 @@ void TegraXvScreenInit(ScreenPtr pScreen)
     adaptor->xv.GetPortAttribute     = TegraVideoOverlayGetAttribute;
     adaptor->xv.QueryBestSize        = TegraVideoOverlayBestSize;
     adaptor->xv.PutImage             = TegraVideoOverlayPutImage;
+    adaptor->xv.ReputImage           = TegraVideoOverlayReputImage;
     adaptor->xv.QueryImageAttributes = TegraVideoOverlayQuery;
     adaptor->xv.nPorts               = 1;
     adaptor->xv.pPortPrivates        = &adaptor->dev_union;
