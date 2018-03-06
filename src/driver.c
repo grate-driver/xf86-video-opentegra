@@ -490,7 +490,7 @@ TegraPreInit(ScrnInfoPtr pScrn, int flags)
     if (tegra->exa_enabled) {
         tegra->exa_compositing = xf86ReturnOptValBool(tegra->Options,
                                                       OPTION_EXA_COMPOSITING,
-                                                      TRUE);
+                                                      FALSE);
 
         xf86DrvMsg(pScrn->scrnIndex, X_INFO,
                   "EXA Compositing: enabled %s\n",
