@@ -95,6 +95,9 @@ tegra_dri2_create_buffer(DrawablePtr drawable, unsigned int attachment,
     tegra_dri2_buffer_private_ptr private;
     TegraPixmapPtr tegra;
 
+    if (!TegraPTR(scrn)->exa)
+        return NULL;
+
     buffer = calloc(1, sizeof *buffer);
     if (buffer == NULL)
         return NULL;

@@ -100,6 +100,9 @@
 #include "host1x.h"
 #include "vblank.h"
 #include "xv.h"
+#include "tgr_3d.xml.h"
+#include "shaders/prog.h"
+#include "gr3d.h"
 
 #ifdef LONG64
 #  define FMT_CARD32 "x"
@@ -111,6 +114,9 @@
 
 #define __TEGRA_ALIGN_MASK(x, mask) (((x) + (mask)) & ~(mask))
 #define TEGRA_ALIGN(x, a)           __TEGRA_ALIGN_MASK(x, (typeof(x))(a) - 1)
+
+#define TEGRA_PITCH_ALIGN(width, bpp, align)    \
+    TEGRA_ALIGN(width * ((bpp + 7) / 8), align)
 
 typedef struct
 {
@@ -151,6 +157,9 @@ typedef struct _TegraRec
     Bool dri2_enabled;
 
     struct drm_tegra *drm;
+
+    Bool exa_compositing;
+    Bool exa_enabled;
 } TegraRec, *TegraPtr;
 
 #define TegraPTR(p) ((TegraPtr)((p)->driverPrivate))

@@ -27,18 +27,43 @@
 
 #define TEGRA_DRI_USAGE_HINT ('D' << 16 | 'R' << 8 | 'I')
 
+typedef struct tegra_attrib_bo {
+    struct tegra_attrib_bo *next;
+    struct drm_tegra_bo *bo;
+    __fp16 *map;
+} TegraEXAAttribBo;
+
+typedef struct tegra_exa_scratch {
+    struct tegra_fence *marker;
+    TegraEXAAttribBo *attribs;
+    Bool attribs_alloc_err;
+    struct drm_tegra *drm;
+    unsigned attrib_itr;
+    unsigned vtx_cnt;
+    PixmapPtr pMask;
+    PixmapPtr pSrc;
+    Bool solid2D;
+    unsigned ops;
+} TegraEXAScratch, *TegraEXAScratchPtr;
+
 typedef struct _TegraEXARec{
     struct drm_tegra_channel *gr2d;
+    struct drm_tegra_channel *gr3d;
     struct tegra_stream cmds;
+    TegraEXAScratch scratch;
 
     ExaDriverPtr driver;
 } *TegraEXAPtr;
 
 typedef struct {
+    struct tegra_fence *fence;
     struct drm_tegra_bo *bo;
     void *fallback;
     Bool dri;
 } TegraPixmapRec, *TegraPixmapPtr;
+
+unsigned int TegraEXAPitch(unsigned int width, unsigned int height,
+                           unsigned int bpp);
 
 #endif
 

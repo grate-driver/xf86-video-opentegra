@@ -31,6 +31,9 @@ opentegra_drv_la_LDFLAGS = -module -avoid-version
 opentegra_drv_la_LIBADD = @UDEV_LIBS@ @DRM_LIBS@
 opentegra_drv_ladir = @moduledir@/drivers
 
+# enable fp16 for the 3d attributes
+opentegra_drv_la_CFLAGS = $(AM_CFLAGS) -mfp16-format=ieee
+
 opentegra_drv_la_SOURCES = \
 	compat-api.h \
 	common_helpers.c \
@@ -49,4 +52,57 @@ opentegra_drv_la_SOURCES = \
 	vblank.c \
 	vblank.h \
 	tegra_stream.c \
-	tegra_stream.h
+	tegra_stream.h \
+	shaders/prog.h \
+	$(shaders_gen) \
+	tgr_3d.xml.h \
+	shaders.h \
+	gr3d.c \
+	gr3d.h
+
+shaders_dir := $(filter %/, $(wildcard $(srcdir)/shaders/*/))
+shaders_gen := $(addsuffix .bin.h, $(shaders_dir:%/=%))
+
+%.bin.h: gen_shader_bin \
+			%/vertex.asm \
+			%/linker.asm \
+			%/fragment.asm
+	$(builddir)/gen_shader_bin \
+		--vs $*/vertex.asm \
+		--lnk $*/linker.asm \
+		--fs $*/fragment.asm \
+		--name $(*F) \
+		--out $@
+
+asm_grammars := $(wildcard $(srcdir)/asm/*.y)
+asm_headers  := $(wildcard $(srcdir)/asm/*.h)
+asm_lexers   := $(wildcard $(srcdir)/asm/*.l)
+
+asm_gen_c := \
+	$(asm_lexers:%.l=%.lex.c) \
+	$(asm_grammars:%.y=%.tab.c)
+
+asm_gen_h := \
+	$(asm_grammars:%.y=%.tab.h)
+
+%.lex.c: $(asm_lexers)
+	$(LEX) -P $(*F) --nounput -o $@ $*.l
+
+%.tab.c %.tab.h: $(asm_grammars)
+	$(YACC) -p $(*F) -b $(*F) -d --debug -o $@ $*.y
+
+HOSTCC = gcc
+
+gen_shader_bin: gen_shader_bin.c $(asm_gen_c) $(asm_headers)
+	$(HOSTCC) -I $(srcdir)/asm -o $(builddir)/$@ $< $(asm_gen_c)
+
+BUILT_SOURCES = \
+	$(asm_gen_c) \
+	$(asm_gen_h) \
+	$(shaders_gen)
+
+CLEANFILES = \
+	$(asm_gen_c) \
+	$(asm_gen_h) \
+	$(shaders_gen) \
+	$(builddir)/gen_shader_bin

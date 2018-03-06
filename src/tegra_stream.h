@@ -43,14 +43,20 @@ struct tegra_command_buffer {
     struct drm_tegra_pushbuf *pushbuf;
 };
 
+struct tegra_fence {
+    struct drm_tegra_fence *fence;
+    void *opaque;
+    int refcnt;
+    bool gr2d;
+};
+
 struct tegra_stream {
     enum tegra_stream_status status;
 
     struct drm_tegra_job *job;
-    struct drm_tegra_channel *channel;
 
+    struct tegra_fence *last_fence;
     struct tegra_command_buffer buffer;
-    int num_words;
     uint32_t class_id;
 
     bool op_done_synced;
@@ -64,15 +70,20 @@ struct tegra_reloc {
 };
 
 /* Stream operations */
-int tegra_stream_create(struct drm_tegra *drm,
-                        struct drm_tegra_channel *channel,
-                        struct tegra_stream *stream,
-                        uint32_t words_num);
+int tegra_stream_create(struct tegra_stream *stream);
 void tegra_stream_destroy(struct tegra_stream *stream);
-int tegra_stream_begin(struct tegra_stream *stream);
+int tegra_stream_begin(struct tegra_stream *stream,
+                       struct drm_tegra_channel *channel);
 int tegra_stream_end(struct tegra_stream *stream);
 int tegra_stream_cleanup(struct tegra_stream *stream);
 int tegra_stream_flush(struct tegra_stream *stream);
+struct tegra_fence * tegra_stream_submit(struct tegra_stream *stream, bool gr2d);
+struct tegra_fence * tegra_stream_ref_fence(struct tegra_fence *f, void *opaque);
+struct tegra_fence * tegra_stream_get_last_fence(struct tegra_stream *stream);
+struct tegra_fence * tegra_stream_create_fence(struct drm_tegra_fence *fence,
+                                               bool gr2d);
+bool tegra_stream_wait_fence(struct tegra_fence *f);
+void tegra_stream_put_fence(struct tegra_fence *f);
 int tegra_stream_push(struct tegra_stream *stream, uint32_t word);
 int tegra_stream_push_setclass(struct tegra_stream *stream, unsigned class_id);
 int tegra_stream_push_reloc(struct tegra_stream *stream,
@@ -84,5 +95,6 @@ int tegra_stream_push_words(struct tegra_stream *stream, const void *addr,
 int tegra_stream_prep(struct tegra_stream *stream, uint32_t words);
 int tegra_stream_sync(struct tegra_stream *stream,
                       enum drm_tegra_syncpt_cond cond);
+int tegra_stream_pushf(struct tegra_stream *stream, float f);
 
 #endif

@@ -39,7 +39,7 @@ dumb_bo_create(struct drm_tegra *drm,
     if (!bo)
         return NULL;
 
-    bo->pitch = TEGRA_ALIGN(width * bpp / 8, 16);
+    bo->pitch = TegraEXAPitch(width, height, bpp);
 
     ret = drm_tegra_bo_new(&bo->bo, drm, 0, bo->pitch * height);
     if (ret)

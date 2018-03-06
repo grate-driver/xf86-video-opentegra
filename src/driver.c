@@ -43,12 +43,16 @@ typedef enum
     OPTION_SW_CURSOR,
     OPTION_DEVICE_PATH,
     OPTION_SHADOW_FB,
+    OPTION_EXA_DISABLED,
+    OPTION_EXA_COMPOSITING,
 } TegraOptions;
 
 static const OptionInfoRec Options[] = {
     { OPTION_SW_CURSOR, "SWcursor", OPTV_BOOLEAN, { 0 }, FALSE },
     { OPTION_DEVICE_PATH, "device", OPTV_STRING, { 0 }, FALSE },
     { OPTION_SHADOW_FB, "ShadowFB", OPTV_BOOLEAN, { 0 }, FALSE },
+    { OPTION_EXA_DISABLED, "NoAccel", OPTV_BOOLEAN, { 0 }, FALSE },
+    { OPTION_EXA_COMPOSITING, "AccelCompositing", OPTV_BOOLEAN, { 0 }, FALSE },
     { -1, NULL, OPTV_NONE, { 0 }, FALSE }
 };
 
@@ -471,14 +475,34 @@ TegraPreInit(ScrnInfoPtr pScrn, int flags)
     /* Set display resolution */
     xf86SetDpi(pScrn, 0, 0);
 
+    tegra->exa_enabled = !xf86ReturnOptValBool(tegra->Options,
+                                               OPTION_EXA_DISABLED,
+                                               FALSE);
+
+    xf86DrvMsg(pScrn->scrnIndex, X_INFO,
+               "EXA HW Acceleration: enabled %s\n",
+               tegra->exa_enabled ? "YES" : "NO");
+
+    if (tegra->exa_enabled) {
+        tegra->exa_compositing = xf86ReturnOptValBool(tegra->Options,
+                                                      OPTION_EXA_COMPOSITING,
+                                                      FALSE);
+
+        xf86DrvMsg(pScrn->scrnIndex, X_INFO,
+                  "EXA Compositing: enabled %s\n",
+                   tegra->exa_compositing ? "YES" : "NO");
+    }
+
     /* Load the required sub modules */
     if (!xf86LoadSubModule(pScrn, "dri2") ||
-        !xf86LoadSubModule(pScrn, "fb") ||
-        !xf86LoadSubModule(pScrn, "exa"))
+        !xf86LoadSubModule(pScrn, "fb"))
         return FALSE;
 
     if (tegra->drmmode.shadow_enable) {
         if (!xf86LoadSubModule(pScrn, "shadow"))
+            return FALSE;
+    } else if (tegra->exa_enabled) {
+        if (!xf86LoadSubModule(pScrn, "exa"))
             return FALSE;
     }
 
