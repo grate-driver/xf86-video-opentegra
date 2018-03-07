@@ -499,6 +499,7 @@ static void TegraEXAReleasePixmapData(TegraPixmapPtr priv)
     if (priv->fence) {
         TegraEXAWaitFence(priv->fence);
         tegra_stream_put_fence(priv->fence);
+        priv->fence = NULL;
     }
 
     if (priv->pool_ptr) {
