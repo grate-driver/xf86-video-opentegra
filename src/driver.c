@@ -426,8 +426,12 @@ TegraPreInit(ScrnInfoPtr pScrn, int flags)
     if (!xf86SetDefaultVisual(pScrn, -1))
         return FALSE;
 
-    if (xf86ReturnOptValBool(tegra->Options, OPTION_SW_CURSOR, TRUE))
+    if (xf86ReturnOptValBool(tegra->Options, OPTION_SW_CURSOR,
+            XORG_VERSION_CURRENT < XORG_VERSION_NUMERIC(1,15,99,902,0)))
         tegra->drmmode.sw_cursor = TRUE;
+
+    xf86DrvMsg(pScrn->scrnIndex, X_INFO, "HW Cursor: enabled %s\n",
+               tegra->drmmode.sw_cursor ? "NO" : "YES");
 
     ret = drmGetCap(tegra->fd, DRM_CAP_DUMB_PREFER_SHADOW, &value);
     if (!ret)
