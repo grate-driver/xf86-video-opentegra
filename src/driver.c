@@ -217,10 +217,10 @@ TegraOpenHardware(const char *dev)
     int fd;
 
     if (dev)
-        fd = open(dev, O_RDWR, 0);
+        fd = open(dev, O_RDWR | O_CLOEXEC, 0);
     else {
         dev = getenv("KMSDEVICE");
-        if ((dev == NULL) || ((fd = open(dev, O_RDWR, 0)) == -1)) {
+        if ((dev == NULL) || ((fd = open(dev, O_RDWR | O_CLOEXEC, 0)) == -1)) {
             fd = drmOpen("tegra", NULL);
         }
     }
