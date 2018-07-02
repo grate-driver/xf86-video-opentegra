@@ -172,6 +172,7 @@ static const struct tegra_composit_config composit_cfgs[] = {
 
 static void TegraEXADestroyPool(TegraPixmapPoolPtr pool)
 {
+    destroy_memory_pool(pool->ptr);
     drm_tegra_bo_unref(pool->bo);
     xorg_list_del(&pool->entry);
     free(pool);
@@ -202,6 +203,20 @@ static int TegraEXACreatePool(TegraPtr tegra, TegraPixmapPoolPtr *ret)
         free(pool);
         return err;
     }
+
+    /*
+     * TLSF (Two-Level Segregate Fit) allocator is the memory pool allocator
+     * that we are using for the small allocations that aren't aligned to a
+     * page size.
+     *
+     * TLSF places its base structure in the beginning of the pool, the first
+     * word of the structure is the signature that TLSF uses to determine
+     * whether base structure is already initialized. The pool memory could
+     * be initialized if BO was taken from BO cache since there is s small
+     * chance that BO could happen to come with the signature value. Ensure
+     * that TLSF's structure signature won't match by clearing the word.
+     */
+    memset(pool->ptr, 0, sizeof(uint32_t));
 
     init_memory_pool(TEGRA_EXA_POOL_SIZE, pool->ptr);
 
