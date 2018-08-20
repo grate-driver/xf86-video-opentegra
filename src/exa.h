@@ -74,8 +74,7 @@ typedef struct {
     void *fallback;
     Bool dri;
 
-    TegraPixmapPoolPtr pool;
-    int pool_id;
+    struct mem_pool_entry pool_entry;
 } TegraPixmapRec, *TegraPixmapPtr;
 
 unsigned int TegraEXAPitch(unsigned int width, unsigned int height,

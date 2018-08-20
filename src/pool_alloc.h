@@ -23,10 +23,17 @@
 
 #define BITMAP_SIZE     5
 
-struct mem_pool_entry {
+struct mem_pool_entry;
+
+struct __mem_pool_entry {
     char *base;
     unsigned long size;
-    int *id_ptr;
+    struct mem_pool_entry *owner;
+};
+
+struct mem_pool_entry {
+    struct mem_pool *pool;
+    int id;
 };
 
 struct mem_pool {
@@ -35,23 +42,28 @@ struct mem_pool {
     unsigned long remain;
     unsigned long pool_size;
     unsigned long bitmap[BITMAP_SIZE];
-    struct mem_pool_entry entries[BITMAP_SIZE * 32];
+    struct __mem_pool_entry entries[BITMAP_SIZE * 32];
 };
 
 void mem_pool_init(struct mem_pool *pool, void *addr, unsigned long size);
-void *mem_pool_alloc(struct mem_pool *pool, unsigned long size, int *ret_id);
-void mem_pool_free(struct mem_pool *pool, unsigned int entry_id);
+void *mem_pool_alloc(struct mem_pool * restrict pool, unsigned long size,
+                     struct mem_pool_entry *ret_entry);
+void mem_pool_free(struct mem_pool_entry *entry);
 void mem_pool_destroy(struct mem_pool *pool);
 
-static inline void *mem_pool_entry_addr(struct mem_pool *pool,
-                                        unsigned int entry_id)
+static inline void *mem_pool_entry_addr(struct mem_pool_entry *entry)
 {
+    struct mem_pool *pool = entry->pool;
+    unsigned int entry_id = entry->id;
+
     return pool->entries[entry_id].base;
 }
 
-static inline unsigned long mem_pool_entry_offset(struct mem_pool *pool,
-                                                  unsigned int entry_id)
+static inline unsigned long mem_pool_entry_offset(struct mem_pool_entry *entry)
 {
+    struct mem_pool *pool = entry->pool;
+    unsigned int entry_id = entry->id;
+
     return pool->entries[entry_id].base - pool->base;
 }
 

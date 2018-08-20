@@ -72,28 +72,31 @@ static int TegraEXACreatePool(TegraPtr tegra, TegraPixmapPoolPtr *ret)
 }
 
 static void *TegraEXAPoolAlloc(TegraPixmapPoolPtr pool, size_t size,
-                               int *pool_id)
+                               struct mem_pool_entry *pool_entry)
 {
     void *data;
 
-    data = mem_pool_alloc(&pool->pool, size, pool_id);
+    data = mem_pool_alloc(&pool->pool, size, pool_entry);
     if (data)
         pool->alloc_cnt++;
 
     return data;
 }
 
-void TegraEXAPoolFree(TegraPixmapPoolPtr pool, unsigned int entry_id)
+void TegraEXAPoolFree(TegraPixmapPoolPtr pool,
+                      struct mem_pool_entry *pool_entry)
 {
-    mem_pool_free(&pool->pool, entry_id);
+    mem_pool_free(pool_entry);
 
     if (--pool->alloc_cnt == 0)
         TegraEXADestroyPool(pool);
+
+    pool_entry->pool = NULL;
+    pool_entry->id = -1;
 }
 
 static int TegraEXAAllocateFromPool(TegraPtr tegra, size_t size,
-                                    TegraPixmapPoolPtr *pool,
-                                    int *pool_id)
+                                    struct mem_pool_entry *pool_entry)
 {
     TegraEXAPtr exa = tegra->exa;
     TegraPixmapPoolPtr p;
@@ -106,7 +109,7 @@ static int TegraEXAAllocateFromPool(TegraPtr tegra, size_t size,
     size = TEGRA_ALIGN(size, TEGRA_EXA_OFFSET_ALIGN);
 
     xorg_list_for_each_entry(p, &exa->mem_pools, entry) {
-        data = TegraEXAPoolAlloc(p, size, pool_id);
+        data = TegraEXAPoolAlloc(p, size, pool_entry);
         if (data)
             goto success;
     }
@@ -117,15 +120,13 @@ static int TegraEXAAllocateFromPool(TegraPtr tegra, size_t size,
 
     xorg_list_add(&p->entry, &exa->mem_pools);
 
-    data = TegraEXAPoolAlloc(p, size, pool_id);
+    data = TegraEXAPoolAlloc(p, size, pool_entry);
     if (!data) {
         ErrorMsg("failed to allocate from a new pool\n");
         return -ENOMEM;
     }
 
 success:
-    *pool = p;
-
     return 0;
 }
 
@@ -147,8 +148,7 @@ Bool TegraEXAAllocateDRMFromPool(TegraPtr tegra,
         return FALSE;
 
     return TegraEXAAllocateFromPool(tegra, size,
-                                    &pixmap->pool,
-                                    &pixmap->pool_id) == 0;
+                                    &pixmap->pool_entry) == 0;
 }
 
 Bool TegraEXAAllocateDRM(TegraPtr tegra,

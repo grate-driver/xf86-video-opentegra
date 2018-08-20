@@ -64,7 +64,7 @@ static struct {
  *                                                      |--enough space-|
  *
  *      3. Note that each entry has a pointer to the ID of entry that is held
- *         by pool-owner entity (id_ptr). I.e. ID is the handle for allocation,
+ *         by pool-owner entity (*owner). I.e. ID is the handle for allocation,
  *         that handle is getting updated after entry relocation behind
  *         pool-owners back.
  */
@@ -175,9 +175,9 @@ static void move_entry(struct mem_pool * restrict pool,
     set_bit(pool, to);
 
     memcpy(&pool->entries[to], &pool->entries[from],
-           sizeof(struct mem_pool_entry));
+           sizeof(struct __mem_pool_entry));
 
-    *pool->entries[to].id_ptr = to;
+    pool->entries[to].owner->id = to;
 }
 
 static void migrate_entry(struct mem_pool * restrict pool,
@@ -202,7 +202,7 @@ static void migrate_entry(struct mem_pool * restrict pool,
 static int defrag_pool(struct mem_pool * restrict pool,
                        unsigned long needed_size)
 {
-    struct mem_pool_entry *busy;
+    struct __mem_pool_entry *busy;
     int b = 0, b_next = 0; // b for "busy/used entry"
     char *new_base, *end;
 
@@ -259,11 +259,11 @@ static int defrag_pool(struct mem_pool * restrict pool,
     return b;
 }
 
-void *mem_pool_alloc(struct mem_pool * restrict pool,
-                     unsigned long size, int *ret_id)
+void *mem_pool_alloc(struct mem_pool * restrict pool, unsigned long size,
+                     struct mem_pool_entry *ret_entry)
 {
-    struct mem_pool_entry *empty;
-    struct mem_pool_entry *busy;
+    struct __mem_pool_entry *empty;
+    struct __mem_pool_entry *busy;
     char *start = NULL, *end;
     int e, b = -1; // b for "busy/used entry", e for "unused/empty"
 
@@ -305,7 +305,7 @@ retry:
         }
 
         if (end - start >= size) {
-            empty->id_ptr = ret_id;
+            empty->owner = ret_entry;
             empty->base = start;
             empty->size = size;
             set_bit(pool, e);
@@ -317,7 +317,8 @@ retry:
 
     if (start) {
         pool->remain -= size;
-        *ret_id = e;
+        ret_entry->pool = pool;
+        ret_entry->id = e;
 #ifdef DEBUG
         stats.total_remain -= size;
 #endif
@@ -345,8 +346,11 @@ retry:
     return start;
 }
 
-void mem_pool_free(struct mem_pool *pool, unsigned int entry_id)
+void mem_pool_free(struct mem_pool_entry *entry)
 {
+    struct mem_pool *pool = entry->pool;
+    unsigned int entry_id = entry->id;
+
 #ifdef DEBUG
     printf("%s: pool %08lx: e=%u size=%lu\n",
            __func__, (unsigned long) pool,
@@ -354,7 +358,7 @@ void mem_pool_free(struct mem_pool *pool, unsigned int entry_id)
 #endif
     pool->bitmap_full = 0;
     pool->remain += pool->entries[entry_id].size;
-    pool->entries[entry_id].id_ptr = NULL;
+    pool->entries[entry_id].owner = NULL;
     clear_bit(pool, entry_id);
 #ifdef DEBUG
     stats.total_remain += pool->entries[entry_id].size;

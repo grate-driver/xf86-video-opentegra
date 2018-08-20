@@ -23,7 +23,8 @@
 
 void TegraEXADestroyPool(TegraPixmapPoolPtr pool);
 
-void TegraEXAPoolFree(TegraPixmapPoolPtr pool, unsigned int entry_id);
+void TegraEXAPoolFree(TegraPixmapPoolPtr pool,
+                      struct mem_pool_entry *pool_entry);
 
 Bool TegraEXAAllocateDRMFromPool(TegraPtr tegra,
                                  TegraPixmapPtr pixmap,

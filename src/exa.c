@@ -172,8 +172,8 @@ static unsigned long TegraEXAPixmapOffset(PixmapPtr pix)
     TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pix);
     unsigned long offset = 0;
 
-    if (priv->pool)
-        offset = mem_pool_entry_offset(&priv->pool->pool, priv->pool_id);
+    if (priv->pool_entry.pool)
+        offset = mem_pool_entry_offset(&priv->pool_entry);
 
     return offset + exaGetPixmapOffset(pix);
 }
@@ -182,8 +182,11 @@ static struct drm_tegra_bo * TegraEXAPixmapBO(PixmapPtr pix)
 {
     TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pix);
 
-    if (priv->pool)
-        return priv->pool->bo;
+    if (priv->pool_entry.pool) {
+        TegraPixmapPoolPtr pool = TEGRA_CONTAINER_OF(
+                    priv->pool_entry.pool, TegraPixmapPool, pool);
+        return pool->bo;
+    }
 
     return priv->bo;
 }
@@ -312,9 +315,8 @@ static Bool TegraEXAPrepareAccess(PixmapPtr pPix, int idx)
     TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pPix);
     int err;
 
-    if (priv->pool) {
-        pPix->devPrivate.ptr = mem_pool_entry_addr(&priv->pool->pool,
-                                                   priv->pool_id);
+    if (priv->pool_entry.pool) {
+        pPix->devPrivate.ptr = mem_pool_entry_addr(&priv->pool_entry);
         return TRUE;
     }
 
@@ -343,7 +345,7 @@ static Bool TegraEXAPixmapIsOffscreen(PixmapPtr pPix)
 {
     TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pPix);
 
-    return priv && (priv->bo || priv->pool);
+    return priv && (priv->bo || priv->pool_entry.pool);
 }
 
 static void TegraEXAReleasePixmapData(TegraPixmapPtr priv)
@@ -359,10 +361,10 @@ static void TegraEXAReleasePixmapData(TegraPixmapPtr priv)
         priv->fence = NULL;
     }
 
-    if (priv->pool) {
-        TegraEXAPoolFree(priv->pool, priv->pool_id);
-        priv->pool_id = -1;
-        priv->pool = NULL;
+    if (priv->pool_entry.pool) {
+        TegraPixmapPoolPtr pool = TEGRA_CONTAINER_OF(
+                    priv->pool_entry.pool, TegraPixmapPool, pool);
+        TegraEXAPoolFree(pool, &priv->pool_entry);
         return;
     }
 
@@ -407,8 +409,6 @@ static void *TegraEXACreatePixmap2(ScreenPtr pScreen, int width, int height,
 
     if (usage_hint == TEGRA_DRI_USAGE_HINT)
         pixmap->dri = TRUE;
-
-    pixmap->pool_id = -1;
 
     if (width > 0 && height > 0 && bitsPerPixel > 0) {
         *new_fb_pitch = TegraEXAPitch(width, height, bitsPerPixel);

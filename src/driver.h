@@ -118,6 +118,14 @@
 #define TEGRA_PITCH_ALIGN(width, bpp, align)    \
     TEGRA_ALIGN(width * ((bpp + 7) / 8), align)
 
+#define TEGRA_CONTAINER_OFFSETOF(TYPE, MEMBER) \
+    ((size_t) &((TYPE *)0)->MEMBER)
+
+#define TEGRA_CONTAINER_OF(ptr, type, member) ({                            \
+        const typeof(((type *)0)->member) *__mptr = (ptr);                  \
+        (type *)((char *)__mptr - TEGRA_CONTAINER_OFFSETOF(type, member));  \
+    })
+
 typedef struct
 {
     int lastInstance;
