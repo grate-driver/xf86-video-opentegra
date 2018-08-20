@@ -25,6 +25,8 @@
 #ifndef __TEGRA_EXA_H
 #define __TEGRA_EXA_H
 
+#include "pool_alloc.h"
+
 #define TEGRA_DRI_USAGE_HINT ('D' << 16 | 'R' << 8 | 'I')
 
 typedef struct tegra_attrib_bo {
@@ -50,6 +52,7 @@ typedef struct {
     struct xorg_list entry;
     struct drm_tegra_bo *bo;
     unsigned int alloc_cnt;
+    struct mem_pool pool;
     void *ptr;
 } TegraPixmapPool, *TegraPixmapPoolPtr;
 
@@ -67,12 +70,10 @@ typedef struct {
     struct tegra_fence *fence;
     struct drm_tegra_bo *bo;
     void *fallback;
-    void *pool_ptr;
     Bool dri;
 
-    TegraPixmapPoolPtr  pool;
-    unsigned long       pool_offset;
-    unsigned int        pool_align;
+    TegraPixmapPoolPtr pool;
+    int pool_id;
 } TegraPixmapRec, *TegraPixmapPtr;
 
 unsigned int TegraEXAPitch(unsigned int width, unsigned int height,

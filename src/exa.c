@@ -172,7 +172,7 @@ static const struct tegra_composit_config composit_cfgs[] = {
 
 static void TegraEXADestroyPool(TegraPixmapPoolPtr pool)
 {
-    destroy_memory_pool(pool->ptr);
+    mem_pool_destroy(&pool->pool);
     drm_tegra_bo_unref(pool->bo);
     xorg_list_del(&pool->entry);
     free(pool);
@@ -204,63 +204,46 @@ static int TegraEXACreatePool(TegraPtr tegra, TegraPixmapPoolPtr *ret)
         return err;
     }
 
-    /*
-     * TLSF (Two-Level Segregate Fit) allocator is the memory pool allocator
-     * that we are using for the small allocations that aren't aligned to a
-     * page size.
-     *
-     * TLSF places its base structure in the beginning of the pool, the first
-     * word of the structure is the signature that TLSF uses to determine
-     * whether base structure is already initialized. The pool memory could
-     * be initialized if BO was taken from BO cache since there is s small
-     * chance that BO could happen to come with the signature value. Ensure
-     * that TLSF's structure signature won't match by clearing the word.
-     */
-    memset(pool->ptr, 0, sizeof(uint32_t));
-
-    init_memory_pool(TEGRA_EXA_POOL_SIZE, pool->ptr);
+    mem_pool_init(&pool->pool, pool->ptr, TEGRA_EXA_POOL_SIZE);
 
     *ret = pool;
 
     return 0;
 }
 
-static void * TegraEXAPoolAlloc(TegraPixmapPoolPtr pool, size_t size,
-                                unsigned long *offset,
-                                unsigned int *align)
+static void *TegraEXAPoolAlloc(TegraPixmapPoolPtr pool, size_t size,
+                               int *pool_id)
 {
-    char *data;
+    void *data;
 
-    data = malloc_ex(size + TEGRA_EXA_OFFSET_ALIGN + 16, pool->ptr);
-    if (data) {
-        *offset = (uintptr_t)data - (uintptr_t)pool->ptr;
-        *align = TEGRA_ALIGN(*offset, TEGRA_EXA_OFFSET_ALIGN) - *offset;
+    data = mem_pool_alloc(&pool->pool, size, pool_id);
+    if (data)
         pool->alloc_cnt++;
-    }
 
     return data;
 }
 
-static void TegraEXAPoolFree(TegraPixmapPoolPtr pool, void *ptr)
+static void TegraEXAPoolFree(TegraPixmapPoolPtr pool, unsigned int entry_id)
 {
-    free_ex(ptr, pool->ptr);
+    mem_pool_free(&pool->pool, entry_id);
 
     if (--pool->alloc_cnt == 0)
         TegraEXADestroyPool(pool);
 }
 
 static int TegraEXAAllocateFromPool(TegraPtr tegra, size_t size,
-                                    TegraPixmapPoolPtr *pool, void **ptr,
-                                    unsigned long *offset,
-                                    unsigned int *align)
+                                    TegraPixmapPoolPtr *pool,
+                                    int *pool_id)
 {
     TegraEXAPtr exa = tegra->exa;
     TegraPixmapPoolPtr p;
     void *data;
     int err;
 
+    size = TEGRA_ALIGN(size, TEGRA_EXA_OFFSET_ALIGN);
+
     xorg_list_for_each_entry(p, &exa->mem_pools, entry) {
-        data = TegraEXAPoolAlloc(p, size, offset, align);
+        data = TegraEXAPoolAlloc(p, size, pool_id);
         if (data)
             goto success;
     }
@@ -271,14 +254,13 @@ static int TegraEXAAllocateFromPool(TegraPtr tegra, size_t size,
 
     xorg_list_add(&p->entry, &exa->mem_pools);
 
-    data = TegraEXAPoolAlloc(p, size, offset, align);
+    data = TegraEXAPoolAlloc(p, size, pool_id);
     if (!data) {
         ErrorMsg("failed to allocate from a new pool\n");
         return -ENOMEM;
     }
 
 success:
-    *ptr = data;
     *pool = p;
 
     return 0;
@@ -289,8 +271,8 @@ static unsigned long TegraEXAPixmapOffset(PixmapPtr pix)
     TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pix);
     unsigned long offset = 0;
 
-    if (priv->pool_ptr)
-        offset = priv->pool_offset + priv->pool_align;
+    if (priv->pool)
+        offset = mem_pool_entry_offset(&priv->pool->pool, priv->pool_id);
 
     return offset + exaGetPixmapOffset(pix);
 }
@@ -299,7 +281,7 @@ static struct drm_tegra_bo * TegraEXAPixmapBO(PixmapPtr pix)
 {
     TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pix);
 
-    if (priv->pool_ptr)
+    if (priv->pool)
         return priv->pool->bo;
 
     return priv->bo;
@@ -429,8 +411,9 @@ static Bool TegraEXAPrepareAccess(PixmapPtr pPix, int idx)
     TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pPix);
     int err;
 
-    if (priv->pool_ptr) {
-        pPix->devPrivate.ptr = (uint8_t *)priv->pool_ptr + priv->pool_align;
+    if (priv->pool) {
+        pPix->devPrivate.ptr = mem_pool_entry_addr(&priv->pool->pool,
+                                                   priv->pool_id);
         return TRUE;
     }
 
@@ -459,7 +442,7 @@ static Bool TegraEXAPixmapIsOffscreen(PixmapPtr pPix)
 {
     TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pPix);
 
-    return priv && (priv->bo || priv->pool_ptr);
+    return priv && (priv->bo || priv->pool);
 }
 
 static Bool TegraEXAAllocateDRMFromPool(TegraPtr tegra,
@@ -481,9 +464,7 @@ static Bool TegraEXAAllocateDRMFromPool(TegraPtr tegra,
 
     return TegraEXAAllocateFromPool(tegra, size,
                                     &pixmap->pool,
-                                    &pixmap->pool_ptr,
-                                    &pixmap->pool_offset,
-                                    &pixmap->pool_align) == 0;
+                                    &pixmap->pool_id) == 0;
 }
 
 static Bool TegraEXAAllocateDRM(TegraPtr tegra,
@@ -517,9 +498,9 @@ static void TegraEXAReleasePixmapData(TegraPixmapPtr priv)
         priv->fence = NULL;
     }
 
-    if (priv->pool_ptr) {
-        TegraEXAPoolFree(priv->pool, priv->pool_ptr);
-        priv->pool_ptr = NULL;
+    if (priv->pool) {
+        TegraEXAPoolFree(priv->pool, priv->pool_id);
+        priv->pool_id = -1;
         priv->pool = NULL;
         return;
     }
@@ -565,6 +546,8 @@ static void *TegraEXACreatePixmap2(ScreenPtr pScreen, int width, int height,
 
     if (usage_hint == TEGRA_DRI_USAGE_HINT)
         pixmap->dri = TRUE;
+
+    pixmap->pool_id = -1;
 
     if (width > 0 && height > 0 && bitsPerPixel > 0) {
         *new_fb_pitch = TegraEXAPitch(width, height, bitsPerPixel);
