@@ -240,6 +240,9 @@ static int TegraEXAAllocateFromPool(TegraPtr tegra, size_t size,
     void *data;
     int err;
 
+    if (!tegra->exa_pool_alloc)
+        return -EINVAL;
+
     size = TEGRA_ALIGN(size, TEGRA_EXA_OFFSET_ALIGN);
 
     xorg_list_for_each_entry(p, &exa->mem_pools, entry) {

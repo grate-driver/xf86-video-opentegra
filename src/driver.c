@@ -45,6 +45,7 @@ typedef enum
     OPTION_SHADOW_FB,
     OPTION_EXA_DISABLED,
     OPTION_EXA_COMPOSITING,
+    OPTION_EXA_POOL_ALLOC,
 } TegraOptions;
 
 static const OptionInfoRec Options[] = {
@@ -53,6 +54,7 @@ static const OptionInfoRec Options[] = {
     { OPTION_SHADOW_FB, "ShadowFB", OPTV_BOOLEAN, { 0 }, FALSE },
     { OPTION_EXA_DISABLED, "NoAccel", OPTV_BOOLEAN, { 0 }, FALSE },
     { OPTION_EXA_COMPOSITING, "AccelCompositing", OPTV_BOOLEAN, { 0 }, FALSE },
+    { OPTION_EXA_POOL_ALLOC, "DisablePoolAllocator", OPTV_BOOLEAN, { 0 }, FALSE },
     { -1, NULL, OPTV_NONE, { 0 }, FALSE }
 };
 
@@ -495,6 +497,14 @@ TegraPreInit(ScrnInfoPtr pScrn, int flags)
         xf86DrvMsg(pScrn->scrnIndex, X_INFO,
                   "EXA Compositing: enabled %s\n",
                    tegra->exa_compositing ? "YES" : "NO");
+
+        tegra->exa_pool_alloc = !xf86ReturnOptValBool(tegra->Options,
+                                                      OPTION_EXA_POOL_ALLOC,
+                                                      FALSE);
+
+        xf86DrvMsg(pScrn->scrnIndex, X_INFO,
+                  "EXA pool allocator: enabled %s\n",
+                   tegra->exa_pool_alloc ? "YES" : "NO");
     }
 
     /* Load the required sub modules */

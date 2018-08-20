@@ -158,6 +158,7 @@ typedef struct _TegraRec
 
     struct drm_tegra *drm;
 
+    Bool exa_pool_alloc;
     Bool exa_compositing;
     Bool exa_enabled;
 } TegraRec, *TegraPtr;
