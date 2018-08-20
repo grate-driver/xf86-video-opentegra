@@ -29,6 +29,8 @@
 
 #define TEGRA_DRI_USAGE_HINT ('D' << 16 | 'R' << 8 | 'I')
 
+#define TEGRA_EXA_OFFSET_ALIGN          256
+
 typedef struct tegra_attrib_bo {
     struct tegra_attrib_bo *next;
     struct drm_tegra_bo *bo;
