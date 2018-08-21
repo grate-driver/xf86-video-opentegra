@@ -229,8 +229,8 @@ static void validate_pool(struct mem_pool * restrict pool)
 #endif
 }
 
-static void move_entry(struct mem_pool * restrict pool_from,
-                       struct mem_pool * restrict pool_to,
+static void move_entry(struct mem_pool *pool_from,
+                       struct mem_pool *pool_to,
                        unsigned int from, unsigned int to)
 {
 #ifdef DEBUG
@@ -253,8 +253,8 @@ static void move_entry(struct mem_pool * restrict pool_from,
 #endif
 }
 
-static void migrate_entry(struct mem_pool * restrict pool_from,
-                          struct mem_pool * restrict pool_to,
+static void migrate_entry(struct mem_pool *pool_from,
+                          struct mem_pool *pool_to,
                           unsigned int from, unsigned int to,
                           void *new_base)
 {
@@ -289,11 +289,8 @@ static int defrag_pool(struct mem_pool * restrict pool,
     char *end;
 
 #ifdef DEBUG
-    PRINTF("%s+\n", __func__);
+    PRINTF("%s+ pool %08lx\n", __func__, (unsigned long) pool);
 #endif
-
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wrestrict"
 
     if (!(pool->bitmap[0] & 1)) {
         b = get_next_used_entry(pool, 1);
@@ -327,7 +324,6 @@ static int defrag_pool(struct mem_pool * restrict pool,
     PRINTF("%s-\n", __func__);
 #endif
 
-#pragma GCC diagnostic pop
     return p;
 }
 
