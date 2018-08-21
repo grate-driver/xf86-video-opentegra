@@ -72,6 +72,7 @@ static struct {
 
 void mem_pool_init(struct mem_pool *pool, void *addr, unsigned long size)
 {
+    pool->fragmented = 0;
     pool->bitmap_full = 0;
     pool->pool_size = size;
     pool->remain = size;
@@ -292,6 +293,9 @@ static int defrag_pool(struct mem_pool * restrict pool,
     PRINTF("%s+ pool %08lx\n", __func__, (unsigned long) pool);
 #endif
 
+    if (!pool->fragmented)
+        goto out;
+
     if (!(pool->bitmap[0] & 1)) {
         b = get_next_used_entry(pool, 1);
         migrate_entry(pool, pool, b, 0, pool->base);
@@ -320,6 +324,10 @@ static int defrag_pool(struct mem_pool * restrict pool,
 
     validate_pool(pool);
 
+    e = get_next_unused_entry(pool, p + 1);
+    if (e == -1)
+        pool->fragmented = 0;
+out:
 #ifdef DEBUG
     PRINTF("%s-\n", __func__);
 #endif
@@ -430,6 +438,7 @@ void mem_pool_free(struct mem_pool_entry *entry)
 #endif
     validate_pool(pool);
 
+    pool->fragmented = 1;
     pool->bitmap_full = 0;
     pool->remain += pool->entries[entry_id].size;
     clear_bit(pool, entry_id);
@@ -520,6 +529,9 @@ int mem_pool_transfer_entries(struct mem_pool *pool_to,
 
         b_to = e_to;
     }
+
+    if (transferred_entries)
+        pool_from->fragmented = !mem_pool_empty(pool_from);
 
     validate_pool(pool_to);
     validate_pool(pool_from);

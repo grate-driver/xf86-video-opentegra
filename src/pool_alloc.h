@@ -38,7 +38,8 @@ struct mem_pool_entry {
 
 struct mem_pool {
     char *base;
-    int bitmap_full;
+    int fragmented:1;
+    int bitmap_full:1;
     unsigned long remain;
     unsigned long pool_size;
     unsigned long bitmap[BITMAP_SIZE];
