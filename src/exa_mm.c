@@ -83,6 +83,74 @@ static void *TegraEXAPoolAlloc(TegraPixmapPoolPtr pool, size_t size,
     return data;
 }
 
+static unsigned long TegraEXAPoolsAvailableSpaceTotal(TegraEXAPtr exa)
+{
+    TegraPixmapPoolPtr pool;
+    unsigned long spare = 0;
+
+    xorg_list_for_each_entry(pool, &exa->mem_pools, entry)
+        spare += pool->pool.remain;
+
+    return spare;
+}
+
+void TegraEXACompactPools(TegraEXAPtr exa, Bool force)
+{
+    TegraPixmapPoolPtr pool_to, pool_from;
+    struct xorg_list *to, *from;
+    unsigned long spare;
+    int transferred;
+
+    if (xorg_list_is_empty(&exa->mem_pools))
+        return;
+
+    spare = TegraEXAPoolsAvailableSpaceTotal(exa);
+
+    if (!force && spare < TEGRA_EXA_POOL_SIZE * 12 / 8)
+        return;
+
+    to = exa->mem_pools.next;
+
+    /*
+     * Move as many entries as we can into the first pool from the second pool,
+     * then from the third pool and so on.
+     *
+     * Then move as many entries as we can into the second pool from the third
+     * pool, then from the fourth pool and so on.
+     *
+     * As a result, the last pool will become empty and orphaned, hence it
+     * could be destroyed.
+     */
+    do {
+        pool_to = xorg_list_entry(to, TegraPixmapPool, entry);
+        from = to->next;
+
+        if (from == &exa->mem_pools)
+            goto out;
+
+        do {
+            pool_from = xorg_list_entry(from, TegraPixmapPool, entry);
+            from = from->next;
+
+            transferred = mem_pool_transfer_entries(&pool_to->pool,
+                                                    &pool_from->pool);
+            if (transferred) {
+                pool_to->alloc_cnt += transferred;
+                pool_from->alloc_cnt -= transferred;
+
+                if (!pool_from->alloc_cnt)
+                    TegraEXADestroyPool(pool_from);
+            }
+
+        } while (from != &exa->mem_pools);
+
+        to = to->next;
+    } while (to != &exa->mem_pools);
+
+out:
+    mem_pool_defrag(&pool_to->pool);
+}
+
 void TegraEXAPoolFree(TegraPixmapPoolPtr pool,
                       struct mem_pool_entry *pool_entry)
 {
@@ -100,6 +168,8 @@ static int TegraEXAAllocateFromPool(TegraPtr tegra, size_t size,
 {
     TegraEXAPtr exa = tegra->exa;
     TegraPixmapPoolPtr p;
+    Bool retried = FALSE;
+    unsigned long spare;
     void *data;
     int err;
 
@@ -108,17 +178,28 @@ static int TegraEXAAllocateFromPool(TegraPtr tegra, size_t size,
 
     size = TEGRA_ALIGN(size, TEGRA_EXA_OFFSET_ALIGN);
 
+retry:
     xorg_list_for_each_entry(p, &exa->mem_pools, entry) {
         data = TegraEXAPoolAlloc(p, size, pool_entry);
         if (data)
             goto success;
     }
 
+    if (!retried) {
+        spare = TegraEXAPoolsAvailableSpaceTotal(exa);
+
+        if (spare > size) {
+            TegraEXACompactPools(exa, TRUE);
+            retried = TRUE;
+            goto retry;
+        }
+    }
+
     err = TegraEXACreatePool(tegra, &p);
     if (err)
         return err;
 
-    xorg_list_add(&p->entry, &exa->mem_pools);
+    xorg_list_append(&p->entry, &exa->mem_pools);
 
     data = TegraEXAPoolAlloc(p, size, pool_entry);
     if (!data) {

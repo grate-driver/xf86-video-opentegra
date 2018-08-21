@@ -50,6 +50,9 @@ void *mem_pool_alloc(struct mem_pool * restrict pool, unsigned long size,
                      struct mem_pool_entry *ret_entry);
 void mem_pool_free(struct mem_pool_entry *entry);
 void mem_pool_destroy(struct mem_pool *pool);
+int mem_pool_transfer_entries(struct mem_pool *pool_to,
+                              struct mem_pool *pool_from);
+void mem_pool_defrag(struct mem_pool *pool);
 
 static inline void *mem_pool_entry_addr(struct mem_pool_entry *entry)
 {

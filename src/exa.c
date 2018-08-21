@@ -348,7 +348,7 @@ static Bool TegraEXAPixmapIsOffscreen(PixmapPtr pPix)
     return priv && (priv->bo || priv->pool_entry.pool);
 }
 
-static void TegraEXAReleasePixmapData(TegraPixmapPtr priv)
+static void TegraEXAReleasePixmapData(TegraPtr tegra, TegraPixmapPtr priv)
 {
     /*
      * We have to await the fence to avoid BO re-use while job is in progress,
@@ -365,6 +365,7 @@ static void TegraEXAReleasePixmapData(TegraPixmapPtr priv)
         TegraPixmapPoolPtr pool = TEGRA_CONTAINER_OF(
                     priv->pool_entry.pool, TegraPixmapPool, pool);
         TegraEXAPoolFree(pool, &priv->pool_entry);
+        TegraEXACompactPools(tegra->exa, FALSE);
         return;
     }
 
@@ -427,9 +428,11 @@ static void *TegraEXACreatePixmap2(ScreenPtr pScreen, int width, int height,
 
 static void TegraEXADestroyPixmap(ScreenPtr pScreen, void *driverPriv)
 {
+    ScrnInfoPtr pScrn = xf86ScreenToScrn(pScreen);
+    TegraPtr tegra = TegraPTR(pScrn);
     TegraPixmapPtr priv = driverPriv;
 
-    TegraEXAReleasePixmapData(priv);
+    TegraEXAReleasePixmapData(tegra, priv);
     free(priv);
 }
 
@@ -449,7 +452,7 @@ static Bool TegraEXAModifyPixmapHeader(PixmapPtr pPixmap, int width,
         return FALSE;
 
     if (pPixData) {
-        TegraEXAReleasePixmapData(priv);
+        TegraEXAReleasePixmapData(tegra, priv);
 
         if (pPixData == drmmode_map_front_bo(&tegra->drmmode)) {
             scanout = drmmode_get_front_bo(&tegra->drmmode);

@@ -33,6 +33,7 @@ static struct {
     unsigned int pools_num;
     unsigned int total_remain;
 } stats;
+#define PRINTF(fmt, ...) printf(fmt, __VA_ARGS__)
 #endif
 
 /*
@@ -80,7 +81,7 @@ void mem_pool_init(struct mem_pool *pool, void *addr, unsigned long size)
 
 #ifdef DEBUG
     stats.total_remain += size;
-    printf("%s: pool %08lx: size=%lu pools_num=%u\n",
+    PRINTF("%s: pool %08lx: size=%lu pools_num=%u\n",
            __func__, (unsigned long) pool, size, stats.pools_num++);
 #endif
 }
@@ -89,17 +90,22 @@ static int get_next_unused_entry(struct mem_pool * restrict pool,
                                  unsigned int start)
 {
     unsigned int bits_array = start / 32;
-    unsigned long bitmap = pool->bitmap[bits_array];
-    unsigned long mask = (1 << (start % 32)) - 1;
+    unsigned long bitmap;
+    unsigned long mask;
     int bit;
 
+    if (bits_array >= BITMAP_SIZE)
+        goto out;
+
+    bitmap = pool->bitmap[bits_array];
+    mask = (1 << (start % 32)) - 1;
     bitmap |= mask;
 
     do {
         if (~bitmap) {
             bit = __builtin_ffsl(~bitmap);
 #ifdef DEBUG
-            printf("%s start=%u ret=%u\n",
+            PRINTF("%s start=%u ret=%u\n",
                    __func__, start, bits_array * 32 + bit - 1);
 #endif
             return bits_array * 32 + bit - 1;
@@ -108,8 +114,9 @@ static int get_next_unused_entry(struct mem_pool * restrict pool,
         if (++bits_array < BITMAP_SIZE)
             bitmap = pool->bitmap[bits_array];
     } while (bits_array < BITMAP_SIZE);
+out:
 #ifdef DEBUG
-    printf("%s start=%u ret=-1\n", __func__, start);
+    PRINTF("%s start=%u ret=-1\n", __func__, start);
 #endif
     return -1;
 }
@@ -118,17 +125,22 @@ static int get_next_used_entry(struct mem_pool * restrict pool,
                                unsigned int start)
 {
     unsigned int bits_array = start / 32;
-    unsigned long bitmap = pool->bitmap[bits_array];
-    unsigned long mask = (1 << (start % 32)) - 1;
+    unsigned long bitmap ;
+    unsigned long mask;
     int bit;
 
+    if (bits_array >= BITMAP_SIZE)
+        goto out;
+
+    bitmap = pool->bitmap[bits_array];
+    mask = (1 << (start % 32)) - 1;
     bitmap &= ~mask;
 
     do {
         if (bitmap) {
             bit = __builtin_ffsl(bitmap);
 #ifdef DEBUG
-            printf("%s start=%u ret=%u\n",
+            PRINTF("%s start=%u ret=%u\n",
                    __func__, start, bits_array * 32 + bit - 1);
 #endif
             return bits_array * 32 + bit - 1;
@@ -137,8 +149,9 @@ static int get_next_used_entry(struct mem_pool * restrict pool,
         if (++bits_array < BITMAP_SIZE)
             bitmap = pool->bitmap[bits_array];
     } while (bits_array < BITMAP_SIZE);
+out:
 #ifdef DEBUG
-    printf("%s: start=%u ret=-1\n", __func__, start);
+    PRINTF("%s: start=%u ret=-1\n", __func__, start);
 #endif
     return -1;
 }
@@ -165,34 +178,102 @@ static void clear_bit(struct mem_pool * restrict pool, unsigned int bit)
     pool->bitmap[bits_array] &= ~mask;
 }
 
-static void move_entry(struct mem_pool * restrict pool,
+static void validate_pool(struct mem_pool * restrict pool)
+{
+#ifdef DEBUG
+    struct __mem_pool_entry *busy;
+    struct __mem_pool_entry *prev;
+    int b = -1, b_prev = -1;
+
+    do {
+        b = get_next_used_entry(pool, b + 1);
+
+        if (b == 0) {
+            busy = &pool->entries[b];
+            PRINTF("%s: pool %08lx entry[0].base=%08lx pool.base=%08lx\n",
+                   __func__,
+                   (unsigned long) pool,
+                   (unsigned long) busy->base,
+                   (unsigned long) pool->base);
+
+            assert(busy->base == pool->base);
+            assert(busy->base + busy->size <= pool->base + pool->pool_size);
+            assert(busy->owner != NULL);
+        } else if (b > 0) {
+            busy = &pool->entries[b];
+            assert(busy->base > pool->base);
+
+            if (b_prev != -1) {
+                prev = &pool->entries[b_prev];
+                PRINTF("%s: pool %08lx entry[%d].base=%08lx entry[%d].base=%08lx pool.base=%08lx\n",
+                       __func__,
+                       (unsigned long) pool,
+                       b_prev, (unsigned long) prev->base,
+                       b, (unsigned long) busy->base,
+                       (unsigned long) pool->base);
+
+                assert(prev->base < busy->base);
+                assert(prev->base >= pool->base);
+                assert(prev->base + prev->size <= pool->base + pool->pool_size);
+                assert(prev->size <= pool->pool_size);
+                assert(prev->owner != NULL);
+                assert(busy->base >= pool->base);
+                assert(busy->base + busy->size <= pool->base + pool->pool_size);
+                assert(busy->size <= pool->pool_size);
+                assert(busy->owner != NULL);
+            }
+        }
+
+        b_prev = b;
+    } while (b >= 0);
+#endif
+}
+
+static void move_entry(struct mem_pool * restrict pool_from,
+                       struct mem_pool * restrict pool_to,
                        unsigned int from, unsigned int to)
 {
 #ifdef DEBUG
-    printf("%s: from %u to %u\n", __func__, from, to);
+    PRINTF("%s: from %u to %u\n", __func__, from, to);
 #endif
-    clear_bit(pool, from);
-    set_bit(pool, to);
+    if (pool_from == pool_to && from == to)
+        return;
 
-    memcpy(&pool->entries[to], &pool->entries[from],
+    clear_bit(pool_from, from);
+    set_bit(pool_to, to);
+
+    memcpy(&pool_to->entries[to], &pool_from->entries[from],
            sizeof(struct __mem_pool_entry));
 
-    pool->entries[to].owner->id = to;
+    pool_to->entries[to].owner->pool = pool_to;
+    pool_to->entries[to].owner->id = to;
+
+#ifdef DEBUG
+    pool_from->entries[from].owner = NULL;
+#endif
 }
 
-static void migrate_entry(struct mem_pool * restrict pool,
+static void migrate_entry(struct mem_pool * restrict pool_from,
+                          struct mem_pool * restrict pool_to,
                           unsigned int from, unsigned int to,
                           void *new_base)
 {
 #ifdef DEBUG
-    char *base = pool->entries[from].base;
-    printf("%s: from %u to %u\n", __func__, from, to);
+    char *base = pool_from->entries[from].base;
+    PRINTF("%s: from %u (%08lx) to %u (%08lx)\n",
+           __func__,
+           from, (unsigned long) pool_from,
+           to, (unsigned long) pool_to);
 #endif
-    move_entry(pool, from, to);
-    memmove(new_base, pool->entries[to].base, pool->entries[to].size);
-    pool->entries[to].base = new_base;
+    move_entry(pool_from, pool_to, from, to);
+    if (new_base != pool_to->entries[to].base) {
+        memmove(new_base,
+                pool_to->entries[to].base,
+                pool_to->entries[to].size);
+        pool_to->entries[to].base = new_base;
+    }
 #ifdef DEBUG
-    printf("%s: migrated from %08lx to %08lx\n",
+    PRINTF("%s: migrated from %08lx to %08lx\n",
            __func__,
            (unsigned long) base,
            (unsigned long) new_base);
@@ -203,60 +284,51 @@ static int defrag_pool(struct mem_pool * restrict pool,
                        unsigned long needed_size)
 {
     struct __mem_pool_entry *busy;
-    int b = 0, b_next = 0; // b for "busy/used entry"
-    char *new_base, *end;
+    struct __mem_pool_entry *prev;
+    int b = 0, p = 0, e;
+    char *end;
 
 #ifdef DEBUG
-    printf("%s+\n", __func__);
+    PRINTF("%s+\n", __func__);
 #endif
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wrestrict"
 
     if (!(pool->bitmap[0] & 1)) {
         b = get_next_used_entry(pool, 1);
-        migrate_entry(pool, b, 0, pool->base);
+        migrate_entry(pool, pool, b, 0, pool->base);
     }
 
-    b = get_next_used_entry(pool, 0);
-    b_next = get_next_used_entry(pool, b + 1);
-
+    /* compress bitmap / data */
     while (1) {
-        if (b_next != -1) {
-            busy = &pool->entries[b];
-            new_base = busy->base + busy->size;
-            end = pool->entries[b_next].base;
-            b = b + 1;
+        b = get_next_used_entry(pool, p + 1);
 
-            if (end != new_base) {
-                migrate_entry(pool, b_next, b, new_base);
-            } else if (b != b_next) {
-                move_entry(pool, b_next, b);
-            }
-
-            b_next = get_next_used_entry(pool, b + 1);
-        }
-
-        if (b_next == b + 1)
-            continue;
-
-        if (b_next == -1)
-            end = pool->base + pool->pool_size;
-        else
-            end = pool->entries[b_next].base;
+        if (b == -1)
+            break;
 
         busy = &pool->entries[b];
-        new_base = busy->base + busy->size;
+        prev = &pool->entries[p];
+        end = prev->base + prev->size;
 
-        if (end - new_base >= needed_size)
-            break;
-#ifdef DEBUG
-        assert(b_next != -1);
-#endif
+        if (busy->base - end >= needed_size) {
+            e = get_next_unused_entry(pool, p);
+
+            if (e < b)
+                break;
+        }
+
+        migrate_entry(pool, pool, b, ++p, prev->base + prev->size);
     }
 
+    validate_pool(pool);
+
 #ifdef DEBUG
-    printf("%s-\n", __func__);
+    PRINTF("%s-\n", __func__);
 #endif
 
-    return b;
+#pragma GCC diagnostic pop
+    return p;
 }
 
 void *mem_pool_alloc(struct mem_pool * restrict pool, unsigned long size,
@@ -269,7 +341,7 @@ void *mem_pool_alloc(struct mem_pool * restrict pool, unsigned long size,
 
 #ifdef DEBUG
     int defragged = 0;
-    printf("%s+: pool %08lx (full %d): size=%lu pool.remain=%lu\n",
+    PRINTF("%s+: pool %08lx (full %d): size=%lu pool.remain=%lu\n",
            __func__,
            (unsigned long) pool,
            pool->bitmap_full, size, pool->remain);
@@ -333,8 +405,10 @@ retry:
         goto retry;
     }
 
+    validate_pool(pool);
+
 #ifdef DEBUG
-    printf("%s: pool %08lx (full %d): e=%d size=%lu ret=%08lx pool.remain=%lu stats.pools_num=%u stats.total_remain=%u\n",
+    PRINTF("%s: pool %08lx (full %d): e=%d size=%lu ret=%08lx pool.remain=%lu stats.pools_num=%u stats.total_remain=%u\n",
            __func__,
            (unsigned long) pool,
            pool->bitmap_full, e, size,
@@ -352,21 +426,26 @@ void mem_pool_free(struct mem_pool_entry *entry)
     unsigned int entry_id = entry->id;
 
 #ifdef DEBUG
-    printf("%s: pool %08lx: e=%u size=%lu\n",
+    char *base = mem_pool_entry_addr(entry);
+    PRINTF("%s: pool %08lx: e=%u size=%lu addr=%08lx\n",
            __func__, (unsigned long) pool,
-           entry_id, pool->entries[entry_id].size);
+           entry_id, pool->entries[entry_id].size,
+           (unsigned long) base);
 #endif
+    validate_pool(pool);
+
     pool->bitmap_full = 0;
     pool->remain += pool->entries[entry_id].size;
-    pool->entries[entry_id].owner = NULL;
     clear_bit(pool, entry_id);
 #ifdef DEBUG
     stats.total_remain += pool->entries[entry_id].size;
-    printf("%s: pool %08lx: addr=%08lx pool.remain=%lu stats.pools_num=%u stats.total_remain=%u\n",
+    PRINTF("%s: pool %08lx: addr=%08lx pool.remain=%lu stats.pools_num=%u stats.total_remain=%u\n",
             __func__,
            (unsigned long) pool,
            (unsigned long) pool->entries[entry_id].base,
            pool->remain, stats.pools_num, stats.total_remain);
+    pool->entries[entry_id].owner = NULL;
+    pool->entries[entry_id].base = (void *) 0x66600000;
 #endif
 }
 
@@ -374,8 +453,94 @@ void mem_pool_destroy(struct mem_pool *pool)
 {
 #ifdef DEBUG
     assert(pool->remain == pool->pool_size);
-    printf("%s: pool %08lx: size=%lu pools_num=%u\n",
+    PRINTF("%s: pool %08lx: size=%lu pools_num=%u\n",
            __func__, (unsigned long) pool, pool->pool_size, stats.pools_num--);
     stats.total_remain -= pool->pool_size;
 #endif
+}
+
+static int mem_pool_empty(struct mem_pool *pool)
+{
+    return pool->remain == pool->pool_size;
+}
+
+int mem_pool_transfer_entries(struct mem_pool *pool_to,
+                              struct mem_pool *pool_from)
+{
+    struct __mem_pool_entry *busy_from;
+    struct __mem_pool_entry *busy_to;
+    int b_from = -1, b_to, e_to;
+    int transferred_entries = 0;
+    unsigned long size;
+    char *new_base;
+
+#ifdef DEBUG
+    PRINTF("%s: pool to=%08lx (full=%d remain=%lu) from=%08lx (full=%d remain=%lu)\n",
+           __func__,
+           (unsigned long) pool_to,
+           pool_to->bitmap_full,
+           pool_to->remain,
+           (unsigned long) pool_from,
+           pool_from->bitmap_full,
+           pool_from->remain);
+#endif
+
+    if (pool_to->bitmap_full || pool_to->remain == 0)
+        return 0;
+
+    validate_pool(pool_to);
+    validate_pool(pool_from);
+
+    if (mem_pool_empty(pool_to)) {
+        b_to = -1;
+        new_base = pool_to->base;
+    } else {
+        b_to = defrag_pool(pool_to, ~0ul);
+        busy_to = &pool_to->entries[b_to];
+        new_base = busy_to->base + busy_to->size;
+    }
+
+    while (1) {
+        e_to = get_next_unused_entry(pool_to, b_to + 1);
+
+        if (e_to == -1)
+            break;
+
+        b_from = get_next_used_entry(pool_from, b_from + 1);
+
+        if (b_from == -1)
+            break;
+
+        busy_from = &pool_from->entries[b_from];
+        size = busy_from->size;
+
+        if (size <= pool_to->remain) {
+            migrate_entry(pool_from, pool_to, b_from, e_to, new_base);
+            pool_from->remain += size;
+            pool_to->remain -= size;
+            new_base += size;
+            transferred_entries++;
+        }
+
+        b_to = e_to;
+    }
+
+    validate_pool(pool_to);
+    validate_pool(pool_from);
+
+#ifdef DEBUG
+    PRINTF("%s: pool to=%08lx from=%08lx transferred_entries=%d\n",
+           __func__,
+           (unsigned long) pool_to,
+           (unsigned long) pool_from,
+           transferred_entries);
+#endif
+
+    return transferred_entries;
+}
+
+void mem_pool_defrag(struct mem_pool *pool)
+{
+    if (!mem_pool_empty(pool))
+        defrag_pool(pool, ~0ul);
 }
