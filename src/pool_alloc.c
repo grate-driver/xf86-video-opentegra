@@ -493,6 +493,11 @@ int mem_pool_transfer_entries(struct mem_pool *pool_to,
     if (pool_to->bitmap_full || pool_to->remain == 0)
         return 0;
 
+    if (pool_to == pool_from) {
+        defrag_pool(pool_to, ~0ul);
+        return 0;
+    }
+
     validate_pool(pool_to);
     validate_pool(pool_from);
 
