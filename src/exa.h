@@ -64,6 +64,7 @@ typedef struct _TegraEXARec{
     struct tegra_stream cmds;
     TegraEXAScratch scratch;
     struct xorg_list mem_pools;
+    time_t pool_compact_time;
 
     ExaDriverPtr driver;
 } *TegraEXAPtr;

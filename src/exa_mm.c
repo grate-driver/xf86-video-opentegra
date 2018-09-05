@@ -94,43 +94,58 @@ static unsigned long TegraEXAPoolsAvailableSpaceTotal(TegraEXAPtr exa)
     return spare;
 }
 
-void TegraEXACompactPools(TegraEXAPtr exa, Bool force)
+void TegraEXACompactPools(TegraEXAPtr exa, Bool force, size_t size)
 {
     TegraPixmapPoolPtr pool_to, pool_from;
     struct xorg_list *to, *from;
-    unsigned long spare;
     int transferred;
+    int pass = 3;
+    int done;
 
     if (xorg_list_is_empty(&exa->mem_pools))
         return;
 
-    spare = TegraEXAPoolsAvailableSpaceTotal(exa);
+    if (force) {
+        struct timespec time;
 
-    if (!force && spare < TEGRA_EXA_POOL_SIZE * 12 / 8)
-        return;
+        clock_gettime(CLOCK_MONOTONIC, &time);
 
+        if (time.tv_sec - exa->pool_compact_time < 15)
+            return;
+
+        exa->pool_compact_time = time.tv_sec;
+    }
+
+repeate:
     to = exa->mem_pools.next;
+    done = 1;
 
     /*
-     * Move as many entries as we can into the first pool from the second pool,
-     * then from the third pool and so on.
+     * Move as many entries as we can into the first pool from the last pool,
+     * then from the last-1 pool and so on.
      *
-     * Then move as many entries as we can into the second pool from the third
-     * pool, then from the fourth pool and so on.
+     * Then move as many entries as we can into the second pool from the last
+     * pool, then from the last-1 pool and so on.
      *
      * As a result, the last pool will become empty and orphaned, hence it
      * could be destroyed.
+     *
+     * This procedure is repeated in several passes and stops if there was
+     * no transfers made during the pass.
+     *
+     * If "force" isn't set, compaction stops once emptied pool has enough
+     * space.
      */
     do {
         pool_to = xorg_list_entry(to, TegraPixmapPool, entry);
-        from = to->next;
+        from = exa->mem_pools.prev;
 
-        if (from == &exa->mem_pools)
+        if (to->next == &exa->mem_pools)
             goto out;
 
         do {
             pool_from = xorg_list_entry(from, TegraPixmapPool, entry);
-            from = from->next;
+            from = from->prev;
 
             transferred = mem_pool_transfer_entries(&pool_to->pool,
                                                     &pool_from->pool);
@@ -138,16 +153,24 @@ void TegraEXACompactPools(TegraEXAPtr exa, Bool force)
                 pool_to->alloc_cnt += transferred;
                 pool_from->alloc_cnt -= transferred;
 
+                if (!force && pool_from->pool.remain >= size)
+                    return;
+
                 if (!pool_from->alloc_cnt)
                     TegraEXADestroyPool(pool_from);
+                else
+                    done = 0;
             }
 
-        } while (from != &exa->mem_pools);
+        } while (from != to);
 
         to = to->next;
     } while (to != &exa->mem_pools);
 
 out:
+    if (force && --pass && !done)
+        goto repeate;
+
     mem_pool_defrag(&pool_to->pool);
 }
 
@@ -189,7 +212,7 @@ retry:
         spare = TegraEXAPoolsAvailableSpaceTotal(exa);
 
         if (spare > size) {
-            TegraEXACompactPools(exa, TRUE);
+            TegraEXACompactPools(exa, FALSE, size);
             retried = TRUE;
             goto retry;
         }

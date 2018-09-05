@@ -365,7 +365,7 @@ static void TegraEXAReleasePixmapData(TegraPtr tegra, TegraPixmapPtr priv)
         TegraPixmapPoolPtr pool = TEGRA_CONTAINER_OF(
                     priv->pool_entry.pool, TegraPixmapPool, pool);
         TegraEXAPoolFree(pool, &priv->pool_entry);
-        TegraEXACompactPools(tegra->exa, FALSE);
+        TegraEXACompactPools(tegra->exa, TRUE, 0);
         return;
     }
 

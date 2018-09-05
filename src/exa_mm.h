@@ -21,7 +21,7 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-void TegraEXACompactPools(TegraEXAPtr exa, Bool force);
+void TegraEXACompactPools(TegraEXAPtr exa, Bool force, size_t size);
 
 void TegraEXADestroyPool(TegraPixmapPoolPtr pool);
 
