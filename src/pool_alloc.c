@@ -516,6 +516,7 @@ int mem_pool_transfer_entries(struct mem_pool *pool_to,
         if (e_to == -1)
             break;
 
+next_from:
         b_from = get_next_used_entry(pool_from, b_from + 1);
 
         if (b_from == -1)
@@ -530,9 +531,11 @@ int mem_pool_transfer_entries(struct mem_pool *pool_to,
             pool_to->remain -= size;
             new_base += size;
             transferred_entries++;
-        }
 
-        b_to = e_to;
+            b_to = e_to;
+        } else {
+            goto next_from;
+        }
     }
 
     if (transferred_entries)
