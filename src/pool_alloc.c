@@ -282,19 +282,24 @@ static void migrate_entry(struct mem_pool *pool_from,
 }
 
 static int defrag_pool(struct mem_pool * restrict pool,
-                       unsigned long needed_size)
+                       unsigned long needed_size,
+                       int ret_last_busy)
 {
     struct __mem_pool_entry *busy;
     struct __mem_pool_entry *prev;
-    int b = 0, p = 0, e;
+    int b = 0, p = 0, e; /* p for previous */
     char *end;
 
 #ifdef DEBUG
     PRINTF("%s+ pool %08lx\n", __func__, (unsigned long) pool);
 #endif
 
-    if (!pool->fragmented)
+    if (!pool->fragmented) {
+        if (ret_last_busy)
+            p = get_next_unused_entry(pool, 0) - 1;
+
         goto out;
+    }
 
     if (!(pool->bitmap[0] & 1)) {
         b = get_next_used_entry(pool, 1);
@@ -332,6 +337,7 @@ out:
     PRINTF("%s-\n", __func__);
 #endif
 
+    /* returns ID of last busy entry */
     return p;
 }
 
@@ -402,7 +408,7 @@ retry:
 #ifdef DEBUG
         assert(!defragged);
 #endif
-        b = defrag_pool(pool, size);
+        b = defrag_pool(pool, size, 1);
 #ifdef DEBUG
         defragged = 1;
 #endif
@@ -505,7 +511,7 @@ int mem_pool_transfer_entries(struct mem_pool *pool_to,
         b_to = -1;
         new_base = pool_to->base;
     } else {
-        b_to = defrag_pool(pool_to, ~0ul);
+        b_to = defrag_pool(pool_to, ~0ul, 1);
         busy_to = &pool_to->entries[b_to];
         new_base = busy_to->base + busy_to->size;
     }
@@ -558,5 +564,5 @@ next_from:
 void mem_pool_defrag(struct mem_pool *pool)
 {
     if (!mem_pool_empty(pool))
-        defrag_pool(pool, ~0ul);
+        defrag_pool(pool, ~0ul, 0);
 }
