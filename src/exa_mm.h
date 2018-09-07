@@ -21,12 +21,9 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-void TegraEXACompactPools(TegraEXAPtr exa, Bool force, size_t size);
-
 void TegraEXADestroyPool(TegraPixmapPoolPtr pool);
 
-void TegraEXAPoolFree(TegraPixmapPoolPtr pool,
-                      struct mem_pool_entry *pool_entry);
+void TegraEXAPoolFree(struct mem_pool_entry *pool_entry);
 
 Bool TegraEXAAllocateDRMFromPool(TegraPtr tegra,
                                  TegraPixmapPtr pixmap,
@@ -39,3 +36,7 @@ Bool TegraEXAAllocateDRM(TegraPtr tegra,
                          unsigned int bpp);
 
 Bool TegraEXAAllocateMem(TegraPixmapPtr pixmap, unsigned int size);
+
+int TegraEXAInitMM(TegraPtr tegra, TegraEXAPtr exa);
+
+void TegraEXAReleaseMM(TegraEXAPtr exa);

@@ -21,19 +21,19 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-// #define DEBUG
-
+#include <errno.h>
+#include <stdlib.h>
 #include <string.h>
 #include "pool_alloc.h"
 
-#ifdef DEBUG
+#ifdef POOL_DEBUG
 #include <assert.h>
 #include <stdio.h>
 static struct {
     unsigned int pools_num;
     unsigned int total_remain;
 } stats;
-#define PRINTF(fmt, ...) printf(fmt, __VA_ARGS__)
+#define PRINTF(fmt, ...) fprintf(stderr, fmt, __VA_ARGS__)
 #endif
 
 /*
@@ -70,21 +70,32 @@ static struct {
  *         pool-owners back.
  */
 
-void mem_pool_init(struct mem_pool *pool, void *addr, unsigned long size)
+int mem_pool_init(struct mem_pool *pool, void *addr, unsigned long size,
+                  unsigned int bitmap_size)
 {
+    pool->bitmap_size = bitmap_size;
     pool->fragmented = 0;
     pool->bitmap_full = 0;
     pool->pool_size = size;
     pool->remain = size;
     pool->base = addr;
 
-    memset(pool->bitmap, 0, sizeof(pool->bitmap));
+    pool->bitmap = calloc(bitmap_size, sizeof(*pool->bitmap));
+    pool->entries = malloc(bitmap_size * 32 * sizeof(*pool->entries));
 
-#ifdef DEBUG
+    if (!pool->bitmap || !pool->entries) {
+        free(pool->entries);
+        free(pool->bitmap);
+        return -ENOMEM;
+    }
+
+#ifdef POOL_DEBUG
     stats.total_remain += size;
     PRINTF("%s: pool %08lx: size=%lu pools_num=%u\n",
            __func__, (unsigned long) pool, size, stats.pools_num++);
 #endif
+
+    return 0;
 }
 
 static int get_next_unused_entry(struct mem_pool * restrict pool,
@@ -95,7 +106,7 @@ static int get_next_unused_entry(struct mem_pool * restrict pool,
     unsigned long mask;
     int bit;
 
-    if (bits_array >= BITMAP_SIZE)
+    if (bits_array >= pool->bitmap_size)
         goto out;
 
     bitmap = pool->bitmap[bits_array];
@@ -105,18 +116,18 @@ static int get_next_unused_entry(struct mem_pool * restrict pool,
     do {
         if (~bitmap) {
             bit = __builtin_ffsl(~bitmap);
-#ifdef DEBUG
+#ifdef POOL_DEBUG
             PRINTF("%s start=%u ret=%u\n",
                    __func__, start, bits_array * 32 + bit - 1);
 #endif
             return bits_array * 32 + bit - 1;
         }
 
-        if (++bits_array < BITMAP_SIZE)
+        if (++bits_array < pool->bitmap_size)
             bitmap = pool->bitmap[bits_array];
-    } while (bits_array < BITMAP_SIZE);
+    } while (bits_array < pool->bitmap_size);
 out:
-#ifdef DEBUG
+#ifdef POOL_DEBUG
     PRINTF("%s start=%u ret=-1\n", __func__, start);
 #endif
     return -1;
@@ -130,7 +141,7 @@ static int get_next_used_entry(struct mem_pool * restrict pool,
     unsigned long mask;
     int bit;
 
-    if (bits_array >= BITMAP_SIZE)
+    if (bits_array >= pool->bitmap_size)
         goto out;
 
     bitmap = pool->bitmap[bits_array];
@@ -140,18 +151,18 @@ static int get_next_used_entry(struct mem_pool * restrict pool,
     do {
         if (bitmap) {
             bit = __builtin_ffsl(bitmap);
-#ifdef DEBUG
+#ifdef POOL_DEBUG
             PRINTF("%s start=%u ret=%u\n",
                    __func__, start, bits_array * 32 + bit - 1);
 #endif
             return bits_array * 32 + bit - 1;
         }
 
-        if (++bits_array < BITMAP_SIZE)
+        if (++bits_array < pool->bitmap_size)
             bitmap = pool->bitmap[bits_array];
-    } while (bits_array < BITMAP_SIZE);
+    } while (bits_array < pool->bitmap_size);
 out:
-#ifdef DEBUG
+#ifdef POOL_DEBUG
     PRINTF("%s: start=%u ret=-1\n", __func__, start);
 #endif
     return -1;
@@ -161,7 +172,7 @@ static void set_bit(struct mem_pool * restrict pool, unsigned int bit)
 {
     unsigned int bits_array = bit / 32;
     unsigned long mask = 1 << (bit % 32);
-#ifdef DEBUG
+#ifdef POOL_DEBUG
     unsigned long bitmap = pool->bitmap[bits_array];
     assert(!(bitmap & mask));
 #endif
@@ -172,7 +183,7 @@ static void clear_bit(struct mem_pool * restrict pool, unsigned int bit)
 {
     unsigned int bits_array = bit / 32;
     unsigned long mask = 1 << (bit % 32);
-#ifdef DEBUG
+#ifdef POOL_DEBUG
     unsigned long bitmap = pool->bitmap[bits_array];
     assert(bitmap & mask);
 #endif
@@ -181,7 +192,7 @@ static void clear_bit(struct mem_pool * restrict pool, unsigned int bit)
 
 static void validate_pool(struct mem_pool * restrict pool)
 {
-#ifdef DEBUG
+#ifdef POOL_DEBUG
     struct __mem_pool_entry *busy;
     struct __mem_pool_entry *prev;
     int b = -1, b_prev = -1;
@@ -234,7 +245,7 @@ static void move_entry(struct mem_pool *pool_from,
                        struct mem_pool *pool_to,
                        unsigned int from, unsigned int to)
 {
-#ifdef DEBUG
+#ifdef POOL_DEBUG
     PRINTF("%s: from %u to %u\n", __func__, from, to);
 #endif
     if (pool_from == pool_to && from == to)
@@ -249,7 +260,7 @@ static void move_entry(struct mem_pool *pool_from,
     pool_to->entries[to].owner->pool = pool_to;
     pool_to->entries[to].owner->id = to;
 
-#ifdef DEBUG
+#ifdef POOL_DEBUG
     pool_from->entries[from].owner = NULL;
 #endif
 }
@@ -259,7 +270,7 @@ static void migrate_entry(struct mem_pool *pool_from,
                           unsigned int from, unsigned int to,
                           void *new_base)
 {
-#ifdef DEBUG
+#ifdef POOL_DEBUG
     char *base = pool_from->entries[from].base;
     PRINTF("%s: from %u (%08lx) to %u (%08lx)\n",
            __func__,
@@ -273,7 +284,7 @@ static void migrate_entry(struct mem_pool *pool_from,
                 pool_to->entries[to].size);
         pool_to->entries[to].base = new_base;
     }
-#ifdef DEBUG
+#ifdef POOL_DEBUG
     PRINTF("%s: migrated from %08lx to %08lx\n",
            __func__,
            (unsigned long) base,
@@ -290,7 +301,7 @@ static int defrag_pool(struct mem_pool * restrict pool,
     int b = 0, p = 0, e; /* p for previous */
     char *end;
 
-#ifdef DEBUG
+#ifdef POOL_DEBUG
     PRINTF("%s+ pool %08lx\n", __func__, (unsigned long) pool);
 #endif
 
@@ -333,7 +344,7 @@ static int defrag_pool(struct mem_pool * restrict pool,
     if (e == -1)
         pool->fragmented = 0;
 out:
-#ifdef DEBUG
+#ifdef POOL_DEBUG
     PRINTF("%s-\n", __func__);
 #endif
 
@@ -341,15 +352,43 @@ out:
     return p;
 }
 
+static int mem_pool_grow_bitmap(struct mem_pool * restrict pool)
+{
+    struct __mem_pool_entry *new_entries;
+    unsigned long *new_bitmap;
+    unsigned long new_size;
+
+    new_size = pool->bitmap_size + 1;
+    new_bitmap = realloc(pool->bitmap, new_size * sizeof(*new_bitmap));
+    new_entries = realloc(pool->entries, new_size * 32 * sizeof(*new_entries));
+
+    if (new_bitmap && new_entries) {
+        pool->entries = new_entries;
+        pool->bitmap_size = new_size;
+        pool->bitmap = new_bitmap;
+        pool->bitmap[new_size - 1] = 0;
+
+        return 1;
+    }
+
+    if (new_entries)
+        pool->entries = new_entries;
+
+    if (new_bitmap)
+        pool->bitmap = new_bitmap;
+
+    return 0;
+}
+
 void *mem_pool_alloc(struct mem_pool * restrict pool, unsigned long size,
-                     struct mem_pool_entry *ret_entry)
+                     struct mem_pool_entry *ret_entry, int defrag)
 {
     struct __mem_pool_entry *empty;
     struct __mem_pool_entry *busy;
     char *start = NULL, *end;
     int e, b = -1; // b for "busy/used entry", e for "unused/empty"
 
-#ifdef DEBUG
+#ifdef POOL_DEBUG
     int defragged = 0;
     PRINTF("%s+: pool %08lx (full %d): size=%lu pool.remain=%lu\n",
            __func__,
@@ -364,6 +403,9 @@ retry:
         e = get_next_unused_entry(pool, b + 1);
 
         if (e < 0) {
+            if (mem_pool_grow_bitmap(pool))
+                continue;
+
             pool->bitmap_full = 1;
             break;
         }
@@ -401,23 +443,31 @@ retry:
         pool->remain -= size;
         ret_entry->pool = pool;
         ret_entry->id = e;
-#ifdef DEBUG
+
+        if (!pool->bitmap_full)
+            pool->bitmap_full = (get_next_unused_entry(pool, b + 1) < 0);
+
+        if (pool->bitmap_full)
+            pool->bitmap_full = !mem_pool_grow_bitmap(pool);
+#ifdef POOL_DEBUG
         stats.total_remain -= size;
 #endif
-    } else if (!pool->bitmap_full) {
-#ifdef DEBUG
+    } else if (defrag && !pool->bitmap_full) {
+#ifdef POOL_DEBUG
         assert(!defragged);
 #endif
         b = defrag_pool(pool, size, 1);
-#ifdef DEBUG
+#ifdef POOL_DEBUG
         defragged = 1;
+#else
+        defrag = 0;
 #endif
         goto retry;
     }
 
     validate_pool(pool);
 
-#ifdef DEBUG
+#ifdef POOL_DEBUG
     PRINTF("%s: pool %08lx (full %d): e=%d size=%lu ret=%08lx pool.remain=%lu stats.pools_num=%u stats.total_remain=%u\n",
            __func__,
            (unsigned long) pool,
@@ -434,8 +484,9 @@ void mem_pool_free(struct mem_pool_entry *entry)
 {
     struct mem_pool *pool = entry->pool;
     unsigned int entry_id = entry->id;
+    int b;
 
-#ifdef DEBUG
+#ifdef POOL_DEBUG
     char *base = mem_pool_entry_addr(entry);
     PRINTF("%s: pool %08lx: e=%u size=%lu addr=%08lx\n",
            __func__, (unsigned long) pool,
@@ -444,11 +495,17 @@ void mem_pool_free(struct mem_pool_entry *entry)
 #endif
     validate_pool(pool);
 
-    pool->fragmented = 1;
+    if (!pool->fragmented) {
+        b = get_next_unused_entry(pool, 0) - 1;
+
+        if (b != entry_id)
+            pool->fragmented = 1;
+    }
+
     pool->bitmap_full = 0;
     pool->remain += pool->entries[entry_id].size;
     clear_bit(pool, entry_id);
-#ifdef DEBUG
+#ifdef POOL_DEBUG
     stats.total_remain += pool->entries[entry_id].size;
     PRINTF("%s: pool %08lx: addr=%08lx pool.remain=%lu stats.pools_num=%u stats.total_remain=%u\n",
             __func__,
@@ -462,17 +519,15 @@ void mem_pool_free(struct mem_pool_entry *entry)
 
 void mem_pool_destroy(struct mem_pool *pool)
 {
-#ifdef DEBUG
+#ifdef POOL_DEBUG
+    PRINTF("%s: pool %08lx: size=%lu remain=%lu pools_num=%u\n",
+           __func__, (unsigned long) pool, pool->pool_size, pool->remain,
+           stats.pools_num--);
+    assert(get_next_used_entry(pool, 0) == -1);
+    assert(get_next_unused_entry(pool, 0) == 0);
     assert(pool->remain == pool->pool_size);
-    PRINTF("%s: pool %08lx: size=%lu pools_num=%u\n",
-           __func__, (unsigned long) pool, pool->pool_size, stats.pools_num--);
     stats.total_remain -= pool->pool_size;
 #endif
-}
-
-static int mem_pool_empty(struct mem_pool *pool)
-{
-    return pool->remain == pool->pool_size;
 }
 
 int mem_pool_transfer_entries(struct mem_pool *pool_to,
@@ -485,7 +540,7 @@ int mem_pool_transfer_entries(struct mem_pool *pool_to,
     unsigned long size;
     char *new_base;
 
-#ifdef DEBUG
+#ifdef POOL_DEBUG
     PRINTF("%s: pool to=%08lx (full=%d remain=%lu) from=%08lx (full=%d remain=%lu)\n",
            __func__,
            (unsigned long) pool_to,
@@ -499,10 +554,8 @@ int mem_pool_transfer_entries(struct mem_pool *pool_to,
     if (pool_to->bitmap_full || pool_to->remain == 0)
         return 0;
 
-    if (pool_to == pool_from) {
-        defrag_pool(pool_to, ~0ul);
+    if (pool_to == pool_from)
         return 0;
-    }
 
     validate_pool(pool_to);
     validate_pool(pool_from);
@@ -519,8 +572,13 @@ int mem_pool_transfer_entries(struct mem_pool *pool_to,
     while (1) {
         e_to = get_next_unused_entry(pool_to, b_to + 1);
 
-        if (e_to == -1)
+        if (e_to == -1) {
+            if (mem_pool_grow_bitmap(pool_to))
+                continue;
+
+            pool_to->bitmap_full = 1;
             break;
+        }
 
 next_from:
         b_from = get_next_used_entry(pool_from, b_from + 1);
@@ -533,6 +591,7 @@ next_from:
 
         if (size <= pool_to->remain) {
             migrate_entry(pool_from, pool_to, b_from, e_to, new_base);
+            pool_from->bitmap_full = 0;
             pool_from->remain += size;
             pool_to->remain -= size;
             new_base += size;
@@ -547,16 +606,96 @@ next_from:
     if (transferred_entries)
         pool_from->fragmented = !mem_pool_empty(pool_from);
 
-    validate_pool(pool_to);
-    validate_pool(pool_from);
-
-#ifdef DEBUG
+#ifdef POOL_DEBUG
     PRINTF("%s: pool to=%08lx from=%08lx transferred_entries=%d\n",
            __func__,
            (unsigned long) pool_to,
            (unsigned long) pool_from,
            transferred_entries);
 #endif
+
+    if (transferred_entries) {
+        validate_pool(pool_to);
+        validate_pool(pool_from);
+    }
+
+    return transferred_entries;
+}
+
+int mem_pool_transfer_entries_fast(struct mem_pool *pool_to,
+                                   struct mem_pool *pool_from)
+{
+    struct __mem_pool_entry *busy_from;
+    struct mem_pool_entry empty_to;
+    int transferred_entries = 0;
+    unsigned long fail_size = ~0ul;
+    unsigned long size;
+    int b_from = -1, e_to;
+
+#ifdef POOL_DEBUG
+    PRINTF("%s: pool to=%08lx (full=%d remain=%lu) from=%08lx (full=%d remain=%lu)\n",
+           __func__,
+           (unsigned long) pool_to,
+           pool_to->bitmap_full,
+           pool_to->remain,
+           (unsigned long) pool_from,
+           pool_from->bitmap_full,
+           pool_from->remain);
+#endif
+
+    if (pool_to->bitmap_full || pool_to->remain == 0)
+        return 0;
+
+    if (pool_to == pool_from)
+        return 0;
+
+    validate_pool(pool_to);
+    validate_pool(pool_from);
+
+    while (1) {
+        b_from = get_next_used_entry(pool_from, b_from + 1);
+
+        if (b_from == -1)
+            break;
+
+        busy_from = &pool_from->entries[b_from];
+        size = busy_from->size;
+
+        if (size >= fail_size)
+            continue;
+
+        if (mem_pool_alloc(pool_to, size, &empty_to, 0) != NULL) {
+            e_to = empty_to.id;
+#ifdef POOL_DEBUG
+            clear_bit(pool_to, e_to);
+            stats.total_remain += size;
+#endif
+            migrate_entry(pool_from, pool_to, b_from, e_to,
+                          pool_to->entries[e_to].base);
+
+            pool_from->bitmap_full = 0;
+            pool_from->remain += size;
+            transferred_entries++;
+        } else if (size < fail_size) {
+            fail_size = size;
+        }
+    }
+
+    if (transferred_entries)
+        pool_from->fragmented = !mem_pool_empty(pool_from);
+
+#ifdef POOL_DEBUG
+    PRINTF("%s: pool to=%08lx from=%08lx transferred_entries=%d\n",
+           __func__,
+           (unsigned long) pool_to,
+           (unsigned long) pool_from,
+           transferred_entries);
+#endif
+
+    if (transferred_entries) {
+        validate_pool(pool_to);
+        validate_pool(pool_from);
+    }
 
     return transferred_entries;
 }
@@ -565,4 +704,29 @@ void mem_pool_defrag(struct mem_pool *pool)
 {
     if (!mem_pool_empty(pool))
         defrag_pool(pool, ~0ul, 0);
+}
+
+void mem_pool_debug_dump(struct mem_pool *pool)
+{
+#ifdef POOL_DEBUG
+    struct __mem_pool_entry *busy;
+    int b = -1;
+
+    PRINTF("%s: +pool %08lx (full=%d remain=%lu size=%lu)\n",
+           __func__, (unsigned long) pool,
+           pool->bitmap_full, pool->remain, pool->pool_size);
+
+    while (1) {
+        b = get_next_used_entry(pool, b + 1);
+
+        if (b == -1)
+            break;
+
+        busy = &pool->entries[b];
+
+        PRINTF("%s: pool %08lx: entry[%d]: base=%08lx size=%lu\n",
+               __func__, (unsigned long) pool,
+               b, (unsigned long) busy->base, busy->size);
+    }
+#endif
 }

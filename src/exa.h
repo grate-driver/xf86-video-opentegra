@@ -53,9 +53,10 @@ typedef struct tegra_exa_scratch {
 typedef struct {
     struct xorg_list entry;
     struct drm_tegra_bo *bo;
-    unsigned int alloc_cnt;
     struct mem_pool pool;
     void *ptr;
+    Bool heavy : 1;
+    Bool light : 1;
 } TegraPixmapPool, *TegraPixmapPoolPtr;
 
 typedef struct _TegraEXARec{
@@ -64,7 +65,8 @@ typedef struct _TegraEXARec{
     struct tegra_stream cmds;
     TegraEXAScratch scratch;
     struct xorg_list mem_pools;
-    time_t pool_compact_time;
+    time_t pool_slow_compact_time;
+    time_t pool_fast_compact_time;
 
     ExaDriverPtr driver;
 } *TegraEXAPtr;

@@ -29,6 +29,8 @@
                __LINE__, __func__, ##args)
 
 #define TEGRA_EXA_POOL_SIZE             0x10000
+#define TEGRA_EXA_PAGE_SIZE             0x1000
+#define TEGRA_EXA_PAGE_MASK             (TEGRA_EXA_PAGE_SIZE - 1)
 
 void TegraEXADestroyPool(TegraPixmapPoolPtr pool)
 {
@@ -38,7 +40,8 @@ void TegraEXADestroyPool(TegraPixmapPoolPtr pool)
     free(pool);
 }
 
-static int TegraEXACreatePool(TegraPtr tegra, TegraPixmapPoolPtr *ret)
+static int TegraEXACreatePool(TegraPtr tegra, TegraPixmapPoolPtr *ret,
+                              unsigned int bitmap_size, unsigned long size)
 {
     TegraPixmapPoolPtr pool;
     int err;
@@ -49,7 +52,7 @@ static int TegraEXACreatePool(TegraPtr tegra, TegraPixmapPoolPtr *ret)
         return -ENOMEM;
     }
 
-    err = drm_tegra_bo_new(&pool->bo, tegra->drm, 0, TEGRA_EXA_POOL_SIZE);
+    err = drm_tegra_bo_new(&pool->bo, tegra->drm, 0, size);
     if (err) {
         ErrorMsg("failed to allocate pools BO: %d\n", err);
         free(pool);
@@ -64,23 +67,345 @@ static int TegraEXACreatePool(TegraPtr tegra, TegraPixmapPoolPtr *ret)
         return err;
     }
 
-    mem_pool_init(&pool->pool, pool->ptr, TEGRA_EXA_POOL_SIZE);
+    err = mem_pool_init(&pool->pool, pool->ptr, size, bitmap_size);
+    if (err) {
+        ErrorMsg("failed to initialize pools BO: %d\n", err);
+        drm_tegra_bo_unref(pool->bo);
+        free(pool);
+        return err;
+    }
 
     *ret = pool;
 
     return 0;
 }
 
-static void *TegraEXAPoolAlloc(TegraPixmapPoolPtr pool, size_t size,
-                               struct mem_pool_entry *pool_entry)
+static void *TegraEXAPoolAlloc(TegraEXAPtr exa, TegraPixmapPoolPtr pool,
+                               size_t size, struct mem_pool_entry *pool_entry,
+                               Bool fast)
 {
-    void *data;
+    void *data = mem_pool_alloc(&pool->pool, size, pool_entry, !fast);
 
-    data = mem_pool_alloc(&pool->pool, size, pool_entry);
-    if (data)
-        pool->alloc_cnt++;
+    if (data) {
+        /* move successive pool to the head of the list */
+        xorg_list_del(&pool->entry);
+        xorg_list_add(&pool->entry, &exa->mem_pools);
+    }
 
     return data;
+}
+
+static TegraPixmapPoolPtr TegraEXACompactPoolsFast(TegraEXAPtr exa, size_t size)
+{
+    TegraPixmapPoolPtr pool_to, pool_from = NULL;
+    unsigned int transferred;
+    unsigned int pass = 3;
+
+again:
+    xorg_list_for_each_entry(pool_to, &exa->mem_pools, entry) {
+        if (pool_to->pool.remain >= size)
+            return pool_to;
+
+        if (pool_to->pool.remain < TEGRA_EXA_OFFSET_ALIGN)
+            continue;
+
+        if (pool_to->light)
+            continue;
+
+        if (!pool_from) {
+            pool_from = pool_to;
+            continue;
+        }
+
+        if (pool_from->pool.remain < pool_to->pool.remain)
+            pool_from = pool_to;
+    }
+
+    if (pool_from) {
+        pool_from->light = TRUE;
+
+        xorg_list_for_each_entry(pool_to, &exa->mem_pools, entry) {
+            if (pool_from->light)
+                continue;
+
+            transferred = mem_pool_transfer_entries_fast(&pool_to->pool,
+                                                         &pool_from->pool);
+            if (!transferred)
+                continue;
+
+            if (mem_pool_has_space(&pool_from->pool, size))
+                return pool_from;
+        }
+    }
+
+    if (--pass > 0)
+        goto again;
+
+    return NULL;
+}
+
+static int TegraEXAShrinkPool(TegraPtr tegra, TegraPixmapPoolPtr shrink_pool,
+                              struct xorg_list *new_pools)
+{
+    TegraPixmapPoolPtr new_pool;
+    unsigned long size;
+    int err;
+
+    if (shrink_pool->pool.remain < TEGRA_EXA_PAGE_SIZE)
+        return 0;
+
+    size = shrink_pool->pool.pool_size - shrink_pool->pool.remain;
+    size = TEGRA_ALIGN(size, TEGRA_EXA_PAGE_SIZE);
+
+    err = TegraEXACreatePool(tegra, &new_pool, shrink_pool->pool.bitmap_size,
+                             size);
+    if (err)
+        return err;
+
+    mem_pool_transfer_entries_fast(&new_pool->pool, &shrink_pool->pool);
+    TegraEXADestroyPool(shrink_pool);
+
+    xorg_list_append(&new_pool->entry, new_pools);
+
+    return 0;
+}
+
+static int TegraEXAMergePools(TegraPtr tegra)
+{
+    TegraEXAPtr exa = tegra->exa;
+    TegraPixmapPoolPtr pool, tmp;
+    TegraPixmapPoolPtr new_pool;
+    unsigned long unaligned = 0;
+    unsigned long bitmap = 0;
+    unsigned long size = 0;
+    unsigned int pools = 0;
+    int err;
+
+    xorg_list_for_each_entry(pool, &exa->mem_pools, entry) {
+        if (pool->pool.remain & TEGRA_EXA_PAGE_MASK) {
+            unaligned += pool->pool.remain & TEGRA_EXA_PAGE_MASK;
+            size += pool->pool.pool_size - pool->pool.remain;
+            bitmap += pool->pool.bitmap_size;
+            pools++;
+        }
+    }
+
+    if (unaligned < TEGRA_EXA_POOL_SIZE)
+        return 0;
+
+    size = TEGRA_ALIGN(size, TEGRA_EXA_PAGE_SIZE);
+    err = TegraEXACreatePool(tegra, &new_pool, bitmap, size);
+    if (err)
+            return err;
+
+    xorg_list_for_each_entry_safe(pool, tmp, &exa->mem_pools, entry) {
+        if (pool->pool.remain & TEGRA_EXA_PAGE_MASK) {
+            mem_pool_transfer_entries_fast(&new_pool->pool, &pool->pool);
+            TegraEXADestroyPool(pool);
+        }
+    }
+
+    xorg_list_append(&new_pool->entry, &exa->mem_pools);
+
+    return 0;
+}
+
+static void TegraEXACompactPoolsSlow(TegraPtr tegra)
+{
+    TegraPixmapPoolPtr tmp1, tmp2, pool, pool_to, pool_from;
+    TegraPixmapPoolPtr light_pools[5];
+    TegraPixmapPoolPtr heavy_pools[16];
+    TegraEXAPtr exa = tegra->exa;
+    struct xorg_list new_pools;
+    unsigned long lightest_size;
+    unsigned long heaviest_size;
+    unsigned int transferred;
+    unsigned int i, l, h;
+    Bool list_full;
+    int err;
+
+    /* merge as much as possible pools into a larger pools */
+    err = TegraEXAMergePools(tegra);
+    if (!err)
+        return;
+
+    /*
+     * 1) Build two list:
+     *  - first "light" list that contains the most empty pools
+     *  - second "heavy" list that contains the most filled pools
+     *
+     * 2) Move as much as possible from light pools to the heavy pools.
+     *
+     * 3) Destroy the emptied light pools
+     *
+     * 4) Repeat until nothing can be moved in 2)
+     *
+     * 5) Shrink pools
+     */
+
+all_again:
+    memset(light_pools, 0, sizeof(light_pools));
+    heaviest_size = ~0ul;
+    list_full = FALSE;
+
+    /* build list of light pools, lightest pool is the first entry */
+    xorg_list_for_each_entry(pool_from, &exa->mem_pools, entry) {
+        pool_from->heavy = FALSE;
+        pool_from->light = FALSE;
+
+        if (pool_from->pool.remain < pool_from->pool.pool_size / 2)
+            continue;
+
+        if (list_full) {
+            if (pool_from->pool.remain <= heaviest_size)
+                continue;
+        }
+
+        for (i = 0; i < TEGRA_ARRAY_SIZE(light_pools); i++) {
+            if (!light_pools[i]) {
+                light_pools[i] = pool_from;
+                light_pools[i]->light = TRUE;
+                break;
+            }
+
+            if (light_pools[i]->pool.remain < pool_from->pool.remain) {
+                tmp1 = light_pools[i];
+
+                light_pools[i] = pool_from;
+                light_pools[i]->light = TRUE;
+
+                for (++i; i < TEGRA_ARRAY_SIZE(light_pools) && tmp1; i++) {
+                    tmp2 = light_pools[i];
+                    light_pools[i] = tmp1;
+                    tmp1 = tmp2;
+                }
+
+                if (tmp1)
+                    tmp1->light = FALSE;
+
+                if (pool_from->pool.remain < heaviest_size)
+                    heaviest_size = pool_from->pool.remain;
+
+                break;
+            }
+        }
+
+        if (i == TEGRA_ARRAY_SIZE(light_pools))
+            list_full = TRUE;
+    }
+
+heavy_again:
+    memset(heavy_pools, 0, sizeof(heavy_pools));
+    lightest_size = 0;
+    list_full = FALSE;
+
+    /* build list of heavy pools, heaviest pool is the first entry */
+    xorg_list_for_each_entry(pool_to, &exa->mem_pools, entry) {
+        if (pool_to->light || pool_to->heavy)
+            continue;
+
+        if (mem_pool_full(&pool_to->pool))
+            continue;
+
+        if (pool_to->pool.remain < TEGRA_EXA_OFFSET_ALIGN)
+            continue;
+
+        if (list_full) {
+            if (pool_to->pool.remain >= lightest_size)
+                continue;
+        }
+
+        for (i = 0; i < TEGRA_ARRAY_SIZE(heavy_pools); i++) {
+            if (!heavy_pools[i]) {
+                heavy_pools[i] = pool_to;
+                heavy_pools[i]->heavy = TRUE;
+                break;
+            }
+
+            if (heavy_pools[i]->pool.remain > pool_to->pool.remain) {
+                tmp1 = heavy_pools[i];
+
+                heavy_pools[i] = pool_to;
+                heavy_pools[i]->heavy = TRUE;
+
+                for (++i; i < TEGRA_ARRAY_SIZE(heavy_pools) && tmp1; i++) {
+                    tmp2 = heavy_pools[i];
+                    heavy_pools[i] = tmp1;
+                    tmp1 = tmp2;
+                }
+
+                if (tmp1)
+                    tmp1->heavy = FALSE;
+
+                if (pool_to->pool.remain > lightest_size)
+                    lightest_size = pool_to->pool.remain;
+
+                break;
+            }
+        }
+
+        if (i == TEGRA_ARRAY_SIZE(heavy_pools))
+            list_full = TRUE;
+    }
+
+    transferred = 0;
+
+    /* move entries from light pools to the heavy */
+    for (l = 0; l < TEGRA_ARRAY_SIZE(light_pools); l++) {
+        pool_from = light_pools[l];
+
+        if (!pool_from)
+            continue;
+
+        for (h = 0; h < TEGRA_ARRAY_SIZE(heavy_pools) && heavy_pools[h]; h++) {
+            pool_to = heavy_pools[h];
+
+            transferred += mem_pool_transfer_entries(&pool_to->pool,
+                                                     &pool_from->pool);
+        }
+
+        /* destroy emptied pool */
+        if (mem_pool_empty(&pool_from->pool)) {
+            TegraEXADestroyPool(pool_from);
+            light_pools[l] = NULL;
+        }
+    }
+
+    for (l = 0, pool = NULL; l < TEGRA_ARRAY_SIZE(light_pools) && !pool; l++)
+        pool = light_pools[l];
+
+    /* try hard */
+    if (pool && transferred)
+        goto heavy_again;
+
+    /* try very hard */
+    if (!pool && transferred)
+        goto all_again;
+
+    /* cut off unused space from the pools */
+    {
+        xorg_list_init(&new_pools);
+
+        xorg_list_for_each_entry_safe(pool, tmp1, &exa->mem_pools, entry) {
+            if (!pool->light) {
+                err = TegraEXAShrinkPool(tegra, pool, &new_pools);
+                if (err)
+                    break;
+            } else {
+                pool->light = FALSE;
+            }
+        }
+
+        xorg_list_for_each_entry_safe(pool, tmp1, &new_pools, entry) {
+            xorg_list_del(&pool->entry);
+            xorg_list_add(&pool->entry, &exa->mem_pools);
+        }
+    }
+
+#ifdef POOL_DEBUG
+    xorg_list_for_each_entry(pool, &exa->mem_pools, entry)
+        mem_pool_debug_dump(&pool->pool);
+#endif
 }
 
 static unsigned long TegraEXAPoolsAvailableSpaceTotal(TegraEXAPtr exa)
@@ -94,92 +419,86 @@ static unsigned long TegraEXAPoolsAvailableSpaceTotal(TegraEXAPtr exa)
     return spare;
 }
 
-void TegraEXACompactPools(TegraEXAPtr exa, Bool force, size_t size)
+static Bool TegraEXACompactPoolsSlowAllowed(TegraEXAPtr exa, size_t size_limit)
 {
-    TegraPixmapPoolPtr pool_to, pool_from;
-    struct xorg_list *to, *from;
-    int transferred;
-    int pass = 3;
-    int done;
+    struct timespec time;
+    Bool compact = FALSE;
+    Bool expired = TRUE;
 
-    if (xorg_list_is_empty(&exa->mem_pools))
-        return;
+    clock_gettime(CLOCK_MONOTONIC, &time);
 
-    if (force) {
-        struct timespec time;
+    if (time.tv_sec - exa->pool_slow_compact_time < 15)
+        expired = FALSE;
 
-        clock_gettime(CLOCK_MONOTONIC, &time);
-
-        if (time.tv_sec - exa->pool_compact_time < 15)
-            return;
-
-        exa->pool_compact_time = time.tv_sec;
+    if (size_limit) {
+        if (TegraEXAPoolsAvailableSpaceTotal(exa) < size_limit)
+            expired = FALSE;
+        else
+            compact = TRUE;
     }
 
-repeate:
-    to = exa->mem_pools.next;
-    done = 1;
+    if (!compact && size_limit)
+        exa->pool_slow_compact_time = time.tv_sec;
 
-    /*
-     * Move as many entries as we can into the first pool from the last pool,
-     * then from the last-1 pool and so on.
-     *
-     * Then move as many entries as we can into the second pool from the last
-     * pool, then from the last-1 pool and so on.
-     *
-     * As a result, the last pool will become empty and orphaned, hence it
-     * could be destroyed.
-     *
-     * This procedure is repeated in several passes and stops if there was
-     * no transfers made during the pass.
-     *
-     * If "force" isn't set, compaction stops once emptied pool has enough
-     * space.
-     */
-    do {
-        pool_to = xorg_list_entry(to, TegraPixmapPool, entry);
-        from = exa->mem_pools.prev;
-
-        if (to->next == &exa->mem_pools)
-            goto out;
-
-        do {
-            pool_from = xorg_list_entry(from, TegraPixmapPool, entry);
-            from = from->prev;
-
-            transferred = mem_pool_transfer_entries(&pool_to->pool,
-                                                    &pool_from->pool);
-            if (transferred) {
-                pool_to->alloc_cnt += transferred;
-                pool_from->alloc_cnt -= transferred;
-
-                if (!force && pool_from->pool.remain >= size)
-                    return;
-
-                if (!pool_from->alloc_cnt)
-                    TegraEXADestroyPool(pool_from);
-                else
-                    done = 0;
-            }
-
-        } while (from != to);
-
-        to = to->next;
-    } while (to != &exa->mem_pools);
-
-out:
-    if (force && --pass && !done)
-        goto repeate;
-
-    mem_pool_defrag(&pool_to->pool);
+    return expired;
 }
 
-void TegraEXAPoolFree(TegraPixmapPoolPtr pool,
-                      struct mem_pool_entry *pool_entry)
+static Bool TegraEXACompactPoolsFastAllowed(TegraEXAPtr exa, size_t size_limit)
 {
+    struct timespec time;
+    Bool compact = FALSE;
+    Bool expired = TRUE;
+
+    clock_gettime(CLOCK_MONOTONIC, &time);
+
+    if (time.tv_sec - exa->pool_fast_compact_time < 3)
+        expired = FALSE;
+
+    if (size_limit) {
+        if (TegraEXAPoolsAvailableSpaceTotal(exa) < size_limit)
+            expired = FALSE;
+        else
+            compact = TRUE;
+    }
+
+    if (!compact && size_limit)
+        exa->pool_fast_compact_time = time.tv_sec;
+
+    return expired;
+}
+
+static TegraPixmapPoolPtr TegraEXACompactPools(TegraPtr tegra, size_t size)
+{
+    TegraEXAPtr exa = tegra->exa;
+    Bool slow_compact;
+    size_t limit;
+
+    if (xorg_list_is_empty(&exa->mem_pools))
+        return NULL;
+
+    limit = TEGRA_EXA_POOL_SIZE * 10;
+
+    slow_compact = TegraEXACompactPoolsSlowAllowed(exa, limit * 3 / 2);
+    if (slow_compact)
+        TegraEXACompactPoolsSlow(tegra);
+
+    if (TegraEXACompactPoolsFastAllowed(exa, size))
+        return TegraEXACompactPoolsFast(exa, size);
+
+    if (slow_compact)
+        return TegraEXACompactPoolsFast(exa, limit);
+
+    return NULL;
+}
+
+void TegraEXAPoolFree(struct mem_pool_entry *pool_entry)
+{
+    TegraPixmapPoolPtr pool = TEGRA_CONTAINER_OF(pool_entry->pool,
+                                                 TegraPixmapPool, pool);
+
     mem_pool_free(pool_entry);
 
-    if (--pool->alloc_cnt == 0)
+    if (mem_pool_empty(&pool->pool))
         TegraEXADestroyPool(pool);
 
     pool_entry->pool = NULL;
@@ -190,9 +509,8 @@ static int TegraEXAAllocateFromPool(TegraPtr tegra, size_t size,
                                     struct mem_pool_entry *pool_entry)
 {
     TegraEXAPtr exa = tegra->exa;
-    TegraPixmapPoolPtr p;
-    Bool retried = FALSE;
-    unsigned long spare;
+    TegraPixmapPoolPtr pool;
+    size_t pool_size;
     void *data;
     int err;
 
@@ -201,32 +519,42 @@ static int TegraEXAAllocateFromPool(TegraPtr tegra, size_t size,
 
     size = TEGRA_ALIGN(size, TEGRA_EXA_OFFSET_ALIGN);
 
-retry:
-    xorg_list_for_each_entry(p, &exa->mem_pools, entry) {
-        data = TegraEXAPoolAlloc(p, size, pool_entry);
+    xorg_list_for_each_entry(pool, &exa->mem_pools, entry) {
+        data = TegraEXAPoolAlloc(exa, pool, size, pool_entry, TRUE);
         if (data)
             goto success;
     }
 
-    if (!retried) {
-        spare = TegraEXAPoolsAvailableSpaceTotal(exa);
+    if (TegraEXAPoolsAvailableSpaceTotal(exa) >= size)
+        pool = TegraEXACompactPools(tegra, size);
+    else
+        pool = NULL;
 
-        if (spare > size) {
-            TegraEXACompactPools(exa, FALSE, size);
-            retried = TRUE;
-            goto retry;
-        }
+    if (pool) {
+        data = TegraEXAPoolAlloc(exa, pool, size, pool_entry, FALSE);
+        if (data)
+            goto success;
     }
 
-    err = TegraEXACreatePool(tegra, &p);
-    if (err)
+again:
+    pool_size = TEGRA_ALIGN(size, TEGRA_EXA_POOL_SIZE);
+    err = TegraEXACreatePool(tegra, &pool, 1, pool_size);
+    if (err) {
+        if (err == -ENOMEM) {
+            if (TegraEXACompactPoolsSlowAllowed(exa, 0)) {
+                TegraEXACompactPoolsSlow(tegra);
+                goto again;
+            }
+        }
+
         return err;
+    }
 
-    xorg_list_append(&p->entry, &exa->mem_pools);
+    xorg_list_add(&pool->entry, &exa->mem_pools);
 
-    data = TegraEXAPoolAlloc(p, size, pool_entry);
+    data = TegraEXAPoolAlloc(exa, pool, size, pool_entry, TRUE);
     if (!data) {
-        ErrorMsg("failed to allocate from a new pool\n");
+        ErrorMsg("FATAL: Failed to allocate from a new pool\n");
         return -ENOMEM;
     }
 
@@ -239,11 +567,15 @@ Bool TegraEXAAllocateDRMFromPool(TegraPtr tegra,
                                  unsigned int size,
                                  unsigned int bpp)
 {
-    if (size >= TEGRA_EXA_POOL_SIZE * 2 / 3)
+    unsigned int size_masked = size & TEGRA_EXA_PAGE_MASK;
+
+    if (size_masked == 0)
         return FALSE;
 
-    if (0x1000 - (size & 0xFFF) <= TEGRA_EXA_OFFSET_ALIGN)
-        return FALSE;
+    if (size > TEGRA_EXA_POOL_SIZE / 6) {
+        if (TEGRA_EXA_PAGE_SIZE - size_masked <= TEGRA_EXA_OFFSET_ALIGN)
+            return FALSE;
+    }
 
     if (bpp != 8 && bpp != 16 && bpp != 32)
         return FALSE;
@@ -271,4 +603,17 @@ Bool TegraEXAAllocateMem(TegraPixmapPtr pixmap, unsigned int size)
     pixmap->fallback = malloc(size);
 
     return pixmap->fallback != NULL;
+}
+
+int TegraEXAInitMM(TegraPtr tegra, TegraEXAPtr exa)
+{
+    xorg_list_init(&exa->mem_pools);
+
+    return 0;
+}
+
+void TegraEXAReleaseMM(TegraEXAPtr exa)
+{
+    if (!xorg_list_is_empty(&exa->mem_pools))
+        ErrorMsg("FATAL: Memory leak!\n");
 }

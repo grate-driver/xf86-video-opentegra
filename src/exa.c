@@ -362,10 +362,7 @@ static void TegraEXAReleasePixmapData(TegraPtr tegra, TegraPixmapPtr priv)
     }
 
     if (priv->pool_entry.pool) {
-        TegraPixmapPoolPtr pool = TEGRA_CONTAINER_OF(
-                    priv->pool_entry.pool, TegraPixmapPool, pool);
-        TegraEXAPoolFree(pool, &priv->pool_entry);
-        TegraEXACompactPools(tegra->exa, TRUE, 0);
+        TegraEXAPoolFree(&priv->pool_entry);
         return;
     }
 
@@ -1410,7 +1407,11 @@ void TegraEXAScreenInit(ScreenPtr pScreen)
         goto close_gr3d;
     }
 
-    xorg_list_init(&priv->mem_pools);
+    err = TegraEXAInitMM(tegra, priv);
+    if (err) {
+        ErrorMsg("TegraEXAInitMM failed\n");
+        goto destroy_stream;
+    }
 
     exa->exa_major = EXA_VERSION_MAJOR;
     exa->exa_minor = EXA_VERSION_MINOR;
@@ -1451,7 +1452,7 @@ void TegraEXAScreenInit(ScreenPtr pScreen)
 
     if (!exaDriverInit(pScreen, exa)) {
         ErrorMsg("EXA initialization failed\n");
-        goto destroy_stream;
+        goto release_mm;
     }
 
     priv->driver = exa;
@@ -1459,6 +1460,8 @@ void TegraEXAScreenInit(ScreenPtr pScreen)
 
     return;
 
+release_mm:
+    TegraEXAReleaseMM(priv);
 destroy_stream:
     tegra_stream_destroy(&priv->cmds);
 close_gr3d:
@@ -1476,15 +1479,12 @@ void TegraEXAScreenExit(ScreenPtr pScreen)
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pScreen);
     TegraPtr tegra = TegraPTR(pScrn);
     TegraEXAPtr priv = tegra->exa;
-    TegraPixmapPoolPtr pool, tmp;
 
     if (priv) {
         exaDriverFini(pScreen);
         free(priv->driver);
 
-        xorg_list_for_each_entry_safe(pool, tmp, &priv->mem_pools, entry)
-            TegraEXADestroyPool(pool);
-
+        TegraEXAReleaseMM(priv);
         tegra_stream_destroy(&priv->cmds);
         drm_tegra_channel_close(priv->gr2d);
         drm_tegra_channel_close(priv->gr3d);
