@@ -281,6 +281,63 @@ static void migrate_entry(struct mem_pool *pool_from,
 #endif
 }
 
+static int mem_pool_resize_bitmap(struct mem_pool * restrict pool,
+                                  unsigned long new_size)
+{
+    struct __mem_pool_entry *new_entries;
+    unsigned long *new_bitmap;
+    unsigned long old_size;
+    int shrink;
+    int i;
+
+    old_size = pool->bitmap_size;
+
+#ifdef POOL_DEBUG
+    PRINTF("%s: pool %p (fragmented %d) bitmap_size %lu new_size %lu\n",
+           __func__, pool, pool->fragmented, old_size, new_size);
+#endif
+
+    shrink = (new_size < old_size);
+
+    if (pool->fragmented && shrink)
+        return 0;
+
+    if (old_size == new_size)
+        return 0;
+
+#ifdef POOL_DEBUG
+    if (shrink) {
+        int e = get_next_unused_entry(pool, 0);
+        assert(new_size >= (e / 32 + 1));
+        assert(new_size > 0);
+    }
+#endif
+
+    new_bitmap = realloc(pool->bitmap, new_size * sizeof(*new_bitmap));
+    new_entries = realloc(pool->entries, new_size * 32 * sizeof(*new_entries));
+
+    if (new_bitmap && new_entries) {
+        pool->entries = new_entries;
+        pool->bitmap_size = new_size;
+        pool->bitmap = new_bitmap;
+
+        if (!shrink) {
+            for (i = old_size; i < new_size; i++)
+                pool->bitmap[i] = 0;
+        }
+
+        return 1;
+    }
+
+    if (new_entries)
+        pool->entries = new_entries;
+
+    if (new_bitmap)
+        pool->bitmap = new_bitmap;
+
+    return 0;
+}
+
 static int defrag_pool(struct mem_pool * restrict pool,
                        unsigned long needed_size,
                        int ret_last_busy)
@@ -343,30 +400,7 @@ out:
 
 static int mem_pool_grow_bitmap(struct mem_pool * restrict pool)
 {
-    struct __mem_pool_entry *new_entries;
-    unsigned long *new_bitmap;
-    unsigned long new_size;
-
-    new_size = pool->bitmap_size + 1;
-    new_bitmap = realloc(pool->bitmap, new_size * sizeof(*new_bitmap));
-    new_entries = realloc(pool->entries, new_size * 32 * sizeof(*new_entries));
-
-    if (new_bitmap && new_entries) {
-        pool->entries = new_entries;
-        pool->bitmap_size = new_size;
-        pool->bitmap = new_bitmap;
-        pool->bitmap[new_size - 1] = 0;
-
-        return 1;
-    }
-
-    if (new_entries)
-        pool->entries = new_entries;
-
-    if (new_bitmap)
-        pool->bitmap = new_bitmap;
-
-    return 0;
+    return mem_pool_resize_bitmap(pool, pool->bitmap_size + 1);
 }
 
 void *mem_pool_alloc(struct mem_pool * restrict pool, unsigned long size,
@@ -383,8 +417,15 @@ void *mem_pool_alloc(struct mem_pool * restrict pool, unsigned long size,
            __func__, pool, pool->bitmap_full, size, pool->remain);
 #endif
 
-    if (size > pool->remain || pool->bitmap_full)
+    if (size > pool->remain)
         return NULL;
+
+    if (pool->bitmap_full)
+        pool->bitmap_full = !mem_pool_grow_bitmap(pool);
+
+    if (pool->bitmap_full)
+        return NULL;
+
 retry:
     do {
         e = get_next_unused_entry(pool, b + 1);
