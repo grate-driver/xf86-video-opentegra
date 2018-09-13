@@ -175,7 +175,7 @@ static unsigned long TegraEXAPixmapOffset(PixmapPtr pix)
     if (priv->pool_entry.pool)
         offset = mem_pool_entry_offset(&priv->pool_entry);
 
-    return offset + exaGetPixmapOffset(pix);
+    return offset;
 }
 
 static struct drm_tegra_bo * TegraEXAPixmapBO(PixmapPtr pix)
