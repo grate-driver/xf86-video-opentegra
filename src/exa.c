@@ -172,7 +172,7 @@ static unsigned long TegraEXAPixmapOffset(PixmapPtr pix)
     TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pix);
     unsigned long offset = 0;
 
-    if (priv->pool_entry.pool)
+    if (priv->type == TEGRA_EXA_PIXMAP_TYPE_POOL)
         offset = mem_pool_entry_offset(&priv->pool_entry);
 
     return offset;
@@ -182,7 +182,7 @@ static struct drm_tegra_bo * TegraEXAPixmapBO(PixmapPtr pix)
 {
     TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pix);
 
-    if (priv->pool_entry.pool) {
+    if (priv->type == TEGRA_EXA_PIXMAP_TYPE_POOL) {
         TegraPixmapPoolPtr pool = TEGRA_CONTAINER_OF(
                     priv->pool_entry.pool, TegraPixmapPool, pool);
         return pool->bo;
@@ -315,18 +315,22 @@ static Bool TegraEXAPrepareAccess(PixmapPtr pPix, int idx)
     TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pPix);
     int err;
 
-    if (priv->pool_entry.pool) {
+    if (priv->type == TEGRA_EXA_PIXMAP_TYPE_POOL) {
         pPix->devPrivate.ptr = mem_pool_entry_addr(&priv->pool_entry);
         return TRUE;
     }
 
-    err = drm_tegra_bo_map(priv->bo, &pPix->devPrivate.ptr);
-    if (err < 0) {
-        ErrorMsg("failed to map buffer object: %d\n", err);
-        return FALSE;
+    if (priv->type == TEGRA_EXA_PIXMAP_TYPE_BO) {
+        err = drm_tegra_bo_map(priv->bo, &pPix->devPrivate.ptr);
+        if (err < 0) {
+            ErrorMsg("failed to map buffer object: %d\n", err);
+            return FALSE;
+        }
+
+        return TRUE;
     }
 
-    return TRUE;
+    return FALSE;
 }
 
 static void TegraEXAFinishAccess(PixmapPtr pPix, int idx)
@@ -334,7 +338,7 @@ static void TegraEXAFinishAccess(PixmapPtr pPix, int idx)
     TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pPix);
     int err;
 
-    if (priv->bo) {
+    if (priv->type == TEGRA_EXA_PIXMAP_TYPE_BO) {
         err = drm_tegra_bo_unmap(priv->bo);
         if (err < 0)
             ErrorMsg("failed to unmap buffer object: %d\n", err);
@@ -345,11 +349,20 @@ static Bool TegraEXAPixmapIsOffscreen(PixmapPtr pPix)
 {
     TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pPix);
 
-    return priv && (priv->bo || priv->pool_entry.pool);
+    return priv && (priv->type == TEGRA_EXA_PIXMAP_TYPE_BO ||
+                    priv->type == TEGRA_EXA_PIXMAP_TYPE_POOL);
 }
 
 static void TegraEXAReleasePixmapData(TegraPtr tegra, TegraPixmapPtr priv)
 {
+    if (priv->type == TEGRA_EXA_PIXMAP_TYPE_NONE)
+        return;
+
+    if (priv->type == TEGRA_EXA_PIXMAP_TYPE_FALLBACK) {
+        free(priv->fallback);
+        goto out;
+    }
+
     /*
      * We have to await the fence to avoid BO re-use while job is in progress,
      * this will be resolved by BO reservation that right now isn't supported
@@ -358,25 +371,20 @@ static void TegraEXAReleasePixmapData(TegraPtr tegra, TegraPixmapPtr priv)
     if (priv->fence) {
         TegraEXAWaitFence(priv->fence);
         tegra_stream_put_fence(priv->fence);
-        priv->fence = NULL;
     }
 
-    if (priv->pool_entry.pool) {
+    if (priv->type == TEGRA_EXA_PIXMAP_TYPE_POOL) {
         TegraEXAPoolFree(&priv->pool_entry);
-        return;
+        goto out;
     }
 
-    if (priv->bo) {
+    if (priv->type == TEGRA_EXA_PIXMAP_TYPE_BO) {
         drm_tegra_bo_unref(priv->bo);
-        priv->bo = NULL;
-        return;
+        goto out;
     }
 
-    if (priv->fallback) {
-        free(priv->fallback);
-        priv->fallback = NULL;
-        return;
-    }
+out:
+    priv->type = TEGRA_EXA_PIXMAP_TYPE_NONE;
 }
 
 static Bool TegraEXAAllocatePixmapData(TegraPtr tegra,
@@ -453,12 +461,13 @@ static Bool TegraEXAModifyPixmapHeader(PixmapPtr pPixmap, int width,
 
         if (pPixData == drmmode_map_front_bo(&tegra->drmmode)) {
             scanout = drmmode_get_front_bo(&tegra->drmmode);
+            priv->type = TEGRA_EXA_PIXMAP_TYPE_BO;
             priv->bo = drm_tegra_bo_ref(scanout);
             return TRUE;
         }
 
         return FALSE;
-    } else if (priv->fallback) {
+    } else if (priv->type == TEGRA_EXA_PIXMAP_TYPE_FALLBACK) {
         /* this tells EXA that this pixmap is unacceleratable */
         pPixmap->devPrivate.ptr = priv->fallback;
     }

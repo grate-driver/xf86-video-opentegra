@@ -51,8 +51,8 @@ typedef struct tegra_exa_scratch {
 } TegraEXAScratch, *TegraEXAScratchPtr;
 
 typedef struct {
-    struct xorg_list entry;
     struct drm_tegra_bo *bo;
+    struct xorg_list entry;
     struct mem_pool pool;
     void *ptr;
     Bool heavy : 1;
@@ -71,13 +71,33 @@ typedef struct _TegraEXARec{
     ExaDriverPtr driver;
 } *TegraEXAPtr;
 
-typedef struct {
-    struct tegra_fence *fence;
-    struct drm_tegra_bo *bo;
-    void *fallback;
-    Bool dri;
+#define TEGRA_EXA_PIXMAP_TYPE_NONE      0
+#define TEGRA_EXA_PIXMAP_TYPE_FALLBACK  1
+#define TEGRA_EXA_PIXMAP_TYPE_BO        2
+#define TEGRA_EXA_PIXMAP_TYPE_POOL      3
 
-    struct mem_pool_entry pool_entry;
+typedef struct {
+    union {
+        struct {
+            union {
+                struct {
+                    struct tegra_fence *fence;
+
+                    union {
+                        struct mem_pool_entry pool_entry;
+                        struct drm_tegra_bo *bo;
+                    };
+                };
+
+                void *fallback;
+            };
+        };
+    };
+
+    Bool dri : 1;       /* pixmap's BO was exported */
+
+    unsigned type : 2;
+
 } TegraPixmapRec, *TegraPixmapPtr;
 
 unsigned int TegraEXAPitch(unsigned int width, unsigned int height,

@@ -587,6 +587,7 @@ Bool TegraEXAAllocateDRMFromPool(TegraPtr tegra,
                                  unsigned int bpp)
 {
     unsigned int size_masked = size & TEGRA_EXA_PAGE_MASK;
+    int err;
 
     if (size_masked == 0)
         return FALSE;
@@ -602,6 +603,11 @@ Bool TegraEXAAllocateDRMFromPool(TegraPtr tegra,
     if (pixmap->dri)
         return FALSE;
 
-    return TegraEXAAllocateFromPool(tegra, size,
-                                    &pixmap->pool_entry) == 0;
+    err = TegraEXAAllocateFromPool(tegra, size, &pixmap->pool_entry);
+    if (err)
+        return FALSE;
+
+    pixmap->type = TEGRA_EXA_PIXMAP_TYPE_POOL;
+
+    return TRUE;
 }

@@ -33,17 +33,30 @@ Bool TegraEXAAllocateDRM(TegraPtr tegra,
                          unsigned int size,
                          unsigned int bpp)
 {
+    int err;
+
     if (bpp != 8 && bpp != 16 && bpp != 32)
         return FALSE;
 
-    return drm_tegra_bo_new(&pixmap->bo, tegra->drm, 0, size) == 0;
+    err = drm_tegra_bo_new(&pixmap->bo, tegra->drm, 0, size);
+    if (err)
+        return FALSE;
+
+    pixmap->type = TEGRA_EXA_PIXMAP_TYPE_BO;
+
+    return TRUE;
 }
 
 Bool TegraEXAAllocateMem(TegraPixmapPtr pixmap, unsigned int size)
 {
     pixmap->fallback = malloc(size);
 
-    return pixmap->fallback != NULL;
+    if (!pixmap->fallback)
+        return FALSE;
+
+    pixmap->type = TEGRA_EXA_PIXMAP_TYPE_FALLBACK;
+
+    return TRUE;
 }
 
 int TegraEXAInitMM(TegraPtr tegra, TegraEXAPtr exa)
