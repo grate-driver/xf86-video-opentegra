@@ -21,19 +21,19 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
+#include <assert.h>
 #include <errno.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "pool_alloc.h"
 
 #ifdef POOL_DEBUG
-#include <assert.h>
-#include <stdio.h>
 static struct {
     unsigned int pools_num;
     unsigned int total_remain;
 } stats;
-#define PRINTF(fmt, ...) fprintf(stderr, fmt, __VA_ARGS__)
+#define PRINTF(fmt, ...) fprintf(stderr, fmt, ##__VA_ARGS__)
 #endif
 
 /*
@@ -90,6 +90,7 @@ int mem_pool_init(struct mem_pool *pool, void *addr, unsigned long size,
     }
 
 #ifdef POOL_DEBUG
+    memset(pool->entries, 0, bitmap_size * 32 * sizeof(*pool->entries));
     stats.total_remain += size;
     PRINTF("%s: pool %p: size=%lu pools_num=%u\n",
            __func__, pool, size, stats.pools_num++);
@@ -190,6 +191,36 @@ static void clear_bit(struct mem_pool * restrict pool, unsigned int bit)
     pool->bitmap[bits_array] &= ~mask;
 }
 
+static void mem_pool_set_canary(struct __mem_pool_entry *entry)
+{
+#ifdef POOL_DEBUG_CANARY
+    int i;
+
+    for (i = 0; i < 256; i++)
+        entry->base[entry->size - 256 + i] = i;
+#endif
+}
+
+void mem_pool_check_canary(struct __mem_pool_entry *entry)
+{
+#ifdef POOL_DEBUG_CANARY
+    int i;
+
+    for (i = 0; i < 256; i++)
+        assert(entry->base[entry->size - 256 + i] == i);
+#endif
+}
+
+static void mem_pool_clear_canary(struct __mem_pool_entry *entry)
+{
+#ifdef POOL_DEBUG_CANARY
+    int i;
+
+    for (i = 0; i < 256; i++)
+        entry->base[entry->size - 256 + i] = 0x55;
+#endif
+}
+
 static void validate_pool(struct mem_pool * restrict pool)
 {
 #ifdef POOL_DEBUG
@@ -229,6 +260,9 @@ static void validate_pool(struct mem_pool * restrict pool)
             }
         }
 
+        if (b > -1)
+            mem_pool_check_canary(&pool->entries[b]);
+
         b_prev = b;
     } while (b >= 0);
 #endif
@@ -247,14 +281,14 @@ static void move_entry(struct mem_pool *pool_from,
     clear_bit(pool_from, from);
     set_bit(pool_to, to);
 
-    memcpy(&pool_to->entries[to], &pool_from->entries[from],
-           sizeof(struct __mem_pool_entry));
-
+    pool_to->entries[to] = pool_from->entries[from];
     pool_to->entries[to].owner->pool = pool_to;
     pool_to->entries[to].owner->id = to;
 
 #ifdef POOL_DEBUG
     pool_from->entries[from].owner = NULL;
+    pool_from->entries[from].base = (void *) 0x66600000;
+    pool_from->entries[from].size = 0x10000000;
 #endif
 }
 
@@ -273,6 +307,7 @@ static void migrate_entry(struct mem_pool *pool_from,
         memmove(new_base,
                 pool_to->entries[to].base,
                 pool_to->entries[to].size);
+        mem_pool_clear_canary(&pool_to->entries[to]);
         pool_to->entries[to].base = new_base;
     }
 #ifdef POOL_DEBUG
@@ -352,8 +387,12 @@ static int defrag_pool(struct mem_pool * restrict pool,
 #endif
 
     if (!pool->fragmented) {
-        if (ret_last_busy)
-            p = get_next_unused_entry(pool, 0) - 1;
+        if (ret_last_busy) {
+            if (mem_pool_full(pool))
+                p = -1;
+            else
+                p = get_next_unused_entry(pool, 0) - 1;
+        }
 
         goto out;
     }
@@ -394,7 +433,7 @@ out:
     PRINTF("%s-\n", __func__);
 #endif
 
-    /* returns ID of last busy entry */
+    /* returns ID of last busy entry (in terms of position in the list) */
     return p;
 }
 
@@ -413,6 +452,13 @@ void *mem_pool_alloc(struct mem_pool * restrict pool, unsigned long size,
 
 #ifdef POOL_DEBUG
     int defragged = 0;
+#endif
+
+#ifdef POOL_DEBUG_CANARY
+    size += 256;
+#endif
+
+#ifdef POOL_DEBUG
     PRINTF("%s+: pool %p (full %d): size=%lu pool.remain=%lu\n",
            __func__, pool, pool->bitmap_full, size, pool->remain);
 #endif
@@ -477,6 +523,9 @@ retry:
 
         if (pool->bitmap_full)
             pool->bitmap_full = !mem_pool_grow_bitmap(pool);
+
+        mem_pool_set_canary(&pool->entries[e]);
+
 #ifdef POOL_DEBUG
         stats.total_remain -= size;
 #endif
@@ -527,6 +576,11 @@ void mem_pool_free(struct mem_pool_entry *entry)
     pool->bitmap_full = 0;
     pool->remain += pool->entries[entry_id].size;
     clear_bit(pool, entry_id);
+
+    mem_pool_check_canary(&pool->entries[entry_id]);
+#ifdef POOL_DEBUG_CANARY
+    memset(pool->entries[entry_id].base, 0x88, pool->entries[entry_id].size);
+#endif
 #ifdef POOL_DEBUG
     stats.total_remain += pool->entries[entry_id].size;
     PRINTF("%s: pool %p: addr=%p pool.remain=%lu stats.pools_num=%u stats.total_remain=%u\n",
@@ -534,6 +588,7 @@ void mem_pool_free(struct mem_pool_entry *entry)
            stats.pools_num, stats.total_remain);
     pool->entries[entry_id].owner = NULL;
     pool->entries[entry_id].base = (void *) 0x66600000;
+    pool->entries[entry_id].size = 0x10000000;
 #endif
 }
 
@@ -546,11 +601,13 @@ void mem_pool_destroy(struct mem_pool *pool)
     assert(get_next_unused_entry(pool, 0) == 0);
     assert(pool->remain == pool->pool_size);
     stats.total_remain -= pool->pool_size;
+    pool->base = (void *) 0xfff00000;
+    pool->pool_size = 0;
 #endif
 }
 
-int mem_pool_transfer_entries(struct mem_pool *pool_to,
-                              struct mem_pool *pool_from)
+int mem_pool_transfer_entries(struct mem_pool * restrict pool_to,
+                              struct mem_pool * restrict pool_from)
 {
     struct __mem_pool_entry *busy_from;
     struct __mem_pool_entry *busy_to;
@@ -565,7 +622,7 @@ int mem_pool_transfer_entries(struct mem_pool *pool_to,
            pool_from->bitmap_full, pool_from->remain);
 #endif
 
-    if (pool_to->bitmap_full || pool_to->remain == 0)
+    if (mem_pool_full(pool_to))
         return 0;
 
     if (pool_to == pool_from)
@@ -605,20 +662,24 @@ next_from:
 
         if (size <= pool_to->remain) {
             migrate_entry(pool_from, pool_to, b_from, e_to, new_base);
-            pool_from->bitmap_full = 0;
             pool_from->remain += size;
             pool_to->remain -= size;
             new_base += size;
             transferred_entries++;
 
             b_to = e_to;
+
+            if (pool_to->remain == 0)
+                break;
         } else {
             goto next_from;
         }
     }
 
-    if (transferred_entries)
+    if (transferred_entries) {
+        pool_from->bitmap_full = 0;
         pool_from->fragmented = !mem_pool_empty(pool_from);
+    }
 
 #ifdef POOL_DEBUG
     PRINTF("%s: pool to=%p from=%p transferred_entries=%d\n",
@@ -633,8 +694,8 @@ next_from:
     return transferred_entries;
 }
 
-int mem_pool_transfer_entries_fast(struct mem_pool *pool_to,
-                                   struct mem_pool *pool_from)
+int mem_pool_transfer_entries_fast(struct mem_pool * restrict pool_to,
+                                   struct mem_pool * restrict pool_from)
 {
     struct __mem_pool_entry *busy_from;
     struct mem_pool_entry empty_to;
@@ -649,7 +710,7 @@ int mem_pool_transfer_entries_fast(struct mem_pool *pool_to,
            pool_from->bitmap_full, pool_from->remain);
 #endif
 
-    if (pool_to->bitmap_full || pool_to->remain == 0)
+    if (mem_pool_full(pool_to))
         return 0;
 
     if (pool_to == pool_from)
@@ -666,12 +727,17 @@ int mem_pool_transfer_entries_fast(struct mem_pool *pool_to,
 
         busy_from = &pool_from->entries[b_from];
         size = busy_from->size;
-
+#ifdef POOL_DEBUG_CANARY
+        size -= 256;
+#endif
         if (size >= fail_size)
             continue;
 
         if (mem_pool_alloc(pool_to, size, &empty_to, 0) != NULL) {
             e_to = empty_to.id;
+#ifdef POOL_DEBUG_CANARY
+            size += 256;
+#endif
 #ifdef POOL_DEBUG
             clear_bit(pool_to, e_to);
             stats.total_remain += size;
@@ -679,16 +745,20 @@ int mem_pool_transfer_entries_fast(struct mem_pool *pool_to,
             migrate_entry(pool_from, pool_to, b_from, e_to,
                           pool_to->entries[e_to].base);
 
-            pool_from->bitmap_full = 0;
             pool_from->remain += size;
             transferred_entries++;
+
+            if (mem_pool_full(pool_to))
+                break;
         } else if (size < fail_size) {
             fail_size = size;
         }
     }
 
-    if (transferred_entries)
+    if (transferred_entries) {
+        pool_from->bitmap_full = 0;
         pool_from->fragmented = !mem_pool_empty(pool_from);
+    }
 
 #ifdef POOL_DEBUG
     PRINTF("%s: pool to=%p from=%p transferred_entries=%d\n",
@@ -729,5 +799,21 @@ void mem_pool_debug_dump(struct mem_pool *pool)
         PRINTF("%s: pool %p: entry[%d]: base=%p size=%lu\n",
                __func__, pool, b, busy->base, busy->size);
     }
+#endif
+}
+
+void mem_pool_check_entry(struct mem_pool_entry *entry)
+{
+#ifdef POOL_DEBUG
+    struct mem_pool *pool = entry->pool;
+    unsigned int entry_id = entry->id;
+    unsigned int bits_array = entry_id / 32;
+    unsigned long mask = 1 << (entry_id % 32);
+
+    assert(pool->bitmap_size > bits_array);
+    assert(pool->bitmap[bits_array] & mask);
+    assert(pool->entries[entry_id].base >= pool->base);
+    assert(pool->entries[entry_id].base +
+           pool->entries[entry_id].size <= pool->base + pool->pool_size);
 #endif
 }

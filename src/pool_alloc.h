@@ -22,6 +22,7 @@
  */
 
 // #define POOL_DEBUG
+// #define POOL_DEBUG_CANARY
 
 struct mem_pool_entry;
 
@@ -33,7 +34,7 @@ struct __mem_pool_entry {
 
 struct mem_pool_entry {
     struct mem_pool *pool;
-    int id;
+    unsigned int id : 16;
 };
 
 struct mem_pool {
@@ -49,7 +50,7 @@ struct mem_pool {
 
 int mem_pool_init(struct mem_pool *pool, void *addr, unsigned long size,
                   unsigned int bitmap_size);
-void *mem_pool_alloc(struct mem_pool * restrict pool, unsigned long size,
+void *mem_pool_alloc(struct mem_pool *pool, unsigned long size,
                      struct mem_pool_entry *ret_entry, int defrag);
 void mem_pool_free(struct mem_pool_entry *entry);
 int mem_pool_transfer_entries(struct mem_pool *pool_to,
@@ -59,6 +60,8 @@ int mem_pool_transfer_entries_fast(struct mem_pool *pool_to,
 void mem_pool_defrag(struct mem_pool *pool);
 void mem_pool_debug_dump(struct mem_pool *pool);
 void mem_pool_destroy(struct mem_pool *pool);
+void mem_pool_check_entry(struct mem_pool_entry *entry);
+void mem_pool_check_canary(struct __mem_pool_entry *entry);
 
 static inline int mem_pool_has_space(struct mem_pool *pool, unsigned long size)
 {
@@ -80,6 +83,13 @@ static inline void *mem_pool_entry_addr(struct mem_pool_entry *entry)
     struct mem_pool *pool = entry->pool;
     unsigned int entry_id = entry->id;
 
+#ifdef POOL_DEBUG
+    mem_pool_check_entry(entry);
+#endif
+#ifdef POOL_DEBUG_CANARY
+    mem_pool_check_canary(&pool->entries[entry_id]);
+#endif
+
     return pool->entries[entry_id].base;
 }
 
@@ -87,6 +97,13 @@ static inline unsigned long mem_pool_entry_offset(struct mem_pool_entry *entry)
 {
     struct mem_pool *pool = entry->pool;
     unsigned int entry_id = entry->id;
+
+#ifdef POOL_DEBUG
+    mem_pool_check_entry(entry);
+#endif
+#ifdef POOL_DEBUG_CANARY
+    mem_pool_check_canary(&pool->entries[entry_id]);
+#endif
 
     return pool->entries[entry_id].base - pool->base;
 }
