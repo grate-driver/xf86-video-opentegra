@@ -49,6 +49,7 @@ opentegra_drv_la_SOURCES = \
 	xv.h \
 	exa.c \
 	exa_mm.c \
+	exa_mm_pool.c \
 	exa.h \
 	vblank.c \
 	vblank.h \
