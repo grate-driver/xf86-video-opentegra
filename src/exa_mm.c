@@ -31,6 +31,8 @@
 #define TEGRA_EXA_POOL_SIZE             0x10000
 #define TEGRA_EXA_PAGE_SIZE             0x1000
 #define TEGRA_EXA_PAGE_MASK             (TEGRA_EXA_PAGE_SIZE - 1)
+#define TEGRA_EXA_POOL_SIZE_MAX         (TEGRA_EXA_POOL_SIZE * 3 / 2)
+#define TEGRA_EXA_POOL_SIZE_MERGED_MAX  0x100000
 
 void TegraEXADestroyPool(TegraPixmapPoolPtr pool)
 {
@@ -182,26 +184,42 @@ static int TegraEXAMergePools(TegraPtr tegra)
     int err;
 
     xorg_list_for_each_entry(pool, &exa->mem_pools, entry) {
+        if (pool->pool.pool_size > TEGRA_EXA_POOL_SIZE_MAX)
+            continue;
+
         if (pool->pool.remain & TEGRA_EXA_PAGE_MASK) {
             unaligned += pool->pool.remain & TEGRA_EXA_PAGE_MASK;
             size += pool->pool.pool_size - pool->pool.remain;
             bitmap += pool->pool.bitmap_size;
             pools++;
         }
+
+        if (size >= TEGRA_EXA_POOL_SIZE_MERGED_MAX)
+            break;
     }
 
     if (unaligned < TEGRA_EXA_POOL_SIZE)
         return 0;
 
     size = TEGRA_ALIGN(size, TEGRA_EXA_PAGE_SIZE);
+    size = (size > TEGRA_EXA_POOL_SIZE_MERGED_MAX) ?
+                   TEGRA_EXA_POOL_SIZE_MERGED_MAX : size;
     err = TegraEXACreatePool(tegra, &new_pool, bitmap, size);
     if (err)
             return err;
 
     xorg_list_for_each_entry_safe(pool, tmp, &exa->mem_pools, entry) {
+        if (pool->pool.pool_size > TEGRA_EXA_POOL_SIZE_MAX)
+            continue;
+
         if (pool->pool.remain & TEGRA_EXA_PAGE_MASK) {
             mem_pool_transfer_entries_fast(&new_pool->pool, &pool->pool);
-            TegraEXADestroyPool(pool);
+
+            if (mem_pool_empty(&pool->pool))
+                TegraEXADestroyPool(pool);
+
+            if (mem_pool_full(&new_pool->pool))
+                break;
         }
     }
 
@@ -225,9 +243,7 @@ static void TegraEXACompactPoolsSlow(TegraPtr tegra)
     int err;
 
     /* merge as much as possible pools into a larger pools */
-    err = TegraEXAMergePools(tegra);
-    if (!err)
-        return;
+    TegraEXAMergePools(tegra);
 
     /*
      * 1) Build two list:
@@ -518,6 +534,9 @@ static int TegraEXAAllocateFromPool(TegraPtr tegra, size_t size,
         return -EINVAL;
 
     size = TEGRA_ALIGN(size, TEGRA_EXA_OFFSET_ALIGN);
+
+    if (size > TEGRA_EXA_POOL_SIZE_MAX)
+        return -ENOMEM;
 
     xorg_list_for_each_entry(pool, &exa->mem_pools, entry) {
         data = TegraEXAPoolAlloc(exa, pool, size, pool_entry, TRUE);
