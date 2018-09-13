@@ -44,6 +44,8 @@
 #include <time.h>
 #include <unistd.h>
 
+#include <lz4.h>
+
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 

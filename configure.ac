@@ -88,6 +88,8 @@ if test x"$udev" = xyes; then
 	AC_DEFINE(HAVE_UDEV,1,[Enable udev-based monitor hotplug detection])
 fi
 
+PKG_CHECK_MODULES(LZ4, liblz4)
+
 SAVE_CFLAGS=$CFLAGS
 SAVE_LIBS=$LIBS
 CFLAGS=$DRM_CFLAGS

@@ -255,7 +255,7 @@ unsigned int TegraEXAPitch(unsigned int width, unsigned int height,
     return TEGRA_PITCH_ALIGN(width, bpp, alignment);
 }
 
-static void TegraEXAWaitFence(struct tegra_fence *fence)
+void TegraEXAWaitFence(struct tegra_fence *fence)
 {
     if (tegra_stream_wait_fence(fence) && !fence->gr2d) {
         /*
@@ -315,6 +315,13 @@ static Bool TegraEXAPrepareAccess(PixmapPtr pPix, int idx)
     TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pPix);
     int err;
 
+    TegraEXAThawPixmap(pPix);
+
+    if (priv->type == TEGRA_EXA_PIXMAP_TYPE_FALLBACK) {
+        pPix->devPrivate.ptr = priv->fallback;
+        return TRUE;
+    }
+
     if (priv->type == TEGRA_EXA_PIXMAP_TYPE_POOL) {
         pPix->devPrivate.ptr = mem_pool_entry_addr(&priv->pool_entry);
         return TRUE;
@@ -343,24 +350,39 @@ static void TegraEXAFinishAccess(PixmapPtr pPix, int idx)
         if (err < 0)
             ErrorMsg("failed to unmap buffer object: %d\n", err);
     }
+
+    TegraEXACoolPixmap(pPix, TRUE);
 }
 
 static Bool TegraEXAPixmapIsOffscreen(PixmapPtr pPix)
 {
     TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pPix);
 
-    return priv && (priv->type == TEGRA_EXA_PIXMAP_TYPE_BO ||
-                    priv->type == TEGRA_EXA_PIXMAP_TYPE_POOL);
+    return priv && priv->accel;
 }
 
 static void TegraEXAReleasePixmapData(TegraPtr tegra, TegraPixmapPtr priv)
 {
-    if (priv->type == TEGRA_EXA_PIXMAP_TYPE_NONE)
-        return;
+    TegraEXAPtr exa = tegra->exa;
+
+    if (priv->type == TEGRA_EXA_PIXMAP_TYPE_NONE) {
+        if (priv->frozen) {
+            free(priv->compressed_data);
+            priv->frozen = FALSE;
+        }
+
+        goto out_final;
+    }
+
+    if (priv->cold) {
+        exa->cooling_size -= priv->data_size;
+        xorg_list_del(&priv->fridge_entry);
+        priv->cold = FALSE;
+    }
 
     if (priv->type == TEGRA_EXA_PIXMAP_TYPE_FALLBACK) {
         free(priv->fallback);
-        goto out;
+        goto out_final;
     }
 
     /*
@@ -370,20 +392,22 @@ static void TegraEXAReleasePixmapData(TegraPtr tegra, TegraPixmapPtr priv)
      */
     if (priv->fence) {
         TegraEXAWaitFence(priv->fence);
+
         tegra_stream_put_fence(priv->fence);
+        priv->fence = NULL;
     }
 
     if (priv->type == TEGRA_EXA_PIXMAP_TYPE_POOL) {
         TegraEXAPoolFree(&priv->pool_entry);
-        goto out;
+        goto out_final;
     }
 
     if (priv->type == TEGRA_EXA_PIXMAP_TYPE_BO) {
         drm_tegra_bo_unref(priv->bo);
-        goto out;
+        goto out_final;
     }
 
-out:
+out_final:
     priv->type = TEGRA_EXA_PIXMAP_TYPE_NONE;
 }
 
@@ -396,8 +420,11 @@ static Bool TegraEXAAllocatePixmapData(TegraPtr tegra,
     unsigned int pitch = TegraEXAPitch(width, height, bpp);
     unsigned int size = pitch * height;
 
-    return (TegraEXAAllocateDRMFromPool(tegra, pixmap, size, bpp) ||
-            TegraEXAAllocateDRM(tegra, pixmap, size, bpp) ||
+    pixmap->accel = (bpp == 8 || bpp == 16 || bpp == 32);
+    pixmap->data_size = TEGRA_ALIGN(size, TEGRA_EXA_OFFSET_ALIGN);
+
+    return (TegraEXAAllocateDRMFromPool(tegra, pixmap, size) ||
+            TegraEXAAllocateDRM(tegra, pixmap, size) ||
             TegraEXAAllocateMem(pixmap, size));
 }
 
@@ -424,6 +451,8 @@ static void *TegraEXACreatePixmap2(ScreenPtr pScreen, int width, int height,
             free(pixmap);
             return NULL;
         }
+
+        TegraEXACoolTegraPixmap(tegra->exa, pixmap);
     } else {
         *new_fb_pitch = 0;
     }
@@ -463,11 +492,13 @@ static Bool TegraEXAModifyPixmapHeader(PixmapPtr pPixmap, int width,
             scanout = drmmode_get_front_bo(&tegra->drmmode);
             priv->type = TEGRA_EXA_PIXMAP_TYPE_BO;
             priv->bo = drm_tegra_bo_ref(scanout);
+            priv->scanout = TRUE;
+            priv->accel = TRUE;
             return TRUE;
         }
 
         return FALSE;
-    } else if (priv->type == TEGRA_EXA_PIXMAP_TYPE_FALLBACK) {
+    } else if (!priv->accel) {
         /* this tells EXA that this pixmap is unacceleratable */
         pPixmap->devPrivate.ptr = priv->fallback;
     }
@@ -479,6 +510,7 @@ static Bool TegraEXAPrepareSolid(PixmapPtr pPixmap, int op, Pixel planemask,
                                  Pixel color)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pPixmap->drawable.pScreen);
+    TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pPixmap);
     unsigned int bpp = pPixmap->drawable.bitsPerPixel;
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
     int err;
@@ -495,6 +527,11 @@ static Bool TegraEXAPrepareSolid(PixmapPtr pPixmap, int op, Pixel planemask,
      * validated.
      */
     if (op != GXcopy)
+        return FALSE;
+
+    TegraEXAThawPixmap(pPixmap);
+
+    if (priv->type <= TEGRA_EXA_PIXMAP_TYPE_FALLBACK)
         return FALSE;
 
     err = tegra_stream_begin(&tegra->cmds, tegra->gr2d);
@@ -568,6 +605,8 @@ static void TegraEXADoneSolid(PixmapPtr pPixmap)
     } else {
         tegra_stream_cleanup(&tegra->cmds);
     }
+
+    TegraEXACoolPixmap(pPixmap, TRUE);
 }
 
 static Bool TegraEXAPrepareCopy(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
@@ -575,6 +614,7 @@ static Bool TegraEXAPrepareCopy(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pDstPixmap->drawable.pScreen);
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
+    TegraPixmapPtr priv;
     unsigned int bpp;
     int err;
 
@@ -598,6 +638,17 @@ static Bool TegraEXAPrepareCopy(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
     bpp = pSrcPixmap->drawable.bitsPerPixel;
 
     if (pDstPixmap->drawable.bitsPerPixel != bpp)
+        return FALSE;
+
+    TegraEXAThawPixmap(pSrcPixmap);
+    TegraEXAThawPixmap(pDstPixmap);
+
+    priv = exaGetPixmapDriverPrivate(pSrcPixmap);
+    if (priv->type <= TEGRA_EXA_PIXMAP_TYPE_FALLBACK)
+        return FALSE;
+
+    priv = exaGetPixmapDriverPrivate(pDstPixmap);
+    if (priv->type <= TEGRA_EXA_PIXMAP_TYPE_FALLBACK)
         return FALSE;
 
     err = tegra_stream_begin(&tegra->cmds, tegra->gr2d);
@@ -714,6 +765,9 @@ static void TegraEXADoneCopy(PixmapPtr pDstPixmap)
     } else {
         tegra_stream_cleanup(&tegra->cmds);
     }
+
+    TegraEXACoolPixmap(tegra->scratch.pSrc, FALSE);
+    TegraEXACoolPixmap(pDstPixmap, TRUE);
 }
 
 static const struct shader_program * TegraCompositeProgram3D(
@@ -1079,6 +1133,7 @@ static Bool TegraEXAPrepareComposite3D(int op,
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
     struct tegra_stream *cmds = &tegra->cmds;
     const struct shader_program *prog;
+    TegraPixmapPtr priv;
     Bool mask_tex = (pMaskPicture && pMaskPicture->pDrawable);
     Bool src_tex = (pSrcPicture && pSrcPicture->pDrawable);
     Bool clamp_src = FALSE;
@@ -1100,6 +1155,26 @@ static Bool TegraEXAPrepareComposite3D(int op,
 
     err = TegraCompositeAllocateAttribBuffer(TegraPTR(pScrn)->drm, tegra);
     if (err)
+        return FALSE;
+
+    TegraEXAThawPixmap(pSrc);
+    TegraEXAThawPixmap(pMask);
+    TegraEXAThawPixmap(pDst);
+
+    if (pSrc) {
+        priv = exaGetPixmapDriverPrivate(pSrc);
+        if (priv->type <= TEGRA_EXA_PIXMAP_TYPE_FALLBACK)
+            return FALSE;
+    }
+
+    if (pMask) {
+        priv = exaGetPixmapDriverPrivate(pMask);
+        if (priv->type <= TEGRA_EXA_PIXMAP_TYPE_FALLBACK)
+            return FALSE;
+    }
+
+    priv = exaGetPixmapDriverPrivate(pDst);
+    if (priv->type <= TEGRA_EXA_PIXMAP_TYPE_FALLBACK)
         return FALSE;
 
     err = tegra_stream_begin(cmds, tegra->gr3d);
@@ -1361,6 +1436,10 @@ static void TegraEXADoneComposite(PixmapPtr pDst)
         TegraCompositeReleaseAttribBuffers(&tegra->scratch);
         tegra->scratch.attribs_alloc_err = FALSE;
     }
+
+    TegraEXACoolPixmap(tegra->scratch.pSrc, FALSE);
+    TegraEXACoolPixmap(tegra->scratch.pMask, FALSE);
+    TegraEXACoolPixmap(pDst, TRUE);
 }
 
 static Bool

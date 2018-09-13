@@ -67,6 +67,10 @@ typedef struct _TegraEXARec{
     struct xorg_list mem_pools;
     time_t pool_slow_compact_time;
     time_t pool_fast_compact_time;
+    struct xorg_list cool_pixmaps;
+    unsigned long cooling_size;
+    time_t last_resurrect_time;
+    time_t last_freezing_time;
 
     ExaDriverPtr driver;
 } *TegraEXAPtr;
@@ -77,6 +81,15 @@ typedef struct _TegraEXARec{
 #define TEGRA_EXA_PIXMAP_TYPE_POOL      3
 
 typedef struct {
+    Bool no_compress : 1;   /* pixmap's data compress poorly */
+    Bool scanout : 1;       /* pixmap backs frontbuffer BO */
+    Bool frozen : 1;        /* pixmap's data compressed */
+    Bool accel : 1;         /* pixmap acceleratable */
+    Bool cold : 1;          /* pixmap scheduled for compression */
+    Bool dri : 1;           /* pixmap's BO was exported */
+
+    unsigned type : 2;
+
     union {
         struct {
             union {
@@ -91,17 +104,23 @@ typedef struct {
 
                 void *fallback;
             };
+
+            time_t last_use : 16; /* 8 seconds per unit */
+            struct xorg_list fridge_entry;
+        };
+
+        struct {
+            void *compressed_data;
         };
     };
 
-    Bool dri : 1;       /* pixmap's BO was exported */
-
-    unsigned type : 2;
-
+    unsigned data_size;
 } TegraPixmapRec, *TegraPixmapPtr;
 
 unsigned int TegraEXAPitch(unsigned int width, unsigned int height,
                            unsigned int bpp);
+
+void TegraEXAWaitFence(struct tegra_fence *fence);
 
 #endif
 

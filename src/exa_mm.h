@@ -27,16 +27,17 @@ void TegraEXAPoolFree(struct mem_pool_entry *pool_entry);
 
 Bool TegraEXAAllocateDRMFromPool(TegraPtr tegra,
                                  TegraPixmapPtr pixmap,
-                                 unsigned int size,
-                                 unsigned int bpp);
+                                 unsigned int size);
 
 Bool TegraEXAAllocateDRM(TegraPtr tegra,
                          TegraPixmapPtr pixmap,
-                         unsigned int size,
-                         unsigned int bpp);
+                         unsigned int size);
 
 Bool TegraEXAAllocateMem(TegraPixmapPtr pixmap, unsigned int size);
 
 int TegraEXAInitMM(TegraPtr tegra, TegraEXAPtr exa);
-
 void TegraEXAReleaseMM(TegraEXAPtr exa);
+
+void TegraEXACoolTegraPixmap(TegraEXAPtr exa, TegraPixmapPtr pixmap);
+void TegraEXACoolPixmap(PixmapPtr pPixmap, Bool write);
+void TegraEXAThawPixmap(PixmapPtr pPixmap);

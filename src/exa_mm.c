@@ -30,12 +30,11 @@
 
 Bool TegraEXAAllocateDRM(TegraPtr tegra,
                          TegraPixmapPtr pixmap,
-                         unsigned int size,
-                         unsigned int bpp)
+                         unsigned int size)
 {
     int err;
 
-    if (bpp != 8 && bpp != 16 && bpp != 32)
+    if (!pixmap->accel && !pixmap->dri)
         return FALSE;
 
     err = drm_tegra_bo_new(&pixmap->bo, tegra->drm, 0, size);
@@ -49,6 +48,9 @@ Bool TegraEXAAllocateDRM(TegraPtr tegra,
 
 Bool TegraEXAAllocateMem(TegraPixmapPtr pixmap, unsigned int size)
 {
+    if (pixmap->dri)
+        return FALSE;
+
     pixmap->fallback = malloc(size);
 
     if (!pixmap->fallback)
@@ -61,6 +63,7 @@ Bool TegraEXAAllocateMem(TegraPixmapPtr pixmap, unsigned int size)
 
 int TegraEXAInitMM(TegraPtr tegra, TegraEXAPtr exa)
 {
+    xorg_list_init(&exa->cool_pixmaps);
     xorg_list_init(&exa->mem_pools);
 
     return 0;
@@ -69,5 +72,8 @@ int TegraEXAInitMM(TegraPtr tegra, TegraEXAPtr exa)
 void TegraEXAReleaseMM(TegraEXAPtr exa)
 {
     if (!xorg_list_is_empty(&exa->mem_pools))
-        ErrorMsg("FATAL: Memory leak!\n");
+        ErrorMsg("FATAL: Memory leak! Unreleased memory pools\n");
+
+    if (!xorg_list_is_empty(&exa->cool_pixmaps))
+        ErrorMsg("FATAL: Memory leak! Cooled pixmaps\n");
 }

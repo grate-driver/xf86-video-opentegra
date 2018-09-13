@@ -583,11 +583,13 @@ success:
 
 Bool TegraEXAAllocateDRMFromPool(TegraPtr tegra,
                                  TegraPixmapPtr pixmap,
-                                 unsigned int size,
-                                 unsigned int bpp)
+                                 unsigned int size)
 {
     unsigned int size_masked = size & TEGRA_EXA_PAGE_MASK;
     int err;
+
+    if (!pixmap->accel || pixmap->dri)
+        return FALSE;
 
     if (size_masked == 0)
         return FALSE;
@@ -596,12 +598,6 @@ Bool TegraEXAAllocateDRMFromPool(TegraPtr tegra,
         if (TEGRA_EXA_PAGE_SIZE - size_masked <= TEGRA_EXA_OFFSET_ALIGN)
             return FALSE;
     }
-
-    if (bpp != 8 && bpp != 16 && bpp != 32)
-        return FALSE;
-
-    if (pixmap->dri)
-        return FALSE;
 
     err = TegraEXAAllocateFromPool(tegra, size, &pixmap->pool_entry);
     if (err)
