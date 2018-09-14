@@ -40,6 +40,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <malloc.h>
 #include <poll.h>
 #include <time.h>
 #include <unistd.h>

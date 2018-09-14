@@ -46,6 +46,8 @@
 
 #define TEGRA_ATTRIB_BUFFER_SIZE        0x1000
 
+#define TEGRA_MALLOC_TRIM_THRESHOLD     256
+
 static const uint8_t rop3[] = {
     0x00, /* GXclear */
     0x88, /* GXand */
@@ -361,6 +363,19 @@ static Bool TegraEXAPixmapIsOffscreen(PixmapPtr pPix)
     return priv && priv->accel;
 }
 
+static void TegraEXATrimHeap(TegraEXAPtr exa)
+{
+    /*
+     * Default trimming threshold isn't good for us, that results in
+     * a big amounts of wasted memory due to high fragmentation. Hence
+     * manually enforce trimming of the heap when it makes sense.
+     */
+    if (exa->release_count > TEGRA_MALLOC_TRIM_THRESHOLD) {
+        exa->release_count = 0;
+        malloc_trim(0);
+    }
+}
+
 static void TegraEXAReleasePixmapData(TegraPtr tegra, TegraPixmapPtr priv)
 {
     TegraEXAPtr exa = tegra->exa;
@@ -369,6 +384,7 @@ static void TegraEXAReleasePixmapData(TegraPtr tegra, TegraPixmapPtr priv)
         if (priv->frozen) {
             free(priv->compressed_data);
             priv->frozen = FALSE;
+            exa->release_count++;
         }
 
         goto out_final;
@@ -382,6 +398,7 @@ static void TegraEXAReleasePixmapData(TegraPtr tegra, TegraPixmapPtr priv)
 
     if (priv->type == TEGRA_EXA_PIXMAP_TYPE_FALLBACK) {
         free(priv->fallback);
+        exa->release_count++;
         goto out_final;
     }
 
@@ -409,6 +426,8 @@ static void TegraEXAReleasePixmapData(TegraPtr tegra, TegraPixmapPtr priv)
 
 out_final:
     priv->type = TEGRA_EXA_PIXMAP_TYPE_NONE;
+
+    TegraEXATrimHeap(exa);
 }
 
 static Bool TegraEXAAllocatePixmapData(TegraPtr tegra,

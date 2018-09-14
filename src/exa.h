@@ -71,6 +71,7 @@ typedef struct _TegraEXARec{
     unsigned long cooling_size;
     time_t last_resurrect_time;
     time_t last_freezing_time;
+    unsigned release_count;
 
     ExaDriverPtr driver;
 } *TegraEXAPtr;

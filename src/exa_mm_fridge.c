@@ -115,6 +115,7 @@ static void TegraEXAResurrectAccelPixmap(TegraPtr tegra, TegraPixmapPtr pixmap)
         memcpy(pixmap_data, pixmap_data_orig, pixmap->data_size);
         TegraEXAFridgeUnMapPixmap(pixmap);
         free(pixmap_data_orig);
+        exa->release_count++;
     } else {
         pixmap->fallback = pixmap_data_orig;
     }
@@ -173,11 +174,13 @@ out:
     free(compressed_data);
 }
 
-static void TegraEXAFridgeReleaseUncompressedData(TegraPixmapPtr pixmap)
+static void TegraEXAFridgeReleaseUncompressedData(TegraEXAPtr exa,
+                                                  TegraPixmapPtr pixmap)
 {
     switch (pixmap->type) {
     case TEGRA_EXA_PIXMAP_TYPE_FALLBACK:
         free(pixmap->fallback);
+        exa->release_count++;
         break;
 
     case TEGRA_EXA_PIXMAP_TYPE_POOL:
@@ -265,7 +268,7 @@ no_compress:
         compressed_data = compressed_data_tmp;
 
 out_success:
-    TegraEXAFridgeReleaseUncompressedData(pixmap);
+    TegraEXAFridgeReleaseUncompressedData(exa, pixmap);
 
     pixmap->compressed_data = compressed_data;
     pixmap->type = TEGRA_EXA_PIXMAP_TYPE_NONE;
