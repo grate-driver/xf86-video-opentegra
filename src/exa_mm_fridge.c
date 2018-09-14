@@ -338,12 +338,16 @@ out:
         exa->last_freezing_time = time;
 }
 
-void TegraEXACoolTegraPixmap(TegraEXAPtr exa, TegraPixmapPtr pix)
+void TegraEXACoolTegraPixmap(TegraPtr tegra, TegraPixmapPtr pix)
 {
+    TegraEXAPtr exa = tegra->exa;
     unsigned int current_sec8;
     struct timespec time;
 
     if (pix->frozen || pix->cold || pix->scanout || pix->dri || !pix->accel)
+        return;
+
+    if (!tegra->exa_refrigerator)
         return;
 
     clock_gettime(CLOCK_MONOTONIC, &time);
@@ -362,17 +366,19 @@ void TegraEXACoolPixmap(PixmapPtr pPixmap, Bool write)
 {
     ScrnInfoPtr pScrn;
     TegraPixmapPtr priv;
-    TegraEXAPtr exa;
+    TegraPtr tegra;
 
     if (pPixmap) {
         pScrn = xf86ScreenToScrn(pPixmap->drawable.pScreen);
         priv  = exaGetPixmapDriverPrivate(pPixmap);
-        exa   = TegraPTR(pScrn)->exa;
+        tegra = TegraPTR(pScrn);
 
-        TegraEXACoolTegraPixmap(exa, priv);
+        if (tegra->exa_refrigerator) {
+            TegraEXACoolTegraPixmap(tegra, priv);
 
-        if (write)
-            priv->no_compress = FALSE;
+            if (write)
+                priv->no_compress = FALSE;
+        }
     }
 }
 
@@ -388,6 +394,9 @@ void TegraEXAThawPixmap(PixmapPtr pPixmap)
         priv  = exaGetPixmapDriverPrivate(pPixmap);
         tegra = TegraPTR(pScrn);
         exa   = tegra->exa;
+
+        if (!tegra->exa_refrigerator)
+            return;
 
         if (priv->frozen) {
             TegraEXAThawPixmapData(tegra, priv);

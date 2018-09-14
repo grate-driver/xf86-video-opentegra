@@ -46,6 +46,7 @@ typedef enum
     OPTION_EXA_DISABLED,
     OPTION_EXA_COMPOSITING,
     OPTION_EXA_POOL_ALLOC,
+    OPTION_EXA_REFRIGERATOR,
 } TegraOptions;
 
 static const OptionInfoRec Options[] = {
@@ -55,6 +56,7 @@ static const OptionInfoRec Options[] = {
     { OPTION_EXA_DISABLED, "NoAccel", OPTV_BOOLEAN, { 0 }, FALSE },
     { OPTION_EXA_COMPOSITING, "AccelCompositing", OPTV_BOOLEAN, { 0 }, FALSE },
     { OPTION_EXA_POOL_ALLOC, "DisablePoolAllocator", OPTV_BOOLEAN, { 0 }, FALSE },
+    { OPTION_EXA_REFRIGERATOR, "DisablePixmapRefrigerator", OPTV_BOOLEAN, { 0 }, FALSE },
     { -1, NULL, OPTV_NONE, { 0 }, FALSE }
 };
 
@@ -505,6 +507,14 @@ TegraPreInit(ScrnInfoPtr pScrn, int flags)
         xf86DrvMsg(pScrn->scrnIndex, X_INFO,
                   "EXA pool allocator: enabled %s\n",
                    tegra->exa_pool_alloc ? "YES" : "NO");
+
+        tegra->exa_refrigerator = !xf86ReturnOptValBool(tegra->Options,
+                                                        OPTION_EXA_REFRIGERATOR,
+                                                        FALSE);
+
+        xf86DrvMsg(pScrn->scrnIndex, X_INFO,
+                  "EXA pixmap refrigerator: enabled %s\n",
+                   tegra->exa_refrigerator ? "YES" : "NO");
     }
 
     /* Load the required sub modules */

@@ -452,7 +452,7 @@ static void *TegraEXACreatePixmap2(ScreenPtr pScreen, int width, int height,
             return NULL;
         }
 
-        TegraEXACoolTegraPixmap(tegra->exa, pixmap);
+        TegraEXACoolTegraPixmap(tegra, pixmap);
     } else {
         *new_fb_pitch = 0;
     }
