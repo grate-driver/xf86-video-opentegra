@@ -382,7 +382,11 @@ static void TegraEXAReleasePixmapData(TegraPtr tegra, TegraPixmapPtr priv)
 
     if (priv->type == TEGRA_EXA_PIXMAP_TYPE_NONE) {
         if (priv->frozen) {
-            free(priv->compressed_data);
+            if (priv->compression_type == TEGRA_EXA_COMPRESSION_JPEG)
+                tjFree(priv->compressed_data);
+            else
+                free(priv->compressed_data);
+
             priv->frozen = FALSE;
             exa->release_count++;
         }
@@ -391,7 +395,7 @@ static void TegraEXAReleasePixmapData(TegraPtr tegra, TegraPixmapPtr priv)
     }
 
     if (priv->cold) {
-        exa->cooling_size -= priv->data_size;
+        exa->cooling_size -= TegraPixmapSize(priv);
         xorg_list_del(&priv->fridge_entry);
         priv->cold = FALSE;
     }
@@ -430,6 +434,14 @@ out_final:
     TegraEXATrimHeap(exa);
 }
 
+unsigned TegraPixmapSize(TegraPixmapPtr pixmap)
+{
+    unsigned size = pixmap->pPixmap->devKind *
+                    pixmap->pPixmap->drawable.height;
+
+    return TEGRA_ALIGN(size, TEGRA_EXA_OFFSET_ALIGN);
+}
+
 static Bool TegraEXAAllocatePixmapData(TegraPtr tegra,
                                        TegraPixmapPtr pixmap,
                                        unsigned int width,
@@ -440,7 +452,7 @@ static Bool TegraEXAAllocatePixmapData(TegraPtr tegra,
     unsigned int size = pitch * height;
 
     pixmap->accel = (bpp == 8 || bpp == 16 || bpp == 32);
-    pixmap->data_size = TEGRA_ALIGN(size, TEGRA_EXA_OFFSET_ALIGN);
+    size = TEGRA_ALIGN(size, TEGRA_EXA_OFFSET_ALIGN);
 
     return (TegraEXAAllocateDRMFromPool(tegra, pixmap, size) ||
             TegraEXAAllocateDRM(tegra, pixmap, size) ||
@@ -470,8 +482,6 @@ static void *TegraEXACreatePixmap2(ScreenPtr pScreen, int width, int height,
             free(pixmap);
             return NULL;
         }
-
-        TegraEXACoolTegraPixmap(tegra, pixmap);
     } else {
         *new_fb_pitch = 0;
     }
@@ -521,6 +531,9 @@ static Bool TegraEXAModifyPixmapHeader(PixmapPtr pPixmap, int width,
         /* this tells EXA that this pixmap is unacceleratable */
         pPixmap->devPrivate.ptr = priv->fallback;
     }
+
+    priv->pPixmap = pPixmap;
+    TegraEXACoolTegraPixmap(tegra, priv);
 
     return TRUE;
 }
@@ -1468,6 +1481,73 @@ TegraEXADownloadFromScreen(PixmapPtr pSrc, int x, int y, int w, int h,
     return FALSE;
 }
 
+static PixmapPtr TegraEXAGetDrawablePixmap(DrawablePtr drawable)
+{
+    if (drawable->type == DRAWABLE_PIXMAP)
+        return (PixmapPtr) drawable;
+
+    return NULL;
+}
+
+static int TegraEXACreatePicture(PicturePtr pPicture)
+{
+    PixmapPtr pPixmap = TegraEXAGetDrawablePixmap(pPicture->pDrawable);
+    ScrnInfoPtr pScrn = xf86ScreenToScrn(pPicture->pDrawable->pScreen);
+    TegraEXAPtr exa = TegraPTR(pScrn)->exa;
+
+    if (pPixmap) {
+        TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pPixmap);
+        priv->pPicture = pPicture;
+    }
+
+    if (exa->CreatePicture)
+        return exa->CreatePicture(pPicture);
+
+    return Success;
+}
+
+static void TegraEXADestroyPicture(PicturePtr pPicture)
+{
+    PixmapPtr pPixmap = TegraEXAGetDrawablePixmap(pPicture->pDrawable);
+    ScrnInfoPtr pScrn = xf86ScreenToScrn(pPicture->pDrawable->pScreen);
+    TegraEXAPtr exa = TegraPTR(pScrn)->exa;
+
+    if (pPixmap) {
+        TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pPixmap);
+        priv->pPicture = NULL;
+    }
+
+    if (exa->DestroyPicture)
+        exa->DestroyPicture(pPicture);
+}
+
+static void TegraEXAWrapPicture(ScreenPtr pScreen)
+{
+    PictureScreenPtr ps = GetPictureScreenIfSet(pScreen);
+    ScrnInfoPtr pScrn = xf86ScreenToScrn(pScreen);
+    TegraEXAPtr exa = TegraPTR(pScrn)->exa;
+
+    if (ps) {
+        exa->CreatePicture = ps->CreatePicture;
+        exa->DestroyPicture = ps->DestroyPicture;
+
+        ps->CreatePicture = TegraEXACreatePicture;
+        ps->DestroyPicture = TegraEXADestroyPicture;
+    }
+}
+
+static void TegraEXAUnWrapPicture(ScreenPtr pScreen)
+{
+    PictureScreenPtr ps = GetPictureScreenIfSet(pScreen);
+    ScrnInfoPtr pScrn = xf86ScreenToScrn(pScreen);
+    TegraEXAPtr exa = TegraPTR(pScrn)->exa;
+
+    if (ps) {
+        ps->CreatePicture = exa->CreatePicture;
+        ps->DestroyPicture = exa->DestroyPicture;
+    }
+}
+
 void TegraEXAScreenInit(ScreenPtr pScreen)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pScreen);
@@ -1565,6 +1645,8 @@ void TegraEXAScreenInit(ScreenPtr pScreen)
     priv->driver = exa;
     tegra->exa = priv;
 
+    TegraEXAWrapPicture(pScreen);
+
     return;
 
 release_mm:
@@ -1588,6 +1670,7 @@ void TegraEXAScreenExit(ScreenPtr pScreen)
     TegraEXAPtr priv = tegra->exa;
 
     if (priv) {
+        TegraEXAUnWrapPicture(pScreen);
         exaDriverFini(pScreen);
         free(priv->driver);
 

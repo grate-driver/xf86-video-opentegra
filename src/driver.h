@@ -46,6 +46,7 @@
 #include <unistd.h>
 
 #include <lz4.h>
+#include <turbojpeg.h>
 
 #include <sys/ioctl.h>
 #include <sys/mman.h>

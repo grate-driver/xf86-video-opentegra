@@ -72,6 +72,10 @@ typedef struct _TegraEXARec{
     time_t last_resurrect_time;
     time_t last_freezing_time;
     unsigned release_count;
+    CreatePictureProcPtr CreatePicture;
+    DestroyPictureProcPtr DestroyPicture;
+    tjhandle jpegCompressor;
+    tjhandle jpegDecompressor;
 
     ExaDriverPtr driver;
 } *TegraEXAPtr;
@@ -80,6 +84,10 @@ typedef struct _TegraEXARec{
 #define TEGRA_EXA_PIXMAP_TYPE_FALLBACK  1
 #define TEGRA_EXA_PIXMAP_TYPE_BO        2
 #define TEGRA_EXA_PIXMAP_TYPE_POOL      3
+
+#define TEGRA_EXA_COMPRESSION_UNCOMPRESSED  1
+#define TEGRA_EXA_COMPRESSION_LZ4           2
+#define TEGRA_EXA_COMPRESSION_JPEG          3
 
 typedef struct {
     Bool no_compress : 1;   /* pixmap's data compress poorly */
@@ -112,16 +120,22 @@ typedef struct {
 
         struct {
             void *compressed_data;
+            unsigned compressed_size;
+            unsigned compression_type;
+            unsigned picture_format;
         };
     };
 
-    unsigned data_size;
+    PixmapPtr pPixmap;
+    PicturePtr pPicture;
 } TegraPixmapRec, *TegraPixmapPtr;
 
 unsigned int TegraEXAPitch(unsigned int width, unsigned int height,
                            unsigned int bpp);
 
 void TegraEXAWaitFence(struct tegra_fence *fence);
+
+unsigned TegraPixmapSize(TegraPixmapPtr pixmap);
 
 #endif
 

@@ -89,6 +89,7 @@ if test x"$udev" = xyes; then
 fi
 
 PKG_CHECK_MODULES(LZ4, liblz4)
+PKG_CHECK_MODULES(JPEG, libturbojpeg)
 
 SAVE_CFLAGS=$CFLAGS
 SAVE_LIBS=$LIBS
