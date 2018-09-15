@@ -170,6 +170,9 @@ typedef struct _TegraRec
 
     struct drm_tegra *drm;
 
+    int exa_compress_jpeg_quality;
+    Bool exa_compress_jpeg;
+    Bool exa_compress_lz4;
     Bool exa_refrigerator;
     Bool exa_pool_alloc;
     Bool exa_compositing;

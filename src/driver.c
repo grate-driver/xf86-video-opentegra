@@ -47,6 +47,9 @@ typedef enum
     OPTION_EXA_COMPOSITING,
     OPTION_EXA_POOL_ALLOC,
     OPTION_EXA_REFRIGERATOR,
+    OPTION_EXA_COMPRESSION_LZ4,
+    OPTION_EXA_COMPRESSION_JPEG,
+    OPTION_EXA_COMPRESSION_JPEG_QUALITY,
 } TegraOptions;
 
 static const OptionInfoRec Options[] = {
@@ -57,6 +60,9 @@ static const OptionInfoRec Options[] = {
     { OPTION_EXA_COMPOSITING, "AccelCompositing", OPTV_BOOLEAN, { 0 }, FALSE },
     { OPTION_EXA_POOL_ALLOC, "DisablePoolAllocator", OPTV_BOOLEAN, { 0 }, FALSE },
     { OPTION_EXA_REFRIGERATOR, "DisablePixmapRefrigerator", OPTV_BOOLEAN, { 0 }, FALSE },
+    { OPTION_EXA_COMPRESSION_LZ4, "DisableCompressionLZ4", OPTV_BOOLEAN, { 0 }, FALSE },
+    { OPTION_EXA_COMPRESSION_JPEG, "DisableCompressionJPEG", OPTV_BOOLEAN, { 0 }, FALSE },
+    { OPTION_EXA_COMPRESSION_JPEG_QUALITY, "JPEGCompressionQuality", OPTV_INTEGER, { 0 }, FALSE },
     { -1, NULL, OPTV_NONE, { 0 }, FALSE }
 };
 
@@ -515,6 +521,33 @@ TegraPreInit(ScrnInfoPtr pScrn, int flags)
         xf86DrvMsg(pScrn->scrnIndex, X_INFO,
                   "EXA pixmap refrigerator: enabled %s\n",
                    tegra->exa_refrigerator ? "YES" : "NO");
+
+        tegra->exa_compress_lz4 = !xf86ReturnOptValBool(tegra->Options,
+                                                    OPTION_EXA_COMPRESSION_LZ4,
+                                                    FALSE);
+
+        xf86DrvMsg(pScrn->scrnIndex, X_INFO,
+                  "EXA LZ4 compression: enabled %s\n",
+                   tegra->exa_compress_lz4 ? "YES" : "NO");
+
+        tegra->exa_compress_jpeg = !xf86ReturnOptValBool(tegra->Options,
+                                                    OPTION_EXA_COMPRESSION_JPEG,
+                                                    FALSE);
+
+        xf86DrvMsg(pScrn->scrnIndex, X_INFO,
+                  "EXA JPEG compression: enabled %s\n",
+                   tegra->exa_compress_jpeg ? "YES" : "NO");
+
+        tegra->exa_compress_jpeg_quality = xf86ReturnOptValBool(tegra->Options,
+                                            OPTION_EXA_COMPRESSION_JPEG_QUALITY,
+                                            75);
+
+        tegra->exa_compress_jpeg_quality = min(100, tegra->exa_compress_jpeg_quality);
+        tegra->exa_compress_jpeg_quality = max(  1, tegra->exa_compress_jpeg_quality);
+
+        xf86DrvMsg(pScrn->scrnIndex, X_INFO,
+                  "EXA JPEG compression quality: %d\n",
+                   tegra->exa_compress_jpeg_quality);
     }
 
     /* Load the required sub modules */

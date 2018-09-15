@@ -50,6 +50,7 @@ struct compression_arg {
     unsigned width;
     unsigned pitch;
     unsigned realloc;
+    unsigned quality;
 };
 
 static int TegraEXAToJpegTurboFormat(TegraPixmapPtr pixmap)
@@ -234,7 +235,7 @@ static int TegraEXACompressPixmap(TegraEXAPtr exa, struct compression_arg *c)
         err = tjCompress2(exa->jpegCompressor, c->buf_in,
                           c->width, c->pitch, c->height, c->format,
                           (uint8_t **) &c->buf_out, &c->out_size,
-                          c->samping, 75, TJFLAG_FASTDCT);
+                          c->samping, c->quality, TJFLAG_FASTDCT);
         if (err) {
             ErrorMsg("JPEG compression failed\n");
             tjFree(c->buf_out);
@@ -359,8 +360,9 @@ static void TegraEXAFridgeReleaseUncompressedData(TegraEXAPtr exa,
     }
 }
 
-static int TegraEXAFreezePixmap(TegraEXAPtr exa, TegraPixmapPtr pixmap)
+static int TegraEXAFreezePixmap(TegraPtr tegra, TegraPixmapPtr pixmap)
 {
+    TegraEXAPtr exa = tegra->exa;
     struct compression_arg carg;
     unsigned int data_size;
     void *pixmap_data;
@@ -394,6 +396,7 @@ static int TegraEXAFreezePixmap(TegraEXAPtr exa, TegraPixmapPtr pixmap)
     carg.width              = pixmap->pPixmap->drawable.width;
     carg.pitch              = pixmap->pPixmap->devKind;
     carg.realloc            = 1;
+    carg.quality            = tegra->exa_compress_jpeg_quality;
 
     /* enforce LZ4 if pixmap's format is unsuitable */
     if (carg.format < 0)
@@ -401,13 +404,20 @@ static int TegraEXAFreezePixmap(TegraEXAPtr exa, TegraPixmapPtr pixmap)
 
     /*
      * LZ4 doesn't compress small images well enough, but it is lossless and
-     * hence use it for larger images.
+     * hence use it for larger images. Though it is better to prefer LZ4 if
+     * JPEG compression is unavailable.
      */
-    if (data_size > TEGRA_EXA_PAGE_SIZE * 64)
-        carg.compression_type = TEGRA_EXA_COMPRESSION_LZ4;
+    if (tegra->exa_compress_lz4) {
+        if (data_size > TEGRA_EXA_PAGE_SIZE * 64 || !tegra->exa_compress_jpeg)
+            carg.compression_type = TEGRA_EXA_COMPRESSION_LZ4;
+    }
 
     /* don't compress if failed previously or if size is too small */
     if (pixmap->no_compress || data_size < TEGRA_EXA_OFFSET_ALIGN)
+        carg.compression_type = TEGRA_EXA_COMPRESSION_UNCOMPRESSED;
+
+    /* enforce uncompressed if all compression options are disabled */
+    if (!tegra->exa_compress_lz4 && !tegra->exa_compress_jpeg)
         carg.compression_type = TEGRA_EXA_COMPRESSION_UNCOMPRESSED;
 
     /* don't reallocate if fallback compression fails, out = in */
@@ -440,8 +450,9 @@ fail_unmap:
     return -1;
 }
 
-static void TegraEXAFreezePixmaps(TegraEXAPtr exa, time_t time)
+static void TegraEXAFreezePixmaps(TegraPtr tegra, time_t time)
 {
+    TegraEXAPtr exa = tegra->exa;
     TegraPixmapPtr pix, tmp;
     unsigned long cooling_size;
     unsigned long frost_size = 1;
@@ -482,7 +493,7 @@ freeze:
         if (!emergence && (time / 8 - pix->last_use < TEGRA_EXA_FREEZE_DELTA))
             break;
 
-        err = TegraEXAFreezePixmap(exa, pix);
+        err = TegraEXAFreezePixmap(tegra, pix);
         if (err)
             break;
 
@@ -520,7 +531,7 @@ void TegraEXACoolTegraPixmap(TegraPtr tegra, TegraPixmapPtr pix)
     clock_gettime(CLOCK_MONOTONIC, &time);
     current_sec8 = time.tv_sec / 8;
 
-    TegraEXAFreezePixmaps(exa, time.tv_sec);
+    TegraEXAFreezePixmaps(tegra, time.tv_sec);
 
     xorg_list_append(&pix->fridge_entry, &exa->cool_pixmaps);
     pix->last_use = current_sec8;
