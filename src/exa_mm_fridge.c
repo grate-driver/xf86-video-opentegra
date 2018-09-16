@@ -566,15 +566,6 @@ static void TegraEXAFreezePixmaps(TegraPtr tegra, time_t time)
         return;
 
     /*
-     * Enforce freezing if there are more than several megabytes of pixmaps
-     * pending to be frozen.
-     */
-    if (exa->cooling_size > TEGRA_EXA_COOLING_LIMIT_MAX) {
-        emergence = TRUE;
-        goto freeze;
-    }
-
-    /*
      * If last freezing was long time ago, then bounce the allowed freeze
      * time. This avoids immediate freeze-thawing after a period of idling
      * for the pixmaps that has been queued for freeze'ing and gonna be taken
@@ -583,16 +574,22 @@ static void TegraEXAFreezePixmaps(TegraPtr tegra, time_t time)
     if (time - exa->last_freezing_time > TEGRA_EXA_FREEZE_BOUNCE_DELTA)
         goto out;
 
+    /*
+     * Enforce freezing if there are more than several megabytes of pixmaps
+     * pending to be frozen.
+     */
+    if (exa->cooling_size > TEGRA_EXA_COOLING_LIMIT_MAX)
+        emergence = TRUE;
+
     /* allow freezing only once per couple seconds */
     if (time - exa->last_freezing_time < TEGRA_EXA_FREEZE_ALLOWANCE_DELTA)
         return;
 
-freeze:
     cooling_size = exa->cooling_size;
     frost_size = 0;
 
     xorg_list_for_each_entry_safe(pix, tmp, &exa->cool_pixmaps, fridge_entry) {
-        if (!emergence && (time / 8 - pix->last_use < TEGRA_EXA_FREEZE_DELTA))
+        if (time / 8 - pix->last_use < TEGRA_EXA_FREEZE_DELTA)
             break;
 
         err = TegraEXAFreezePixmap(tegra, pix);
