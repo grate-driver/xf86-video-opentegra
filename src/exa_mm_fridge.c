@@ -251,11 +251,18 @@ static void TegraEXAResurrectAccelPixmap(TegraPtr tegra, TegraPixmapPtr pixmap)
 static int TegraEXACompressPixmap(TegraEXAPtr exa, struct compression_arg *c)
 {
     unsigned long compressed_bound;
+    unsigned long compressed_max;
     void *tmp;
     int err;
 
     if (c->compression_type == TEGRA_EXA_COMPRESSION_UNCOMPRESSED)
         goto uncompressed;
+
+    if (c->in_size > TEGRA_EXA_PAGE_SIZE)
+        compressed_max = c->in_size - TEGRA_EXA_PAGE_SIZE / 8;
+    else
+        compressed_max = c->in_size -
+                         c->in_size * TEGRA_EXA_COMPRESS_RATIO_LIMIT;
 
     if (c->compression_type == TEGRA_EXA_COMPRESSION_LZ4) {
         compressed_bound = LZ4_compressBound(c->in_size) + 4096;
@@ -270,7 +277,7 @@ static int TegraEXACompressPixmap(TegraEXAPtr exa, struct compression_arg *c)
 
         c->out_size = LZ4_compress_default(c->buf_in, c->buf_out,
                                            c->in_size, compressed_bound);
-        if (!c->out_size) {
+        if (!c->out_size || c->out_size > compressed_max) {
             free(c->buf_out);
             /* just swap out poorly compressed pixmap from CMA */
             goto uncompressed;
@@ -291,6 +298,12 @@ static int TegraEXACompressPixmap(TegraEXAPtr exa, struct compression_arg *c)
         if (err) {
             ErrorMsg("JPEG compression failed\n");
             tjFree(c->buf_out);
+            goto uncompressed;
+        }
+
+        if (c->out_size > compressed_max) {
+            tjFree(c->buf_out);
+            /* just swap out poorly compressed pixmap from CMA */
             goto uncompressed;
         }
 
@@ -321,6 +334,12 @@ static int TegraEXACompressPixmap(TegraEXAPtr exa, struct compression_arg *c)
         if (err == 0) {
             ErrorMsg("PNG compression failed %s\n", png.message);
             free(c->buf_out);
+            goto uncompressed;
+        }
+
+        if (png_size > compressed_max) {
+            free(c->buf_out);
+            /* just swap out poorly compressed pixmap from CMA */
             goto uncompressed;
         }
 
