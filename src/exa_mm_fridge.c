@@ -494,10 +494,6 @@ static int TegraEXAFreezePixmap(TegraPtr tegra, TegraPixmapPtr pixmap)
     xorg_list_del(&pixmap->fridge_entry);
     pixmap->cold = FALSE;
 
-    if (pixmap->no_compress &&
-        pixmap->type == TEGRA_EXA_PIXMAP_TYPE_FALLBACK)
-        return 0;
-
     pixmap_data = TegraEXAFridgeMapPixmap(pixmap);
 
     if (!pixmap_data) {
