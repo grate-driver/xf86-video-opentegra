@@ -53,8 +53,59 @@ struct compression_arg {
     unsigned quality;
 };
 
-static int TegraEXAToJpegTurboFormat(TegraPixmapPtr pixmap)
+static int TegraEXAToPNGFormat(TegraPtr tegra, TegraPixmapPtr pixmap)
 {
+    if (!tegra->exa_compress_png)
+        return -1;
+
+    if (pixmap->pPicture) {
+        switch (pixmap->pPicture->format) {
+        case PICT_a8:
+            return PNG_FORMAT_GRAY;
+
+        case PICT_c8:
+            return PNG_FORMAT_GRAY;
+
+        case PICT_r8g8b8:
+            return PNG_FORMAT_BGR;
+
+        case PICT_b8g8r8:
+            return PNG_FORMAT_RGB;
+
+        case PICT_a8r8g8b8:
+            return PNG_FORMAT_BGRA;
+
+        case PICT_a8b8g8r8:
+            return PNG_FORMAT_RGBA;
+
+        case PICT_b8g8r8a8:
+            return PNG_FORMAT_ARGB;
+
+        default:
+            break;
+        }
+    } else {
+        switch (pixmap->pPixmap->drawable.bitsPerPixel) {
+        case 8:
+            return PNG_FORMAT_GRAY;
+
+        case 32:
+            /* XXX: assume display pixel format, is this always correct? */
+            return PNG_FORMAT_BGRA;
+
+        default:
+            break;
+        }
+    }
+
+    return -1;
+}
+
+static int TegraEXAToJpegTurboFormat(TegraPtr tegra, TegraPixmapPtr pixmap)
+{
+    if (!tegra->exa_compress_jpeg)
+        return -1;
+
     if (pixmap->pPicture) {
         switch (pixmap->pPicture->format) {
         case PICT_a8:
@@ -230,8 +281,9 @@ static int TegraEXACompressPixmap(TegraEXAPtr exa, struct compression_arg *c)
             c->buf_out = tmp;
 
         c->compression_type = TEGRA_EXA_COMPRESSION_LZ4;
+    }
 
-    } else {
+    if (c->compression_type == TEGRA_EXA_COMPRESSION_JPEG) {
         err = tjCompress2(exa->jpegCompressor, c->buf_in,
                           c->width, c->pitch, c->height, c->format,
                           (uint8_t **) &c->buf_out, &c->out_size,
@@ -243,6 +295,45 @@ static int TegraEXACompressPixmap(TegraEXAPtr exa, struct compression_arg *c)
         }
 
         c->compression_type = TEGRA_EXA_COMPRESSION_JPEG;
+    }
+
+    if (c->compression_type == TEGRA_EXA_COMPRESSION_PNG) {
+        png_alloc_size_t png_size;
+        png_image png = { 0 };
+
+        png.version             = PNG_IMAGE_VERSION;
+        png.width               = c->width;
+        png.height              = c->height;
+        png.format              = c->format;
+        png.warning_or_error    = PNG_IMAGE_ERROR;
+
+        png_size = PNG_IMAGE_PNG_SIZE_MAX(png);
+        c->buf_out = malloc(png_size);
+
+        if (!c->buf_out) {
+            ErrorMsg("failed to allocate buffer for PNG compression of size %u\n",
+                     png_size);
+            return -1;
+        }
+
+        err = png_image_write_to_memory(&png, c->buf_out, &png_size, 0,
+                                        c->buf_in, c->pitch, NULL);
+        if (err == 0) {
+            ErrorMsg("PNG compression failed %s\n", png.message);
+            free(c->buf_out);
+            goto uncompressed;
+        }
+
+        tmp = realloc(c->buf_out, png_size);
+        if (tmp) {
+            c->out_size = png_size;
+            c->buf_out = tmp;
+        } else {
+            free(c->buf_out);
+            goto uncompressed;
+        }
+
+        c->compression_type = TEGRA_EXA_COMPRESSION_PNG;
     }
 
     return 0;
@@ -276,6 +367,8 @@ uncompressed:
 
 static void TegraEXADecompressPixmap(TegraEXAPtr exa, struct compression_arg *c)
 {
+    png_image png = { 0 };
+
     switch (c->compression_type) {
     case TEGRA_EXA_COMPRESSION_UNCOMPRESSED:
         memcpy(c->buf_out, c->buf_in, c->out_size);
@@ -295,6 +388,14 @@ static void TegraEXADecompressPixmap(TegraEXAPtr exa, struct compression_arg *c)
                       c->format, TJFLAG_FASTDCT);
 
         tjFree(c->buf_in);
+        break;
+
+    case TEGRA_EXA_COMPRESSION_PNG:
+        png.opaque = NULL;
+        png.version = PNG_IMAGE_VERSION;
+        png_image_begin_read_from_memory(&png, c->buf_in, c->in_size);
+        png.format = c->format;
+        png_image_finish_read(&png, NULL, c->buf_out, c->pitch, NULL);
         break;
     }
 }
@@ -385,12 +486,13 @@ static int TegraEXAFreezePixmap(TegraPtr tegra, TegraPixmapPtr pixmap)
         return -1;
     }
 
+    /* JPEG preferred over PNG, PNG over LZ4 */
     carg.compression_type   = TEGRA_EXA_COMPRESSION_JPEG;
     carg.buf_out            = NULL;
     carg.buf_in             = pixmap_data;
     carg.out_size           = 0;
     carg.in_size            = data_size;
-    carg.format             = TegraEXAToJpegTurboFormat(pixmap);
+    carg.format             = TegraEXAToJpegTurboFormat(tegra, pixmap);
     carg.samping            = TegraEXAToJpegTurboSampling(pixmap);
     carg.height             = pixmap->pPixmap->drawable.height;
     carg.width              = pixmap->pPixmap->drawable.width;
@@ -398,17 +500,15 @@ static int TegraEXAFreezePixmap(TegraPtr tegra, TegraPixmapPtr pixmap)
     carg.realloc            = 1;
     carg.quality            = tegra->exa_compress_jpeg_quality;
 
-    /* enforce LZ4 if pixmap's format is unsuitable */
-    if (carg.format < 0)
-        carg.compression_type = TEGRA_EXA_COMPRESSION_LZ4;
+    /* enforce PNG if pixmap's format is unsuitable for JPEG compression */
+    if (carg.format < 0) {
+        if (tegra->exa_compress_png) {
+            carg.compression_type = TEGRA_EXA_COMPRESSION_PNG;
+            carg.format           = TegraEXAToPNGFormat(tegra, pixmap);
+        }
 
-    /*
-     * LZ4 doesn't compress small images well enough, but it is lossless and
-     * hence use it for larger images. Though it is better to prefer LZ4 if
-     * JPEG compression is unavailable.
-     */
-    if (tegra->exa_compress_lz4) {
-        if (data_size > TEGRA_EXA_PAGE_SIZE * 64 || !tegra->exa_compress_jpeg)
+        /* enforce LZ4 if pixmap's format is unsuitable for PNG compression */
+        if (carg.format < 0 && tegra->exa_compress_lz4)
             carg.compression_type = TEGRA_EXA_COMPRESSION_LZ4;
     }
 
@@ -417,7 +517,9 @@ static int TegraEXAFreezePixmap(TegraPtr tegra, TegraPixmapPtr pixmap)
         carg.compression_type = TEGRA_EXA_COMPRESSION_UNCOMPRESSED;
 
     /* enforce uncompressed if all compression options are disabled */
-    if (!tegra->exa_compress_lz4 && !tegra->exa_compress_jpeg)
+    if (!tegra->exa_compress_lz4 &&
+            !tegra->exa_compress_png &&
+                !tegra->exa_compress_jpeg)
         carg.compression_type = TEGRA_EXA_COMPRESSION_UNCOMPRESSED;
 
     /* don't reallocate if fallback compression fails, out = in */

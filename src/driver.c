@@ -50,6 +50,7 @@ typedef enum
     OPTION_EXA_COMPRESSION_LZ4,
     OPTION_EXA_COMPRESSION_JPEG,
     OPTION_EXA_COMPRESSION_JPEG_QUALITY,
+    OPTION_EXA_COMPRESSION_PNG,
 } TegraOptions;
 
 static const OptionInfoRec Options[] = {
@@ -63,6 +64,7 @@ static const OptionInfoRec Options[] = {
     { OPTION_EXA_COMPRESSION_LZ4, "DisableCompressionLZ4", OPTV_BOOLEAN, { 0 }, FALSE },
     { OPTION_EXA_COMPRESSION_JPEG, "DisableCompressionJPEG", OPTV_BOOLEAN, { 0 }, FALSE },
     { OPTION_EXA_COMPRESSION_JPEG_QUALITY, "JPEGCompressionQuality", OPTV_INTEGER, { 0 }, FALSE },
+    { OPTION_EXA_COMPRESSION_PNG, "DisableCompressionPNG", OPTV_BOOLEAN, { 0 }, FALSE },
     { -1, NULL, OPTV_NONE, { 0 }, FALSE }
 };
 
@@ -548,6 +550,14 @@ TegraPreInit(ScrnInfoPtr pScrn, int flags)
         xf86DrvMsg(pScrn->scrnIndex, X_INFO,
                   "EXA JPEG compression quality: %d\n",
                    tegra->exa_compress_jpeg_quality);
+
+        tegra->exa_compress_png = !xf86ReturnOptValBool(tegra->Options,
+                                                    OPTION_EXA_COMPRESSION_PNG,
+                                                    FALSE);
+
+        xf86DrvMsg(pScrn->scrnIndex, X_INFO,
+                  "EXA PNG compression: enabled %s\n",
+                   tegra->exa_compress_png ? "YES" : "NO");
     }
 
     /* Load the required sub modules */

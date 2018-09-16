@@ -88,6 +88,7 @@ typedef struct _TegraEXARec{
 #define TEGRA_EXA_COMPRESSION_UNCOMPRESSED  1
 #define TEGRA_EXA_COMPRESSION_LZ4           2
 #define TEGRA_EXA_COMPRESSION_JPEG          3
+#define TEGRA_EXA_COMPRESSION_PNG           4
 
 typedef struct {
     Bool no_compress : 1;   /* pixmap's data compress poorly */

@@ -46,6 +46,7 @@
 #include <unistd.h>
 
 #include <lz4.h>
+#include <png.h>
 #include <turbojpeg.h>
 
 #include <sys/ioctl.h>
@@ -170,6 +171,7 @@ typedef struct _TegraRec
 
     struct drm_tegra *drm;
 
+    Bool exa_compress_png;
     int exa_compress_jpeg_quality;
     Bool exa_compress_jpeg;
     Bool exa_compress_lz4;

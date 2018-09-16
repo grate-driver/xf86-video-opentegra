@@ -25,11 +25,12 @@
 # TODO: -nostdlib/-Bstatic/-lgcc platform magic, not installing the .a, etc.
 
 AM_CFLAGS = $(XORG_CFLAGS) $(DRM_CFLAGS) $(UDEV_CFLAGS) $(LZ4_CFLAGS) \
-	$(CWARNFLAGS) $(JPEG_CFLAGS)
+	$(CWARNFLAGS) $(JPEG_CFLAGS) $(PNG_CFLAGS)
 
 opentegra_drv_la_LTLIBRARIES = opentegra_drv.la
 opentegra_drv_la_LDFLAGS = -module -avoid-version
-opentegra_drv_la_LIBADD = @UDEV_LIBS@ @DRM_LIBS@ @LZ4_LIBS@ @JPEG_LIBS@
+opentegra_drv_la_LIBADD = @UDEV_LIBS@ @DRM_LIBS@ @LZ4_LIBS@ @JPEG_LIBS@ \
+			@PNG_LIBS@
 opentegra_drv_ladir = @moduledir@/drivers
 
 # enable fp16 for the 3d attributes
