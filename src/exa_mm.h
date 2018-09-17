@@ -40,4 +40,4 @@ void TegraEXAReleaseMM(TegraEXAPtr exa);
 
 void TegraEXACoolTegraPixmap(TegraPtr tegra, TegraPixmapPtr pix);
 void TegraEXACoolPixmap(PixmapPtr pPixmap, Bool write);
-void TegraEXAThawPixmap(PixmapPtr pPixmap);
+void TegraEXAThawPixmap(PixmapPtr pPixmap, Bool accel);

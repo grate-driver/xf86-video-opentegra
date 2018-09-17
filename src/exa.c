@@ -317,7 +317,7 @@ static Bool TegraEXAPrepareAccess(PixmapPtr pPix, int idx)
     TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pPix);
     int err;
 
-    TegraEXAThawPixmap(pPix);
+    TegraEXAThawPixmap(pPix, FALSE);
 
     if (priv->type == TEGRA_EXA_PIXMAP_TYPE_FALLBACK) {
         pPix->devPrivate.ptr = priv->fallback;
@@ -561,7 +561,7 @@ static Bool TegraEXAPrepareSolid(PixmapPtr pPixmap, int op, Pixel planemask,
     if (op != GXcopy)
         return FALSE;
 
-    TegraEXAThawPixmap(pPixmap);
+    TegraEXAThawPixmap(pPixmap, TRUE);
 
     if (priv->type <= TEGRA_EXA_PIXMAP_TYPE_FALLBACK)
         return FALSE;
@@ -672,8 +672,8 @@ static Bool TegraEXAPrepareCopy(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
     if (pDstPixmap->drawable.bitsPerPixel != bpp)
         return FALSE;
 
-    TegraEXAThawPixmap(pSrcPixmap);
-    TegraEXAThawPixmap(pDstPixmap);
+    TegraEXAThawPixmap(pSrcPixmap, TRUE);
+    TegraEXAThawPixmap(pDstPixmap, TRUE);
 
     priv = exaGetPixmapDriverPrivate(pSrcPixmap);
     if (priv->type <= TEGRA_EXA_PIXMAP_TYPE_FALLBACK)
@@ -1189,9 +1189,9 @@ static Bool TegraEXAPrepareComposite3D(int op,
     if (err)
         return FALSE;
 
-    TegraEXAThawPixmap(pSrc);
-    TegraEXAThawPixmap(pMask);
-    TegraEXAThawPixmap(pDst);
+    TegraEXAThawPixmap(pSrc, TRUE);
+    TegraEXAThawPixmap(pMask, TRUE);
+    TegraEXAThawPixmap(pDst, TRUE);
 
     if (pSrc) {
         priv = exaGetPixmapDriverPrivate(pSrc);

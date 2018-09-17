@@ -474,13 +474,14 @@ static struct compression_arg TegraEXASelectCompression(TegraPtr tegra,
     return carg;
 }
 
-static void TegraEXAThawPixmapData(TegraPtr tegra, TegraPixmapPtr pixmap)
+static void TegraEXAThawPixmapData(TegraPtr tegra, TegraPixmapPtr pixmap,
+                                   Bool accel)
 {
     TegraEXAPtr exa = tegra->exa;
     struct compression_arg carg;
     unsigned int data_size;
     void *pixmap_data;
-    Bool ret;
+    Bool ret = FALSE;
 
     carg.compression_type   = pixmap->compression_type;
     carg.buf_in             = pixmap->compressed_data;
@@ -491,9 +492,12 @@ static void TegraEXAThawPixmapData(TegraPtr tegra, TegraPixmapPtr pixmap)
     pixmap->fence = NULL;
 
 retry:
-    ret = (TegraEXAAllocateDRMFromPool(tegra, pixmap, data_size) ||
-           TegraEXAAllocateDRM(tegra, pixmap, data_size) ||
-           TegraEXAAllocateMem(pixmap, data_size));
+    if (accel || pixmap->accelerated)
+        ret = (TegraEXAAllocateDRMFromPool(tegra, pixmap, data_size) ||
+               TegraEXAAllocateDRM(tegra, pixmap, data_size));
+
+    if (ret == FALSE)
+        ret = TegraEXAAllocateMem(pixmap, data_size);
 
     if (ret == FALSE) {
         usleep(100000);
@@ -690,7 +694,7 @@ void TegraEXACoolPixmap(PixmapPtr pPixmap, Bool write)
     }
 }
 
-void TegraEXAThawPixmap(PixmapPtr pPixmap)
+void TegraEXAThawPixmap(PixmapPtr pPixmap, Bool accel)
 {
     ScrnInfoPtr pScrn;
     TegraPixmapPtr priv;
@@ -703,11 +707,14 @@ void TegraEXAThawPixmap(PixmapPtr pPixmap)
         tegra = TegraPTR(pScrn);
         exa   = tegra->exa;
 
+        priv->accelerated |= accel;
+
         if (!tegra->exa_refrigerator)
             return;
 
         if (priv->frozen) {
-            TegraEXAThawPixmapData(tegra, priv);
+            TegraEXAThawPixmapData(tegra, priv, accel);
+            priv->accelerated = accel;
             priv->frozen = FALSE;
             return;
         }
@@ -718,6 +725,7 @@ void TegraEXAThawPixmap(PixmapPtr pPixmap)
             priv->cold = FALSE;
         }
 
-        TegraEXAResurrectAccelPixmap(tegra, priv);
+        if (accel)
+            TegraEXAResurrectAccelPixmap(tegra, priv);
     }
 }

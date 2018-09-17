@@ -92,6 +92,7 @@ typedef struct _TegraEXARec{
 
 typedef struct {
     Bool no_compress : 1;   /* pixmap's data compress poorly */
+    Bool accelerated : 1;   /* pixmap was accelerated at least once */
     Bool scanout : 1;       /* pixmap backs frontbuffer BO */
     Bool frozen : 1;        /* pixmap's data compressed */
     Bool accel : 1;         /* pixmap acceleratable */
