@@ -419,6 +419,61 @@ static void TegraEXADecompressPixmap(TegraEXAPtr exa, struct compression_arg *c)
     }
 }
 
+static struct compression_arg TegraEXASelectCompression(TegraPtr tegra,
+                                                        TegraPixmapPtr pixmap,
+                                                        unsigned int data_size,
+                                                        void *pixmap_data)
+{
+    struct compression_arg carg = { 0 };
+
+    carg.compression_type   = TEGRA_EXA_COMPRESSION_UNCOMPRESSED;
+    carg.buf_out            = NULL;
+    carg.buf_in             = pixmap_data;
+    carg.out_size           = 0;
+    carg.in_size            = data_size;
+    carg.height             = pixmap->pPixmap->drawable.height;
+    carg.width              = pixmap->pPixmap->drawable.width;
+    carg.pitch              = pixmap->pPixmap->devKind;
+    carg.format             = -1;
+    carg.realloc            = 1;
+
+    /* don't reallocate if fallback compression fails, out = in */
+    if (pixmap->type == TEGRA_EXA_PIXMAP_TYPE_FALLBACK)
+        carg.realloc = 0;
+
+    /* don't compress if failed previously or if size is too small */
+    if (pixmap->no_compress || data_size < TEGRA_EXA_OFFSET_ALIGN)
+        return carg;
+
+    /* JPEG is the preferred compression */
+    if (tegra->exa_compress_jpeg) {
+        carg.format     = TegraEXAToJpegTurboFormat(tegra, pixmap);
+        carg.samping    = TegraEXAToJpegTurboSampling(pixmap);
+        carg.quality    = tegra->exa_compress_jpeg_quality;
+
+        if (carg.format > -1) {
+            carg.compression_type = TEGRA_EXA_COMPRESSION_JPEG;
+            return carg;
+        }
+    }
+
+    /* select PNG if pixmap's format is unsuitable for JPEG compression */
+    if (tegra->exa_compress_png) {
+        carg.format = TegraEXAToPNGFormat(tegra, pixmap);
+
+        if (carg.format > -1) {
+            carg.compression_type = TEGRA_EXA_COMPRESSION_PNG;
+            return carg;
+        }
+    }
+
+    /* select LZ4 if pixmap's format is unsuitable for PNG / JPEG compression */
+    if (tegra->exa_compress_lz4)
+        carg.compression_type = TEGRA_EXA_COMPRESSION_LZ4;
+
+    return carg;
+}
+
 static void TegraEXAThawPixmapData(TegraPtr tegra, TegraPixmapPtr pixmap)
 {
     TegraEXAPtr exa = tegra->exa;
@@ -501,46 +556,7 @@ static int TegraEXAFreezePixmap(TegraPtr tegra, TegraPixmapPtr pixmap)
         return -1;
     }
 
-    /* JPEG preferred over PNG, PNG over LZ4 */
-    carg.compression_type   = TEGRA_EXA_COMPRESSION_JPEG;
-    carg.buf_out            = NULL;
-    carg.buf_in             = pixmap_data;
-    carg.out_size           = 0;
-    carg.in_size            = data_size;
-    carg.format             = TegraEXAToJpegTurboFormat(tegra, pixmap);
-    carg.samping            = TegraEXAToJpegTurboSampling(pixmap);
-    carg.height             = pixmap->pPixmap->drawable.height;
-    carg.width              = pixmap->pPixmap->drawable.width;
-    carg.pitch              = pixmap->pPixmap->devKind;
-    carg.realloc            = 1;
-    carg.quality            = tegra->exa_compress_jpeg_quality;
-
-    /* enforce PNG if pixmap's format is unsuitable for JPEG compression */
-    if (carg.format < 0) {
-        if (tegra->exa_compress_png) {
-            carg.compression_type = TEGRA_EXA_COMPRESSION_PNG;
-            carg.format           = TegraEXAToPNGFormat(tegra, pixmap);
-        }
-
-        /* enforce LZ4 if pixmap's format is unsuitable for PNG compression */
-        if (carg.format < 0 && tegra->exa_compress_lz4)
-            carg.compression_type = TEGRA_EXA_COMPRESSION_LZ4;
-    }
-
-    /* don't compress if failed previously or if size is too small */
-    if (pixmap->no_compress || data_size < TEGRA_EXA_OFFSET_ALIGN)
-        carg.compression_type = TEGRA_EXA_COMPRESSION_UNCOMPRESSED;
-
-    /* enforce uncompressed if all compression options are disabled */
-    if (!tegra->exa_compress_lz4 &&
-            !tegra->exa_compress_png &&
-                !tegra->exa_compress_jpeg)
-        carg.compression_type = TEGRA_EXA_COMPRESSION_UNCOMPRESSED;
-
-    /* don't reallocate if fallback compression fails, out = in */
-    if (pixmap->type == TEGRA_EXA_PIXMAP_TYPE_FALLBACK)
-        carg.realloc = 0;
-
+    carg = TegraEXASelectCompression(tegra, pixmap, data_size, pixmap_data);
     err = TegraEXACompressPixmap(exa, &carg);
 
     if (err < 0) {
