@@ -49,7 +49,7 @@ struct compression_arg {
     unsigned height;
     unsigned width;
     unsigned pitch;
-    unsigned realloc;
+    unsigned keep_fallback;
     unsigned quality;
 };
 
@@ -358,7 +358,7 @@ static int TegraEXACompressPixmap(TegraEXAPtr exa, struct compression_arg *c)
     return 0;
 
 uncompressed:
-    if (!c->realloc) {
+    if (c->keep_fallback) {
         /* this is fallback allocation that failed to be compressed */
         c->compression_type = TEGRA_EXA_COMPRESSION_UNCOMPRESSED;
         c->buf_out = c->buf_in;
@@ -435,11 +435,11 @@ static struct compression_arg TegraEXASelectCompression(TegraPtr tegra,
     carg.width              = pixmap->pPixmap->drawable.width;
     carg.pitch              = pixmap->pPixmap->devKind;
     carg.format             = -1;
-    carg.realloc            = 1;
+    carg.keep_fallback      = 0;
 
     /* don't reallocate if fallback compression fails, out = in */
     if (pixmap->type == TEGRA_EXA_PIXMAP_TYPE_FALLBACK)
-        carg.realloc = 0;
+        carg.keep_fallback = 1;
 
     /* don't compress if failed previously or if size is too small */
     if (pixmap->no_compress || data_size < TEGRA_EXA_OFFSET_ALIGN)
@@ -496,8 +496,15 @@ retry:
         ret = (TegraEXAAllocateDRMFromPool(tegra, pixmap, data_size) ||
                TegraEXAAllocateDRM(tegra, pixmap, data_size));
 
-    if (ret == FALSE)
+    if (ret == FALSE) {
+        if (carg.compression_type == TEGRA_EXA_COMPRESSION_UNCOMPRESSED) {
+            pixmap->type = TEGRA_EXA_PIXMAP_TYPE_FALLBACK;
+            pixmap->fallback = carg.buf_in;
+            return;
+        }
+
         ret = TegraEXAAllocateMem(pixmap, data_size);
+    }
 
     if (ret == FALSE) {
         usleep(100000);
@@ -521,12 +528,15 @@ retry:
 }
 
 static void TegraEXAFridgeReleaseUncompressedData(TegraEXAPtr exa,
-                                                  TegraPixmapPtr pixmap)
+                                                  TegraPixmapPtr pixmap,
+                                                  Bool keep_fallback)
 {
     switch (pixmap->type) {
     case TEGRA_EXA_PIXMAP_TYPE_FALLBACK:
-        free(pixmap->fallback);
-        exa->release_count++;
+        if (!keep_fallback) {
+            free(pixmap->fallback);
+            exa->release_count++;
+        }
         break;
 
     case TEGRA_EXA_PIXMAP_TYPE_POOL:
@@ -570,7 +580,7 @@ static int TegraEXAFreezePixmap(TegraPtr tegra, TegraPixmapPtr pixmap)
 
     pixmap->no_compress = err;
 
-    TegraEXAFridgeReleaseUncompressedData(exa, pixmap);
+    TegraEXAFridgeReleaseUncompressedData(exa, pixmap, carg.keep_fallback);
 
     pixmap->compression_type = carg.compression_type;
     pixmap->compressed_data  = carg.buf_out;
