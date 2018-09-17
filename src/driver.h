@@ -45,9 +45,17 @@
 #include <time.h>
 #include <unistd.h>
 
+#ifdef HAVE_LZ4
 #include <lz4.h>
+#endif
+
+#ifdef HAVE_PNG
 #include <png.h>
+#endif
+
+#ifdef HAVE_JPEG
 #include <turbojpeg.h>
+#endif
 
 #include <sys/ioctl.h>
 #include <sys/mman.h>

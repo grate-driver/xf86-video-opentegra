@@ -74,8 +74,10 @@ typedef struct _TegraEXARec{
     unsigned release_count;
     CreatePictureProcPtr CreatePicture;
     DestroyPictureProcPtr DestroyPicture;
+#ifdef HAVE_JPEG
     tjhandle jpegCompressor;
     tjhandle jpegDecompressor;
+#endif
 
     ExaDriverPtr driver;
 } *TegraEXAPtr;

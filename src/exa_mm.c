@@ -66,16 +66,20 @@ int TegraEXAInitMM(TegraPtr tegra, TegraEXAPtr exa)
     xorg_list_init(&exa->cool_pixmaps);
     xorg_list_init(&exa->mem_pools);
 
+#ifdef HAVE_JPEG
     exa->jpegCompressor = tjInitCompress();
     exa->jpegDecompressor = tjInitDecompress();
+#endif
 
     return 0;
 }
 
 void TegraEXAReleaseMM(TegraEXAPtr exa)
 {
+#ifdef HAVE_JPEG
     tjDestroy(exa->jpegDecompressor);
     tjDestroy(exa->jpegCompressor);
+#endif
 
     if (!xorg_list_is_empty(&exa->mem_pools))
         ErrorMsg("FATAL: Memory leak! Unreleased memory pools\n");

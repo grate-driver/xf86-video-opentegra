@@ -382,9 +382,11 @@ static void TegraEXAReleasePixmapData(TegraPtr tegra, TegraPixmapPtr priv)
 
     if (priv->type == TEGRA_EXA_PIXMAP_TYPE_NONE) {
         if (priv->frozen) {
+#ifdef HAVE_JPEG
             if (priv->compression_type == TEGRA_EXA_COMPRESSION_JPEG)
                 tjFree(priv->compressed_data);
             else
+#endif
                 free(priv->compressed_data);
 
             priv->frozen = FALSE;

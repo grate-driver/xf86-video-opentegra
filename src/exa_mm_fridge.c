@@ -58,6 +58,7 @@ static int TegraEXAToPNGFormat(TegraPtr tegra, TegraPixmapPtr pixmap)
     if (!tegra->exa_compress_png)
         return -1;
 
+#ifdef HAVE_PNG
     if (pixmap->pPicture) {
         switch (pixmap->pPicture->format) {
         case PICT_a8:
@@ -97,6 +98,7 @@ static int TegraEXAToPNGFormat(TegraPtr tegra, TegraPixmapPtr pixmap)
             break;
         }
     }
+#endif
 
     return -1;
 }
@@ -106,6 +108,7 @@ static int TegraEXAToJpegTurboFormat(TegraPtr tegra, TegraPixmapPtr pixmap)
     if (!tegra->exa_compress_jpeg)
         return -1;
 
+#ifdef HAVE_JPEG
     if (pixmap->pPicture) {
         switch (pixmap->pPicture->format) {
         case PICT_a8:
@@ -148,12 +151,14 @@ static int TegraEXAToJpegTurboFormat(TegraPtr tegra, TegraPixmapPtr pixmap)
             break;
         }
     }
+#endif
 
     return -1;
 }
 
 static int TegraEXAToJpegTurboSampling(TegraPixmapPtr pixmap)
 {
+#ifdef HAVE_JPEG
     switch (pixmap->pPixmap->drawable.bitsPerPixel) {
     case 8:
         return TJSAMP_GRAY;
@@ -161,6 +166,9 @@ static int TegraEXAToJpegTurboSampling(TegraPixmapPtr pixmap)
     default:
         return TJSAMP_422;
     }
+#endif
+
+    return -1;
 }
 
 static void * TegraEXAFridgeMapPixmap(TegraPixmapPtr pixmap)
@@ -264,6 +272,7 @@ static int TegraEXACompressPixmap(TegraEXAPtr exa, struct compression_arg *c)
         compressed_max = c->in_size -
                          c->in_size * TEGRA_EXA_COMPRESS_RATIO_LIMIT;
 
+#ifdef HAVE_LZ4
     if (c->compression_type == TEGRA_EXA_COMPRESSION_LZ4) {
         compressed_bound = LZ4_compressBound(c->in_size) + 4096;
 
@@ -289,7 +298,9 @@ static int TegraEXACompressPixmap(TegraEXAPtr exa, struct compression_arg *c)
 
         c->compression_type = TEGRA_EXA_COMPRESSION_LZ4;
     }
+#endif
 
+#ifdef HAVE_JPEG
     if (c->compression_type == TEGRA_EXA_COMPRESSION_JPEG) {
         err = tjCompress2(exa->jpegCompressor, c->buf_in,
                           c->width, c->pitch, c->height, c->format,
@@ -309,7 +320,9 @@ static int TegraEXACompressPixmap(TegraEXAPtr exa, struct compression_arg *c)
 
         c->compression_type = TEGRA_EXA_COMPRESSION_JPEG;
     }
+#endif
 
+#ifdef HAVE_PNG
     if (c->compression_type == TEGRA_EXA_COMPRESSION_PNG) {
         png_alloc_size_t png_size;
         png_image png = { 0 };
@@ -354,6 +367,7 @@ static int TegraEXACompressPixmap(TegraEXAPtr exa, struct compression_arg *c)
 
         c->compression_type = TEGRA_EXA_COMPRESSION_PNG;
     }
+#endif
 
     return 0;
 
@@ -386,7 +400,9 @@ uncompressed:
 
 static void TegraEXADecompressPixmap(TegraEXAPtr exa, struct compression_arg *c)
 {
+#ifdef HAVE_PNG
     png_image png = { 0 };
+#endif
 
     switch (c->compression_type) {
     case TEGRA_EXA_COMPRESSION_UNCOMPRESSED:
@@ -395,12 +411,15 @@ static void TegraEXADecompressPixmap(TegraEXAPtr exa, struct compression_arg *c)
         free(c->buf_in);
         break;
 
+#ifdef HAVE_LZ4
     case TEGRA_EXA_COMPRESSION_LZ4:
         LZ4_decompress_fast(c->buf_in, c->buf_out, c->out_size);
 
         free(c->buf_in);
         break;
+#endif
 
+#ifdef HAVE_JPEG
     case TEGRA_EXA_COMPRESSION_JPEG:
         tjDecompress2(exa->jpegDecompressor, c->buf_in, c->in_size,
                       c->buf_out, c->width, c->pitch, c->height,
@@ -408,7 +427,9 @@ static void TegraEXADecompressPixmap(TegraEXAPtr exa, struct compression_arg *c)
 
         tjFree(c->buf_in);
         break;
+#endif
 
+#ifdef HAVE_PNG
     case TEGRA_EXA_COMPRESSION_PNG:
         png.opaque = NULL;
         png.version = PNG_IMAGE_VERSION;
@@ -416,6 +437,7 @@ static void TegraEXADecompressPixmap(TegraEXAPtr exa, struct compression_arg *c)
         png.format = c->format;
         png_image_finish_read(&png, NULL, c->buf_out, c->pitch, NULL);
         break;
+#endif
     }
 }
 
