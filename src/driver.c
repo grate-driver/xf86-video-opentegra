@@ -524,7 +524,7 @@ TegraPreInit(ScrnInfoPtr pScrn, int flags)
                   "EXA pixmap refrigerator: enabled %s\n",
                    tegra->exa_refrigerator ? "YES" : "NO");
 
-#ifdef ENABLE_LZ4
+#ifdef HAVE_LZ4
         tegra->exa_compress_lz4 = !xf86ReturnOptValBool(tegra->Options,
                                                     OPTION_EXA_COMPRESSION_LZ4,
                                                     FALSE);
@@ -534,7 +534,7 @@ TegraPreInit(ScrnInfoPtr pScrn, int flags)
                    tegra->exa_compress_lz4 ? "YES" : "NO");
 #endif
 
-#ifdef ENABLE_JPEG
+#ifdef HAVE_JPEG
         tegra->exa_compress_jpeg = !xf86ReturnOptValBool(tegra->Options,
                                                     OPTION_EXA_COMPRESSION_JPEG,
                                                     FALSE);
@@ -555,7 +555,7 @@ TegraPreInit(ScrnInfoPtr pScrn, int flags)
                    tegra->exa_compress_jpeg_quality);
 #endif
 
-#ifdef ENABLE_PNG
+#ifdef HAVE_PNG
         tegra->exa_compress_png = !xf86ReturnOptValBool(tegra->Options,
                                                     OPTION_EXA_COMPRESSION_PNG,
                                                     FALSE);
