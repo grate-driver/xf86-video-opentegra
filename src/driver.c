@@ -537,7 +537,7 @@ TegraPreInit(ScrnInfoPtr pScrn, int flags)
 #ifdef HAVE_JPEG
         tegra->exa_compress_jpeg = !xf86ReturnOptValBool(tegra->Options,
                                                     OPTION_EXA_COMPRESSION_JPEG,
-                                                    FALSE);
+                                                    TRUE);
 
         xf86DrvMsg(pScrn->scrnIndex, X_INFO,
                   "EXA JPEG compression: enabled %s\n",
