@@ -35,7 +35,7 @@
 #define TEGRA_EXA_COOLING_LIMIT_MAX         0x1000000
 #define TEGRA_EXA_FREEZE_CHUNK              0x20000
 #define TEGRA_EXA_COMPRESS_RATIO_LIMIT      15 / 100
-#define TEGRA_EXA_PAGE_SIZE                 0x10000
+#define TEGRA_EXA_COMPRESS_SMALL_SIZE       0x10000
 #define TEGRA_EXA_RESURRECT_DELTA           2
 
 struct compression_arg {
@@ -266,8 +266,8 @@ static int TegraEXACompressPixmap(TegraEXAPtr exa, struct compression_arg *c)
     if (c->compression_type == TEGRA_EXA_COMPRESSION_UNCOMPRESSED)
         goto uncompressed;
 
-    if (c->in_size > TEGRA_EXA_PAGE_SIZE)
-        compressed_max = c->in_size - TEGRA_EXA_PAGE_SIZE / 8;
+    if (c->in_size > TEGRA_EXA_COMPRESS_SMALL_SIZE)
+        compressed_max = c->in_size - TEGRA_EXA_COMPRESS_SMALL_SIZE / 8;
     else
         compressed_max = c->in_size -
                          c->in_size * TEGRA_EXA_COMPRESS_RATIO_LIMIT;
