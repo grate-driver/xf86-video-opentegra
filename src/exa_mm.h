@@ -36,7 +36,7 @@ Bool TegraEXAAllocateDRM(TegraPtr tegra,
 Bool TegraEXAAllocateMem(TegraPixmapPtr pixmap, unsigned int size);
 
 int TegraEXAInitMM(TegraPtr tegra, TegraEXAPtr exa);
-void TegraEXAReleaseMM(TegraEXAPtr exa);
+void TegraEXAReleaseMM(TegraPtr tegra, TegraEXAPtr exa);
 
 void TegraEXACoolTegraPixmap(TegraPtr tegra, TegraPixmapPtr pix);
 void TegraEXACoolPixmap(PixmapPtr pPixmap, Bool write);

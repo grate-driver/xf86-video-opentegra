@@ -1652,7 +1652,7 @@ void TegraEXAScreenInit(ScreenPtr pScreen)
     return;
 
 release_mm:
-    TegraEXAReleaseMM(priv);
+    TegraEXAReleaseMM(tegra, priv);
 destroy_stream:
     tegra_stream_destroy(&priv->cmds);
 close_gr3d:
@@ -1676,7 +1676,7 @@ void TegraEXAScreenExit(ScreenPtr pScreen)
         exaDriverFini(pScreen);
         free(priv->driver);
 
-        TegraEXAReleaseMM(priv);
+        TegraEXAReleaseMM(tegra, priv);
         tegra_stream_destroy(&priv->cmds);
         drm_tegra_channel_close(priv->gr2d);
         drm_tegra_channel_close(priv->gr3d);
