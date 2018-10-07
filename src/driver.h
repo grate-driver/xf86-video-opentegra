@@ -116,6 +116,7 @@
 #include "tgr_3d.xml.h"
 #include "shaders/prog.h"
 #include "gr3d.h"
+#include "memcpy_vfp.h"
 
 #ifdef LONG64
 #  define FMT_CARD32 "x"
