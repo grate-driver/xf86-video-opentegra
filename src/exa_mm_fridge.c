@@ -213,6 +213,28 @@ static void TegraEXAFridgeUnMapPixmap(TegraPixmapPtr pixmap)
     }
 }
 
+static void TegraEXAFridgeReleaseUncompressedData(TegraEXAPtr exa,
+                                                  TegraPixmapPtr pixmap,
+                                                  Bool keep_fallback)
+{
+    switch (pixmap->type) {
+    case TEGRA_EXA_PIXMAP_TYPE_FALLBACK:
+        if (!keep_fallback) {
+            free(pixmap->fallback);
+            exa->release_count++;
+        }
+        break;
+
+    case TEGRA_EXA_PIXMAP_TYPE_POOL:
+        TegraEXAPoolFree(&pixmap->pool_entry);
+        break;
+
+    case TEGRA_EXA_PIXMAP_TYPE_BO:
+        drm_tegra_bo_unref(pixmap->bo);
+        break;
+    }
+}
+
 static void TegraEXAResurrectAccelPixmap(TegraPtr tegra, TegraPixmapPtr pixmap)
 {
     void *pixmap_data_orig;
@@ -241,6 +263,11 @@ static void TegraEXAResurrectAccelPixmap(TegraPtr tegra, TegraPixmapPtr pixmap)
     if (ret == TRUE) {
         pixmap->fence = NULL;
         pixmap_data = TegraEXAFridgeMapPixmap(pixmap);
+
+        if (!pixmap_data) {
+            TegraEXAFridgeReleaseUncompressedData(exa, pixmap, FALSE);
+            pixmap->type = TEGRA_EXA_PIXMAP_TYPE_FALLBACK;
+        }
     } else {
         exa->last_resurrect_time = time.tv_sec;
         pixmap_data = NULL;
@@ -547,28 +574,6 @@ retry:
 
     TegraEXADecompressPixmap(exa, &carg);
     TegraEXAFridgeUnMapPixmap(pixmap);
-}
-
-static void TegraEXAFridgeReleaseUncompressedData(TegraEXAPtr exa,
-                                                  TegraPixmapPtr pixmap,
-                                                  Bool keep_fallback)
-{
-    switch (pixmap->type) {
-    case TEGRA_EXA_PIXMAP_TYPE_FALLBACK:
-        if (!keep_fallback) {
-            free(pixmap->fallback);
-            exa->release_count++;
-        }
-        break;
-
-    case TEGRA_EXA_PIXMAP_TYPE_POOL:
-        TegraEXAPoolFree(&pixmap->pool_entry);
-        break;
-
-    case TEGRA_EXA_PIXMAP_TYPE_BO:
-        drm_tegra_bo_unref(pixmap->bo);
-        break;
-    }
 }
 
 static int TegraEXAFreezePixmap(TegraPtr tegra, TegraPixmapPtr pixmap)
