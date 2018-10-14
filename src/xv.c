@@ -1064,6 +1064,7 @@ static int TegraVideoOverlayGetAttribute(ScrnInfoPtr scrn, Atom attribute,
 
 static void TegraVideoOverlayStop(ScrnInfoPtr scrn, void *data, Bool cleanup)
 {
+    TegraPtr tegra     = TegraPTR(scrn);
     TegraVideoPtr priv = data;
     int id;
 
@@ -1079,6 +1080,11 @@ static void TegraVideoOverlayStop(ScrnInfoPtr scrn, void *data, Bool cleanup)
                                      FALSE, TRUE);
 
         TegraVideoOverlaySetCSC(priv, scrn, csc_default_blob_id, TRUE);
+    }
+
+    if (tegra->xv_blocks_hw_cursor) {
+        tegra->xv_blocks_hw_cursor = FALSE;
+        xf86CursorResetCursor(scrn->pScreen);
     }
 }
 
@@ -1491,6 +1497,11 @@ static Bool TegraVideoOverlayPutImageOnOverlays(TegraVideoPtr priv,
         ErrorMsg("TegraDrmModeAtomicCommit failed: %d (%s)\n",
                  err, strerror(-err));
         return FALSE;
+    }
+
+    if (!tegra->xv_blocks_hw_cursor) {
+        tegra->xv_blocks_hw_cursor = TRUE;
+        xf86CursorResetCursor(scrn->pScreen);
     }
 
     return TRUE;
