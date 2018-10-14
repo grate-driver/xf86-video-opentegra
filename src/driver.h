@@ -185,6 +185,8 @@ typedef struct _TegraRec
 
     struct drm_tegra *drm;
 
+    Bool xv_blocks_hw_cursor;
+
     Bool exa_compress_png;
     int exa_compress_jpeg_quality;
     Bool exa_compress_jpeg;
