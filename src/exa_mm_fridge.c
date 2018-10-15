@@ -624,7 +624,7 @@ fail_unmap:
     return -1;
 }
 
-static void TegraEXAFreezePixmaps(TegraPtr tegra, time_t time)
+void TegraEXAFreezePixmaps(TegraPtr tegra, time_t time)
 {
     TegraEXAPtr exa = tegra->exa;
     TegraPixmapPtr pix, tmp;
@@ -701,8 +701,6 @@ void TegraEXACoolTegraPixmap(TegraPtr tegra, TegraPixmapPtr pix)
 
     clock_gettime(CLOCK_MONOTONIC, &time);
     current_sec8 = time.tv_sec / 8;
-
-    TegraEXAFreezePixmaps(tegra, time.tv_sec);
 
     xorg_list_append(&pix->fridge_entry, &exa->cool_pixmaps);
     pix->last_use = current_sec8;

@@ -1523,7 +1523,22 @@ static void TegraEXADestroyPicture(PicturePtr pPicture)
         exa->DestroyPicture(pPicture);
 }
 
-static void TegraEXAWrapPicture(ScreenPtr pScreen)
+static void TegraEXABlockHandler(BLOCKHANDLER_ARGS_DECL)
+{
+    SCREEN_PTR(arg);
+    TegraPtr tegra = TegraPTR(xf86ScreenToScrn(pScreen));
+    TegraEXAPtr exa = tegra->exa;
+    struct timespec time;
+
+    pScreen->BlockHandler = exa->BlockHandler;
+    pScreen->BlockHandler(BLOCKHANDLER_ARGS);
+    pScreen->BlockHandler = TegraEXABlockHandler;
+
+    clock_gettime(CLOCK_MONOTONIC, &time);
+    TegraEXAFreezePixmaps(tegra, time.tv_sec);
+}
+
+static void TegraEXAWrapProc(ScreenPtr pScreen)
 {
     PictureScreenPtr ps = GetPictureScreenIfSet(pScreen);
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pScreen);
@@ -1536,9 +1551,12 @@ static void TegraEXAWrapPicture(ScreenPtr pScreen)
         ps->CreatePicture = TegraEXACreatePicture;
         ps->DestroyPicture = TegraEXADestroyPicture;
     }
+
+    exa->BlockHandler = pScreen->BlockHandler;
+    pScreen->BlockHandler = TegraEXABlockHandler;
 }
 
-static void TegraEXAUnWrapPicture(ScreenPtr pScreen)
+static void TegraEXAUnWrapProc(ScreenPtr pScreen)
 {
     PictureScreenPtr ps = GetPictureScreenIfSet(pScreen);
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pScreen);
@@ -1548,6 +1566,8 @@ static void TegraEXAUnWrapPicture(ScreenPtr pScreen)
         ps->CreatePicture = exa->CreatePicture;
         ps->DestroyPicture = exa->DestroyPicture;
     }
+
+    pScreen->BlockHandler = exa->BlockHandler;
 }
 
 void TegraEXAScreenInit(ScreenPtr pScreen)
@@ -1647,7 +1667,7 @@ void TegraEXAScreenInit(ScreenPtr pScreen)
     priv->driver = exa;
     tegra->exa = priv;
 
-    TegraEXAWrapPicture(pScreen);
+    TegraEXAWrapProc(pScreen);
 
     return;
 
@@ -1672,7 +1692,7 @@ void TegraEXAScreenExit(ScreenPtr pScreen)
     TegraEXAPtr priv = tegra->exa;
 
     if (priv) {
-        TegraEXAUnWrapPicture(pScreen);
+        TegraEXAUnWrapProc(pScreen);
         exaDriverFini(pScreen);
         free(priv->driver);
 
