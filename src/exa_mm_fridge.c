@@ -624,7 +624,7 @@ fail_unmap:
     return -1;
 }
 
-void TegraEXAFreezePixmaps(TegraPtr tegra, time_t time)
+void TegraEXAFreezePixmaps(TegraPtr tegra, time_t time_sec)
 {
     TegraEXAPtr exa = tegra->exa;
     TegraPixmapPtr pix, tmp;
@@ -643,7 +643,7 @@ void TegraEXAFreezePixmaps(TegraPtr tegra, time_t time)
      * for the pixmaps that has been queued for freeze'ing and gonna be taken
      * out from refrigerator shortly.
      */
-    if (time - exa->last_freezing_time > TEGRA_EXA_FREEZE_BOUNCE_DELTA)
+    if (time_sec - exa->last_freezing_time > TEGRA_EXA_FREEZE_BOUNCE_DELTA)
         goto out;
 
     /*
@@ -654,14 +654,14 @@ void TegraEXAFreezePixmaps(TegraPtr tegra, time_t time)
         emergence = TRUE;
 
     /* allow freezing only once per couple seconds */
-    if (time - exa->last_freezing_time < TEGRA_EXA_FREEZE_ALLOWANCE_DELTA)
+    if (time_sec - exa->last_freezing_time < TEGRA_EXA_FREEZE_ALLOWANCE_DELTA)
         return;
 
     cooling_size = exa->cooling_size;
     frost_size = 0;
 
     xorg_list_for_each_entry_safe(pix, tmp, &exa->cool_pixmaps, fridge_entry) {
-        if (time / 8 - pix->last_use < TEGRA_EXA_FREEZE_DELTA)
+        if (time_sec / 8 - pix->last_use < TEGRA_EXA_FREEZE_DELTA)
             break;
 
         err = TegraEXAFreezePixmap(tegra, pix);
@@ -683,8 +683,12 @@ void TegraEXAFreezePixmaps(TegraPtr tegra, time_t time)
     }
 
 out:
-    if (frost_size)
-        exa->last_freezing_time = time;
+    if (frost_size) {
+        struct timespec time;
+
+        clock_gettime(CLOCK_MONOTONIC, &time);
+        exa->last_freezing_time = time.tv_sec;
+    }
 }
 
 void TegraEXACoolTegraPixmap(TegraPtr tegra, TegraPixmapPtr pix)

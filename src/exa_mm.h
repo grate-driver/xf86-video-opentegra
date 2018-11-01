@@ -41,4 +41,4 @@ void TegraEXAReleaseMM(TegraPtr tegra, TegraEXAPtr exa);
 void TegraEXACoolTegraPixmap(TegraPtr tegra, TegraPixmapPtr pix);
 void TegraEXACoolPixmap(PixmapPtr pPixmap, Bool write);
 void TegraEXAThawPixmap(PixmapPtr pPixmap, Bool accel);
-void TegraEXAFreezePixmaps(TegraPtr tegra, time_t time);
+void TegraEXAFreezePixmaps(TegraPtr tegra, time_t time_sec);
