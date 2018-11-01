@@ -441,7 +441,7 @@ static Bool TegraEXACompactPoolsSlowAllowed(TegraEXAPtr exa, size_t size_limit)
     Bool compact = FALSE;
     Bool expired = TRUE;
 
-    clock_gettime(CLOCK_MONOTONIC, &time);
+    clock_gettime(CLOCK_THREAD_CPUTIME_ID, &time);
 
     if (time.tv_sec - exa->pool_slow_compact_time < 15)
         expired = FALSE;
@@ -465,7 +465,7 @@ static Bool TegraEXACompactPoolsFastAllowed(TegraEXAPtr exa, size_t size_limit)
     Bool compact = FALSE;
     Bool expired = TRUE;
 
-    clock_gettime(CLOCK_MONOTONIC, &time);
+    clock_gettime(CLOCK_THREAD_CPUTIME_ID, &time);
 
     if (time.tv_sec - exa->pool_fast_compact_time < 3)
         expired = FALSE;

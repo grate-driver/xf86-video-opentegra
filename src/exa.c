@@ -1534,7 +1534,7 @@ static void TegraEXABlockHandler(BLOCKHANDLER_ARGS_DECL)
     pScreen->BlockHandler(BLOCKHANDLER_ARGS);
     pScreen->BlockHandler = TegraEXABlockHandler;
 
-    clock_gettime(CLOCK_MONOTONIC, &time);
+    clock_gettime(CLOCK_THREAD_CPUTIME_ID, &time);
     TegraEXAFreezePixmaps(tegra, time.tv_sec);
 }
 

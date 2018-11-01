@@ -248,7 +248,7 @@ static void TegraEXAResurrectAccelPixmap(TegraPtr tegra, TegraPixmapPtr pixmap)
         return;
 
     exa = tegra->exa;
-    clock_gettime(CLOCK_MONOTONIC, &time);
+    clock_gettime(CLOCK_THREAD_CPUTIME_ID, &time);
 
     /* don't retry too often */
     if (time.tv_sec - exa->last_resurrect_time < TEGRA_EXA_RESURRECT_DELTA)
@@ -686,7 +686,7 @@ out:
     if (frost_size) {
         struct timespec time;
 
-        clock_gettime(CLOCK_MONOTONIC, &time);
+        clock_gettime(CLOCK_THREAD_CPUTIME_ID, &time);
         exa->last_freezing_time = time.tv_sec;
     }
 }
@@ -703,7 +703,7 @@ void TegraEXACoolTegraPixmap(TegraPtr tegra, TegraPixmapPtr pix)
     if (!tegra->exa_refrigerator)
         return;
 
-    clock_gettime(CLOCK_MONOTONIC, &time);
+    clock_gettime(CLOCK_THREAD_CPUTIME_ID, &time);
     current_sec8 = time.tv_sec / 8;
 
     xorg_list_append(&pix->fridge_entry, &exa->cool_pixmaps);
