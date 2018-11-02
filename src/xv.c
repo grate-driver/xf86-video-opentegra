@@ -201,7 +201,7 @@ static void TegraVideoOverlayShow(TegraVideoPtr priv,
                           fb->fb_id, 0,
                           dst_x, dst_y,
                           dst_w, dst_h,
-                          src_x, src_y,
+                          src_x << 16, src_y << 16,
                           src_w << 16, src_h << 16);
     if (ret < 0)
         ErrorMsg("DRM set plane failed: %s\n", strerror(-ret));
