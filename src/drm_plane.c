@@ -24,7 +24,7 @@
 
 #include "driver.h"
 
-#define FD_INVALID  UINT32_MAX
+#define HANDLE_INVALID  UINT32_MAX
 
 #define MUNMAP_VERBOSE(PTR, SIZE)                       \
     if (PTR && munmap(PTR, page_align(SIZE)) != 0)      \
@@ -41,10 +41,10 @@ static size_t page_align(size_t size)
     return TEGRA_ALIGN(size, pagesize);
 }
 
-static void mmap_gem(int drm_fd, int gem_fd, void **map, size_t size)
+static void mmap_gem(int drm_fd, int gem_handle, void **map, size_t size)
 {
     struct drm_tegra_gem_mmap gem_mmap = {
-        .handle = gem_fd,
+        .handle = gem_handle,
         .pad = 0,
         .offset = 0,
     };
@@ -158,7 +158,7 @@ static uint32_t create_gem(int drm_fd, uint32_t size)
 
     if (ret) {
         ErrorMsg("Failed to create GEM[0]: %s\n", strerror(-ret));
-        return FD_INVALID;
+        return HANDLE_INVALID;
     }
 
     return gem.handle;
@@ -183,7 +183,7 @@ static drm_overlay_fb * drm_create_fb_internal(int drm_fd, uint32_t drm_format,
                                                uint32_t *offsets)
 {
     drm_overlay_fb *fb = NULL;
-    uint32_t fb_id = FD_INVALID;
+    uint32_t fb_id = HANDLE_INVALID;
     Bool from_handle;
     int ret;
 
@@ -215,13 +215,13 @@ static drm_overlay_fb * drm_create_fb_internal(int drm_fd, uint32_t drm_format,
     offsets[1] = 0;
     offsets[2] = 0;
 
-    bo_handles[1] = FD_INVALID;
-    bo_handles[2] = FD_INVALID;
+    bo_handles[1] = HANDLE_INVALID;
+    bo_handles[2] = HANDLE_INVALID;
 
     /* Allocate PLANE[0] */
     bo_handles[0] = create_gem(drm_fd, fb_size(drm_format, width, height));
 
-    if (bo_handles[0] == FD_INVALID)
+    if (bo_handles[0] == HANDLE_INVALID)
         goto error_cleanup;
 
     if (!format_planar(drm_format))
@@ -230,13 +230,13 @@ static drm_overlay_fb * drm_create_fb_internal(int drm_fd, uint32_t drm_format,
     /* Allocate PLANE[1] */
     bo_handles[1] = create_gem(drm_fd, fb_size_c(drm_format, width, height));
 
-    if (bo_handles[1] == FD_INVALID)
+    if (bo_handles[1] == HANDLE_INVALID)
         goto error_cleanup;
 
     /* Allocate PLANE[2] */
     bo_handles[2] = create_gem(drm_fd, fb_size_c(drm_format, width, height));
 
-    if (bo_handles[2] == FD_INVALID)
+    if (bo_handles[2] == HANDLE_INVALID)
         goto error_cleanup;
 
 create_framebuffer:
@@ -318,16 +318,16 @@ error_cleanup:
         free(fb);
     }
 
-    if (fb_id != FD_INVALID)
+    if (fb_id != HANDLE_INVALID)
         drmModeRmFB(drm_fd, fb_id);
 
-    if (bo_handles[2] != FD_INVALID)
+    if (bo_handles[2] != HANDLE_INVALID)
         close_gem(drm_fd, bo_handles[2]);
 
-    if (bo_handles[1] != FD_INVALID)
+    if (bo_handles[1] != HANDLE_INVALID)
         close_gem(drm_fd, bo_handles[1]);
 
-    if (bo_handles[0] != FD_INVALID)
+    if (bo_handles[0] != HANDLE_INVALID)
         close_gem(drm_fd, bo_handles[0]);
 
     return NULL;

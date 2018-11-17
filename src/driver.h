@@ -40,9 +40,22 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <malloc.h>
 #include <poll.h>
 #include <time.h>
 #include <unistd.h>
+
+#ifdef HAVE_LZ4
+#include <lz4.h>
+#endif
+
+#ifdef HAVE_PNG
+#include <png.h>
+#endif
+
+#ifdef HAVE_JPEG
+#include <turbojpeg.h>
+#endif
 
 #include <sys/ioctl.h>
 #include <sys/mman.h>
@@ -103,7 +116,6 @@
 #include "tgr_3d.xml.h"
 #include "shaders/prog.h"
 #include "gr3d.h"
-#include "TLSF/tlsf.h"
 
 #ifdef LONG64
 #  define FMT_CARD32 "x"
@@ -118,6 +130,14 @@
 
 #define TEGRA_PITCH_ALIGN(width, bpp, align)    \
     TEGRA_ALIGN(width * ((bpp + 7) / 8), align)
+
+#define TEGRA_CONTAINER_OFFSETOF(TYPE, MEMBER) \
+    ((size_t) &((TYPE *)0)->MEMBER)
+
+#define TEGRA_CONTAINER_OF(ptr, type, member) ({                            \
+        const typeof(((type *)0)->member) *__mptr = (ptr);                  \
+        (type *)((char *)__mptr - TEGRA_CONTAINER_OFFSETOF(type, member));  \
+    })
 
 typedef struct
 {
@@ -159,6 +179,12 @@ typedef struct _TegraRec
 
     struct drm_tegra *drm;
 
+    Bool exa_compress_png;
+    int exa_compress_jpeg_quality;
+    Bool exa_compress_jpeg;
+    Bool exa_compress_lz4;
+    Bool exa_refrigerator;
+    Bool exa_pool_alloc;
     Bool exa_compositing;
     Bool exa_enabled;
 } TegraRec, *TegraPtr;

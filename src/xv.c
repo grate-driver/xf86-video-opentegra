@@ -287,7 +287,7 @@ static Bool TegraVideoOverlayCreateFB(TegraVideoPtr priv, ScrnInfoPtr scrn,
     uint32_t *offsets  = (uint32_t*) (passthrough_data + 24);
     uint32_t bo_handles[3];
     drm_overlay_fb *fb;
-    int i = 0;
+    int i = 0, k = 0;
 
     if (priv->fb &&
         priv->fb->format  == drm_format &&
@@ -306,14 +306,14 @@ static Bool TegraVideoOverlayCreateFB(TegraVideoPtr priv, ScrnInfoPtr scrn,
     if (passthrough) {
         switch (drm_format) {
         case DRM_FORMAT_YUV420:
-            i = 3;
+            k = 3;
             break;
         default:
-            i = 1;
+            k = 1;
         }
 
-        for (; i > 0; i--) {
-            if (!TegraImportBo(scrn, flinks[i - 1], &bo_handles[i - 1]))
+        for (i = 0; i < k; i++) {
+            if (!TegraImportBo(scrn, flinks[i], &bo_handles[i]))
                 goto fail;
         }
 
@@ -341,8 +341,8 @@ static Bool TegraVideoOverlayCreateFB(TegraVideoPtr priv, ScrnInfoPtr scrn,
 fail:
     ErrorMsg("Failed to create framebuffer\n");
 
-    for (; i < TEGRA_ARRAY_SIZE(bo_handles) && i > 0; i--) {
-        TegraCloseBo(scrn, bo_handles[i - 1]);
+    for (k = 0; k < i; k++) {
+        TegraCloseBo(scrn, bo_handles[k]);
     }
 
     return FALSE;

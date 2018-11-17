@@ -88,11 +88,26 @@ if test x"$udev" = xyes; then
 	AC_DEFINE(HAVE_UDEV,1,[Enable udev-based monitor hotplug detection])
 fi
 
+PKG_CHECK_MODULES(LZ4, liblz4,
+		  HAVE_LZ4="yes"; AC_DEFINE(HAVE_LZ4, 1, [LZ4 available]),
+		  HAVE_LZ4="no")
+AM_CONDITIONAL(HAVE_LZ4, [ test "$HAVE_LZ4" = "yes" ])
+
+PKG_CHECK_MODULES(JPEG, [libturbojpeg >= 1.5.0],
+		  HAVE_JPEG="yes"; AC_DEFINE(HAVE_JPEG, 1, [JPEG available]),
+		  HAVE_JPEG="no")
+AM_CONDITIONAL(HAVE_JPEG, [ test "$HAVE_JPEG" = "yes" ])
+
+PKG_CHECK_MODULES(PNG, [libpng >= 1.6.0],
+		  HAVE_PNG="yes"; AC_DEFINE(HAVE_PNG, 1, [PNG available]),
+		  HAVE_PNG="no")
+AM_CONDITIONAL(HAVE_PNG, [ test "$HAVE_PNG" = "yes" ])
+
 SAVE_CFLAGS=$CFLAGS
 SAVE_LIBS=$LIBS
 CFLAGS=$DRM_CFLAGS
 LIBS=$DRM_LIBS
-AC_CHECK_FUNCS([drmPrimeFDToHandle])
+AC_CHECK_FUNCS([drm_tegra_bo_forbid_caching])
 CFLAGS=$SAVE_CFLAGS
 LIBS=$SAVE_LIBS
 
@@ -103,7 +118,6 @@ AC_SUBST([moduledir])
 AC_CONFIG_FILES([
 	Makefile
 	src/Makefile
-	src/TLSF/Makefile
 	man/Makefile
 ])
 

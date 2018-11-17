@@ -25,7 +25,11 @@
 #ifndef __TEGRA_EXA_H
 #define __TEGRA_EXA_H
 
+#include "pool_alloc.h"
+
 #define TEGRA_DRI_USAGE_HINT ('D' << 16 | 'R' << 8 | 'I')
+
+#define TEGRA_EXA_OFFSET_ALIGN          256
 
 typedef struct tegra_attrib_bo {
     struct tegra_attrib_bo *next;
@@ -47,10 +51,12 @@ typedef struct tegra_exa_scratch {
 } TegraEXAScratch, *TegraEXAScratchPtr;
 
 typedef struct {
-    struct xorg_list entry;
     struct drm_tegra_bo *bo;
-    unsigned int alloc_cnt;
+    struct xorg_list entry;
+    struct mem_pool pool;
     void *ptr;
+    Bool heavy : 1;
+    Bool light : 1;
 } TegraPixmapPool, *TegraPixmapPoolPtr;
 
 typedef struct _TegraEXARec{
@@ -59,24 +65,82 @@ typedef struct _TegraEXARec{
     struct tegra_stream cmds;
     TegraEXAScratch scratch;
     struct xorg_list mem_pools;
+    time_t pool_slow_compact_time;
+    time_t pool_fast_compact_time;
+    struct xorg_list cool_pixmaps;
+    unsigned long cooling_size;
+    time_t last_resurrect_time;
+    time_t last_freezing_time;
+    unsigned release_count;
+    CreatePictureProcPtr CreatePicture;
+    DestroyPictureProcPtr DestroyPicture;
+    ScreenBlockHandlerProcPtr BlockHandler;
+#ifdef HAVE_JPEG
+    tjhandle jpegCompressor;
+    tjhandle jpegDecompressor;
+#endif
 
     ExaDriverPtr driver;
 } *TegraEXAPtr;
 
-typedef struct {
-    struct tegra_fence *fence;
-    struct drm_tegra_bo *bo;
-    void *fallback;
-    void *pool_ptr;
-    Bool dri;
+#define TEGRA_EXA_PIXMAP_TYPE_NONE      0
+#define TEGRA_EXA_PIXMAP_TYPE_FALLBACK  1
+#define TEGRA_EXA_PIXMAP_TYPE_BO        2
+#define TEGRA_EXA_PIXMAP_TYPE_POOL      3
 
-    TegraPixmapPoolPtr  pool;
-    unsigned long       pool_offset;
-    unsigned int        pool_align;
+#define TEGRA_EXA_COMPRESSION_UNCOMPRESSED  1
+#define TEGRA_EXA_COMPRESSION_LZ4           2
+#define TEGRA_EXA_COMPRESSION_JPEG          3
+#define TEGRA_EXA_COMPRESSION_PNG           4
+
+typedef struct {
+    Bool no_compress : 1;   /* pixmap's data compress poorly */
+    Bool accelerated : 1;   /* pixmap was accelerated at least once */
+    Bool scanout : 1;       /* pixmap backs frontbuffer BO */
+    Bool frozen : 1;        /* pixmap's data compressed */
+    Bool accel : 1;         /* pixmap acceleratable */
+    Bool cold : 1;          /* pixmap scheduled for compression */
+    Bool dri : 1;           /* pixmap's BO was exported */
+
+    unsigned type : 2;
+
+    union {
+        struct {
+            union {
+                struct {
+                    struct tegra_fence *fence;
+
+                    union {
+                        struct mem_pool_entry pool_entry;
+                        struct drm_tegra_bo *bo;
+                    };
+                };
+
+                void *fallback;
+            };
+
+            time_t last_use : 16; /* 8 seconds per unit */
+            struct xorg_list fridge_entry;
+        };
+
+        struct {
+            void *compressed_data;
+            unsigned compressed_size;
+            unsigned compression_type;
+            unsigned picture_format;
+        };
+    };
+
+    PixmapPtr pPixmap;
+    PicturePtr pPicture;
 } TegraPixmapRec, *TegraPixmapPtr;
 
 unsigned int TegraEXAPitch(unsigned int width, unsigned int height,
                            unsigned int bpp);
+
+void TegraEXAWaitFence(struct tegra_fence *fence);
+
+unsigned TegraPixmapSize(TegraPixmapPtr pixmap);
 
 #endif
 
