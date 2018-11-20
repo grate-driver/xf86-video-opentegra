@@ -34,7 +34,7 @@ opentegra_drv_la_LIBADD = @UDEV_LIBS@ @DRM_LIBS@ @LZ4_LIBS@ @JPEG_LIBS@ \
 opentegra_drv_ladir = @moduledir@/drivers
 
 # enable fp16 for the 3d attributes
-opentegra_drv_la_CFLAGS = $(AM_CFLAGS) -mfp16-format=ieee
+opentegra_drv_la_CFLAGS = $(AM_CFLAGS) $(DEFINES) -mfp16-format=ieee
 
 opentegra_drv_la_SOURCES = \
 	compat-api.h \
