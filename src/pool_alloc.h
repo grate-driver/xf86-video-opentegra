@@ -21,7 +21,11 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-// #define POOL_DEBUG
+#ifdef DEBUG
+#define POOL_DEBUG
+#endif
+
+// #define POOL_DEBUG_VERBOSE
 // #define POOL_DEBUG_CANARY
 
 struct mem_pool_entry;
