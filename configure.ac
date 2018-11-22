@@ -115,6 +115,37 @@ DRIVER_NAME=opentegra
 AC_SUBST([DRIVER_NAME])
 AC_SUBST([moduledir])
 
+AC_ARG_ENABLE([debug],
+	      [AS_HELP_STRING([--enable-debug],
+	      [use debug compiler flags and macros @<:@default=disabled@:>@])],
+	      [enable_debug="$enableval"],
+	      [enable_debug=no]
+)
+
+if test "x$enable_debug" = xyes; then
+	DEFINES="$DEFINES -DDEBUG"
+	if test "x$GCC" = xyes; then
+		if ! echo "$CFLAGS" | grep -q -e '-g'; then
+			CFLAGS="$CFLAGS -g"
+		fi
+		if ! echo "$CFLAGS" | grep -q -e '-O'; then
+			CFLAGS="$CFLAGS -O0"
+		fi
+	fi
+	if test "x$GXX" = xyes; then
+		if ! echo "$CXXFLAGS" | grep -q -e '-g'; then
+			CXXFLAGS="$CXXFLAGS -g"
+		fi
+		if ! echo "$CXXFLAGS" | grep -q -e '-O'; then
+			CXXFLAGS="$CXXFLAGS -O0"
+		fi
+	fi
+else
+	DEFINES="$DEFINES -DNDEBUG"
+fi
+
+AC_SUBST([DEFINES])
+
 AC_CONFIG_FILES([
 	Makefile
 	src/Makefile

@@ -33,7 +33,11 @@ static struct {
     unsigned int pools_num;
     unsigned int total_remain;
 } stats;
-#define PRINTF(fmt, ...) fprintf(stderr, fmt, ##__VA_ARGS__)
+#ifdef POOL_DEBUG_VERBOSE
+	#define PRINTF(fmt, ...) fprintf(stderr, fmt, ##__VA_ARGS__)
+#else
+	#define PRINTF(fmt, ...)
+#endif
 #endif
 
 /*
@@ -297,7 +301,7 @@ static void migrate_entry(struct mem_pool *pool_from,
                           unsigned int from, unsigned int to,
                           void *new_base)
 {
-#ifdef POOL_DEBUG
+#ifdef POOL_DEBUG_VERBOSE
     char *base = pool_from->entries[from].base;
     PRINTF("%s: from %u (%p) to %u (%p)\n",
            __func__, from, pool_from, to, pool_to);
@@ -310,7 +314,7 @@ static void migrate_entry(struct mem_pool *pool_from,
         mem_pool_clear_canary(&pool_to->entries[to]);
         pool_to->entries[to].base = new_base;
     }
-#ifdef POOL_DEBUG
+#ifdef POOL_DEBUG_VERBOSE
     PRINTF("%s: migrated from %p to %p\n",
            __func__, base, new_base);
 #endif
@@ -559,7 +563,7 @@ void mem_pool_free(struct mem_pool_entry *entry)
     unsigned int entry_id = entry->id;
     int b;
 
-#ifdef POOL_DEBUG
+#ifdef POOL_DEBUG_VERBOSE
     char *base = mem_pool_entry_addr(entry);
     PRINTF("%s: pool %p: e=%u size=%lu addr=%p\n",
            __func__, pool, entry_id, pool->entries[entry_id].size, base);
@@ -781,7 +785,7 @@ void mem_pool_defrag(struct mem_pool *pool)
 
 void mem_pool_debug_dump(struct mem_pool *pool)
 {
-#ifdef POOL_DEBUG
+#ifdef POOL_DEBUG_VERBOSE
     struct __mem_pool_entry *busy;
     int b = -1;
 
