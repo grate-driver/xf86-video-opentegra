@@ -312,7 +312,7 @@ static void TegraEXAWaitMarker(ScreenPtr pScreen, int marker)
         tegra->scratch.marker = NULL;
 }
 
-static Bool TegraEXAPrepareAccess(PixmapPtr pPix, int idx)
+static Bool __TegraEXAPrepareAccess(PixmapPtr pPix, int idx, void **ptr)
 {
     TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pPix);
     int err;
@@ -320,17 +320,25 @@ static Bool TegraEXAPrepareAccess(PixmapPtr pPix, int idx)
     TegraEXAThawPixmap(pPix, FALSE);
 
     if (priv->type == TEGRA_EXA_PIXMAP_TYPE_FALLBACK) {
-        pPix->devPrivate.ptr = priv->fallback;
+        *ptr = priv->fallback;
         return TRUE;
     }
 
+    /*
+     * EXA doesn't sync for Upload/DownloadFromScreen, assuming that HW
+     * will take care of the fencing.
+     *
+     * Wait for the HW writes to be completed.
+     */
+    TegraEXAWaitFence(priv->fence);
+
     if (priv->type == TEGRA_EXA_PIXMAP_TYPE_POOL) {
-        pPix->devPrivate.ptr = mem_pool_entry_addr(&priv->pool_entry);
+        *ptr = mem_pool_entry_addr(&priv->pool_entry);
         return TRUE;
     }
 
     if (priv->type == TEGRA_EXA_PIXMAP_TYPE_BO) {
-        err = drm_tegra_bo_map(priv->bo, &pPix->devPrivate.ptr);
+        err = drm_tegra_bo_map(priv->bo, ptr);
         if (err < 0) {
             ErrorMsg("failed to map buffer object: %d\n", err);
             return FALSE;
@@ -342,7 +350,12 @@ static Bool TegraEXAPrepareAccess(PixmapPtr pPix, int idx)
     return FALSE;
 }
 
-static void TegraEXAFinishAccess(PixmapPtr pPix, int idx)
+static Bool TegraEXAPrepareAccess(PixmapPtr pPix, int idx)
+{
+    return __TegraEXAPrepareAccess(pPix, idx, &pPix->devPrivate.ptr);
+}
+
+static void __TegraEXAFinishAccess(PixmapPtr pPix, int idx)
 {
     TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pPix);
     int err;
@@ -354,6 +367,11 @@ static void TegraEXAFinishAccess(PixmapPtr pPix, int idx)
     }
 
     TegraEXACoolPixmap(pPix, TRUE);
+}
+
+static void TegraEXAFinishAccess(PixmapPtr pPix, int idx)
+{
+    __TegraEXAFinishAccess(pPix, idx);
 }
 
 static Bool TegraEXAPixmapIsOffscreen(PixmapPtr pPix)
@@ -1477,10 +1495,56 @@ static void TegraEXADoneComposite(PixmapPtr pDst)
 }
 
 static Bool
-TegraEXADownloadFromScreen(PixmapPtr pSrc, int x, int y, int w, int h,
-                           char *dst, int pitch)
+TegraEXACopyScreen(const char *src, int src_pitch, int h,
+                   char *dst, int dst_pitch, int line_len)
 {
-    return FALSE;
+    if (src_pitch == line_len && src_pitch == dst_pitch) {
+        tegra_memcpy_vfp_unaligned(dst, src, line_len * h);
+    } else {
+        while (h--) {
+            tegra_memcpy_vfp_unaligned(dst, src, line_len);
+
+            src += src_pitch;
+            dst += dst_pitch;
+        }
+    }
+
+    return TRUE;
+}
+
+static Bool
+TegraEXADownloadFromScreen(PixmapPtr pSrc, int x, int y, int w, int h,
+                           char *dst, int dst_pitch)
+{
+    TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pSrc);
+    int src_offset, src_pitch, line_len, cpp;
+    const char *src;
+    Bool ret;
+
+    if (!priv->accel)
+        return FALSE;
+
+    ret = __TegraEXAPrepareAccess(pSrc, 0, (void**)&src);
+    if (!ret)
+        return FALSE;
+
+    if (priv->type == TEGRA_EXA_PIXMAP_TYPE_FALLBACK) {
+        ret = FALSE;
+        goto finish;
+    }
+
+    cpp        = pSrc->drawable.bitsPerPixel >> 3;
+    src_pitch  = exaGetPixmapPitch(pSrc);
+    src_offset = (y * src_pitch) + (x * cpp);
+    line_len   = w * cpp;
+
+    ret = TegraEXACopyScreen(src + src_offset, src_pitch, h,
+                             dst, dst_pitch, line_len);
+
+finish:
+    __TegraEXAFinishAccess(pSrc, 0);
+
+    return ret;
 }
 
 static PixmapPtr TegraEXAGetDrawablePixmap(DrawablePtr drawable)

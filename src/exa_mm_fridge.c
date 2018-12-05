@@ -274,7 +274,8 @@ static void TegraEXAResurrectAccelPixmap(TegraPtr tegra, TegraPixmapPtr pixmap)
     }
 
     if (pixmap_data) {
-        memcpy(pixmap_data, pixmap_data_orig, data_size);
+        tegra_memcpy_vfp_aligned_src_cached(pixmap_data, pixmap_data_orig,
+                                            data_size);
         TegraEXAFridgeUnMapPixmap(pixmap);
         free(pixmap_data_orig);
         exa->release_count++;
@@ -407,11 +408,10 @@ uncompressed:
         return 1;
     }
 
-    c->buf_out = malloc(c->in_size);
-
-    if (c->buf_out) {
+    err = posix_memalign(&c->buf_out, 128, c->in_size);
+    if (!err) {
         c->compression_type = TEGRA_EXA_COMPRESSION_UNCOMPRESSED;
-        memcpy(c->buf_out, c->buf_in, c->in_size);
+        tegra_memcpy_vfp_aligned_dst_cached(c->buf_out, c->buf_in, c->in_size);
 
         c->out_size = c->in_size;
     }
@@ -433,7 +433,7 @@ static void TegraEXADecompressPixmap(TegraEXAPtr exa, struct compression_arg *c)
 
     switch (c->compression_type) {
     case TEGRA_EXA_COMPRESSION_UNCOMPRESSED:
-        memcpy(c->buf_out, c->buf_in, c->out_size);
+        tegra_memcpy_vfp_aligned_src_cached(c->buf_out, c->buf_in, c->out_size);
 
         free(c->buf_in);
         break;

@@ -27,6 +27,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "pool_alloc.h"
+#include "memcpy_vfp.h"
 
 #ifdef POOL_DEBUG
 static struct {
@@ -308,9 +309,9 @@ static void migrate_entry(struct mem_pool *pool_from,
 #endif
     move_entry(pool_from, pool_to, from, to);
     if (new_base != pool_to->entries[to].base) {
-        memmove(new_base,
-                pool_to->entries[to].base,
-                pool_to->entries[to].size);
+        tegra_memmove_vfp_aligned(new_base,
+                                  pool_to->entries[to].base,
+                                  pool_to->entries[to].size);
         mem_pool_clear_canary(&pool_to->entries[to]);
         pool_to->entries[to].base = new_base;
     }

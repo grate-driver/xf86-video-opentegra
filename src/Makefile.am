@@ -64,7 +64,8 @@ opentegra_drv_la_SOURCES = \
 	shaders.h \
 	gr3d.c \
 	gr3d.h \
-	pool_alloc.c
+	pool_alloc.c \
+	memcpy_vfp.c
 
 shaders_dir := $(filter %/, $(wildcard $(srcdir)/shaders/*/))
 shaders_gen := $(addsuffix .bin.h, $(shaders_dir:%/=%))

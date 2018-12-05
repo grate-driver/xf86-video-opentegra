@@ -48,12 +48,13 @@ Bool TegraEXAAllocateDRM(TegraPtr tegra,
 
 Bool TegraEXAAllocateMem(TegraPixmapPtr pixmap, unsigned int size)
 {
+    int err;
+
     if (pixmap->dri)
         return FALSE;
 
-    pixmap->fallback = malloc(size);
-
-    if (!pixmap->fallback)
+    err = posix_memalign(&pixmap->fallback, 128, size);
+    if (err)
         return FALSE;
 
     pixmap->type = TEGRA_EXA_PIXMAP_TYPE_FALLBACK;
