@@ -70,99 +70,6 @@ static const OptionInfoRec Options[] = {
 
 int tegraEntityIndex = -1;
 
-static int
-dispatch_dirty_region(ScrnInfoPtr scrn, PixmapPtr pixmap, DamagePtr damage,
-                      int fb_id)
-{
-    TegraPtr tegra = TegraPTR(scrn);
-    RegionPtr dirty = DamageRegion(damage);
-    unsigned num_cliprects = REGION_NUM_RECTS(dirty);
-
-    if (num_cliprects) {
-        drmModeClip *clip = malloc(num_cliprects * sizeof(drmModeClip));
-        BoxPtr rect = REGION_RECTS(dirty);
-        int i, ret;
-
-        if (!clip)
-            return -ENOMEM;
-
-        /* XXX no need for copy? */
-        for (i = 0; i < num_cliprects; i++, rect++) {
-            clip[i].x1 = rect->x1;
-            clip[i].y1 = rect->y1;
-            clip[i].x2 = rect->x2;
-            clip[i].y2 = rect->y2;
-        }
-
-        /* TODO query connector property to see if this is needed */
-        ret = drmModeDirtyFB(tegra->fd, fb_id, clip, num_cliprects);
-        free(clip);
-        DamageEmpty(damage);
-        if (ret) {
-            if (ret == -EINVAL)
-                return ret;
-        }
-    }
-
-    return 0;
-}
-
-static void dispatch_dirty(ScreenPtr pScreen)
-{
-    ScrnInfoPtr scrn = xf86ScreenToScrn(pScreen);
-    TegraPtr tegra = TegraPTR(scrn);
-    PixmapPtr pixmap = pScreen->GetScreenPixmap(pScreen);
-    int fb_id = tegra->drmmode.fb_id;
-    int ret;
-
-    ret = dispatch_dirty_region(scrn, pixmap, tegra->damage, fb_id);
-    if (ret == -EINVAL || ret == -ENOSYS) {
-        tegra->dirty_enabled = FALSE;
-        DamageUnregister(&pScreen->GetScreenPixmap(pScreen)->drawable,
-                         tegra->damage);
-        DamageDestroy(tegra->damage);
-        tegra->damage = NULL;
-        xf86DrvMsg(scrn->scrnIndex, X_INFO, "Disabling kernel dirty updates, not required.\n");
-        return;
-    }
-}
-
-#ifdef TEGRA_OUTPUT_SLAVE_SUPPORT
-static void dispatch_dirty_crtc(ScrnInfoPtr scrn, xf86CrtcPtr crtc)
-{
-    TegraPtr tegra = TegraPTR(scrn);
-    PixmapPtr pixmap = crtc->randr_crtc->scanout_pixmap;
-    TegraPixmapPrivPtr ppriv = TegraGetPixmapPriv(&tegra->drmmode, pixmap);
-    drmmode_crtc_private_ptr drmmode_crtc = crtc->driver_private;
-    DamagePtr damage = drmmode_crtc->slave_damage;
-    int fb_id = ppriv->fb_id;
-    int ret;
-
-    ret = dispatch_dirty_region(scrn, pixmap, damage, fb_id);
-    if (ret) {
-    }
-}
-
-static void dispatch_slave_dirty(ScreenPtr pScreen)
-{
-    ScrnInfoPtr scrn = xf86ScreenToScrn(pScreen);
-    xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(scrn);
-    int c;
-
-    for (c = 0; c < xf86_config->num_crtc; c++) {
-        xf86CrtcPtr crtc = xf86_config->crtc[c];
-
-        if (!crtc->randr_crtc)
-            continue;
-
-        if (!crtc->randr_crtc->scanout_pixmap)
-            continue;
-
-        dispatch_dirty_crtc(scrn, crtc);
-    }
-}
-#endif
-
 static Bool
 GetRec(ScrnInfoPtr pScrn)
 {
@@ -707,18 +614,6 @@ TegraCreateScreenResources(ScreenPtr pScreen)
             return FALSE;
     }
 
-    tegra->damage = DamageCreate(NULL, NULL, DamageReportNone, TRUE, pScreen,
-                                 rootPixmap);
-    if (tegra->damage) {
-        DamageRegister(&rootPixmap->drawable, tegra->damage);
-        tegra->dirty_enabled = TRUE;
-        xf86DrvMsg(pScrn->scrnIndex, X_INFO, "Damage tracking initialized\n");
-    } else {
-        xf86DrvMsg(pScrn->scrnIndex, X_ERROR,
-                   "Failed to create screen damage record\n");
-        return FALSE;
-    }
-
     return ret;
 }
 
@@ -727,13 +622,6 @@ TegraCloseScreen(CLOSE_SCREEN_ARGS_DECL)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pScreen);
     TegraPtr tegra = TegraPTR(pScrn);
-
-    if (tegra->damage) {
-        DamageUnregister(&pScreen->GetScreenPixmap(pScreen)->drawable,
-                         tegra->damage);
-        DamageDestroy(tegra->damage);
-        tegra->damage = NULL;
-    }
 
     if (tegra->drmmode.shadow_enable) {
         shadowRemove(pScreen, pScreen->GetScreenPixmap(pScreen));
@@ -751,29 +639,9 @@ TegraCloseScreen(CLOSE_SCREEN_ARGS_DECL)
     TegraDRI2ScreenExit(pScreen);
     TegraVBlankScreenExit(pScreen);
 
-    pScreen->CreateScreenResources = tegra->createScreenResources;
-    pScreen->BlockHandler = tegra->BlockHandler;
-
     pScrn->vtSema = FALSE;
     pScreen->CloseScreen = tegra->CloseScreen;
     return (*pScreen->CloseScreen)(CLOSE_SCREEN_ARGS);
-}
-
-static void TegraBlockHandler(BLOCKHANDLER_ARGS_DECL)
-{
-    SCREEN_PTR(arg);
-    TegraPtr tegra = TegraPTR(xf86ScreenToScrn(pScreen));
-
-    pScreen->BlockHandler = tegra->BlockHandler;
-    pScreen->BlockHandler(BLOCKHANDLER_ARGS);
-    pScreen->BlockHandler = TegraBlockHandler;
-#ifdef TEGRA_OUTPUT_SLAVE_SUPPORT
-    if (pScreen->isGPU)
-        dispatch_slave_dirty(pScreen);
-    else
-#endif
-    if (tegra->dirty_enabled)
-        dispatch_dirty(pScreen);
 }
 
 static Bool
@@ -875,9 +743,6 @@ TegraScreenInit(SCREEN_INIT_ARGS_DECL)
     pScreen->SaveScreen = xf86SaveScreen;
     tegra->CloseScreen = pScreen->CloseScreen;
     pScreen->CloseScreen = TegraCloseScreen;
-
-    tegra->BlockHandler = pScreen->BlockHandler;
-    pScreen->BlockHandler = TegraBlockHandler;
 
 #ifdef TEGRA_OUTPUT_SLAVE_SUPPORT
     pScreen->SetSharedPixmapBacking = TegraSetSharedPixmapBacking;
