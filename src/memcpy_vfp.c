@@ -170,11 +170,11 @@ void tegra_memcpy_vfp_unaligned_2_pass(char *dst, const char *src, int size)
     while (size > 127) {
         int block_size = size & ~127;
 
-        if (block_size > BLOCK_SIZE)
-            block_size = BLOCK_SIZE;
-
         if (bounce) {
-            tegra_copy_block_vfp_arm(bounce_buf, src, block_size);
+            if (block_size > BLOCK_SIZE)
+                block_size = BLOCK_SIZE;
+
+            vfpcpy(bounce_buf, src, block_size);
             memcpy(dst, bounce_buf, block_size);
         } else {
             vfpcpy(dst, src, block_size);
