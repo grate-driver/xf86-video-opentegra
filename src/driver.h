@@ -162,15 +162,11 @@ typedef struct _TegraRec
     OptionInfoPtr Options;
 
     CreateScreenResourcesProcPtr createScreenResources;
-    ScreenBlockHandlerProcPtr BlockHandler;
     void *driver;
 
     drmmode_rec drmmode;
 
     drmEventContext event_context;
-
-    DamagePtr damage;
-    Bool dirty_enabled;
 
     uint32_t cursor_width, cursor_height;
 

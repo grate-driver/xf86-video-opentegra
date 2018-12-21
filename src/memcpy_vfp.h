@@ -33,6 +33,7 @@ void tegra_copy_block_vfp_2_pass(char *dst, const char *src, int size);
 void tegra_copy_block_vfp_arm(char *dst, const char *src, int size);
 void tegra_memcpy_vfp_unaligned_2_pass(char *dst, const char *src, int size);
 
+/* use this when src is uncacheable */
 static inline void
 tegra_memcpy_vfp_unaligned(void *dst, const void *src, int size)
 {
