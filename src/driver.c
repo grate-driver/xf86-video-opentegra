@@ -542,6 +542,7 @@ TegraCloseScreen(CLOSE_SCREEN_ARGS_DECL)
 
     xf86_cursors_fini(pScreen);
     TegraDRI2ScreenExit(pScreen);
+    TegraXvScreenExit(pScreen);
     TegraVBlankScreenExit(pScreen);
     TegraEXAScreenExit(pScreen);
 
