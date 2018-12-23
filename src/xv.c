@@ -30,6 +30,8 @@
 
 #define MAKE_ATOM(a) MakeAtom(a, sizeof(a) - 1, TRUE)
 
+#define DEFAULT_COLOR_KEY 0xFF4AF6
+
 static Atom xvColorKey;
 static Atom xvVdpauInfo;
 
@@ -49,6 +51,7 @@ typedef struct TegraOverlay {
     drm_overlay_fb *fb_rotated;
     Rotation rotation;
 
+    uint32_t primary_plane_id;
     uint32_t plane_id;
     Bool visible;
     int crtc_id;
@@ -73,6 +76,19 @@ typedef struct TegraOverlay {
     uint32_t crtc_y_prop_id;
     uint32_t crtc_w_prop_id;
     uint32_t crtc_h_prop_id;
+
+    uint32_t zpos_prop_id;
+    uint32_t ckey_mode_prop_id;
+
+    uint32_t primary_ckey_min_prop_id;
+    uint32_t primary_ckey_max_prop_id;
+    uint32_t primary_zpos_prop_id;
+    uint32_t primary_ckey_mode_prop_id;
+    uint32_t primary_ckey_plane_mask_prop_id;
+    uint32_t primary_ckey_mask_prop_id;
+
+    uint32_t color_key;
+    Bool ckey_enb;
 } TegraOverlay, *TegraOverlayPtr;
 
 typedef struct TegraVideo {
@@ -88,6 +104,9 @@ typedef struct TegraVideo {
 
     unsigned int overlays_num;
     unsigned int best_overlay_id;
+
+    uint32_t color_key;
+    Bool ckey_probed;
 } TegraVideo, *TegraVideoPtr;
 
 typedef struct TegraXvAdaptor {
@@ -338,6 +357,75 @@ static Bool TegraVideoOverlayShowAtomic(TegraVideoPtr priv,
     return TRUE;
 }
 
+static Bool TegraVideoOverlaySetPlaneColorKey(TegraVideoPtr priv,
+                                              ScrnInfoPtr scrn,
+                                              drmModeAtomicReqPtr req,
+                                              int overlay_id,
+                                              uint64_t color_key,
+                                              Bool enable,
+                                              Bool init)
+{
+    TegraOverlayPtr overlay = &priv->overlay[overlay_id];
+    uint64_t ckey = 0;
+    int ret = 0;
+
+    if (overlay->ckey_enb == enable &&
+            overlay->color_key == color_key &&
+                !init)
+        return TRUE;
+
+    /* swizzle BGR888 to RGB16161616 */
+    ckey |= (color_key & 0x000000ff) << 40;
+    ckey |= (color_key & 0x0000ff00) << 16;
+    ckey |= (color_key & 0x00ff0000) >> 8;
+
+    if (overlay->ckey_enb != enable || init) {
+        if (ret >= 0)
+            ret = drmModeAtomicAddProperty(req, overlay->plane_id,
+                                           overlay->zpos_prop_id,
+                                           enable ? 0 : 1);
+        if (ret >= 0)
+            ret = drmModeAtomicAddProperty(req, overlay->plane_id,
+                                           overlay->ckey_mode_prop_id,
+                                           0);
+        if (ret >= 0)
+            ret = drmModeAtomicAddProperty(req, overlay->primary_plane_id,
+                                           overlay->primary_ckey_mode_prop_id,
+                                           enable ? 1 : 0);
+        if (ret >= 0)
+            ret = drmModeAtomicAddProperty(req, overlay->primary_plane_id,
+                                           overlay->primary_zpos_prop_id,
+                                           enable ? 1 : 0);
+        if (ret >= 0)
+            ret = drmModeAtomicAddProperty(req, overlay->primary_plane_id,
+                                           overlay->primary_ckey_plane_mask_prop_id,
+                                           1 << overlay->primary_plane_id);
+        if (ret >= 0)
+            ret = drmModeAtomicAddProperty(req, overlay->primary_plane_id,
+                                           overlay->primary_ckey_mask_prop_id,
+                                           0xFFFFFFFFFFFFFFFF);
+    }
+
+    if (overlay->color_key != color_key || init) {
+        if (ret >= 0)
+            ret = drmModeAtomicAddProperty(req, overlay->primary_plane_id,
+                                           overlay->primary_ckey_min_prop_id,
+                                           ckey);
+        if (ret >= 0)
+            ret = drmModeAtomicAddProperty(req, overlay->primary_plane_id,
+                                           overlay->primary_ckey_max_prop_id,
+                                           ckey);
+    }
+
+    if (ret < 0) {
+        ErrorMsg("drmModeAtomicAddProperty failed: %d (%s)\n",
+                 ret, strerror(-ret));
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
 static void TegraVideoDestroyFramebuffer(ScrnInfoPtr scrn,
                                          drm_overlay_fb **fb)
 {
@@ -509,13 +597,66 @@ static void TegraVideoOverlayBestSize(ScrnInfoPtr scrn, Bool motion,
     *actual_h = dst_h;
 }
 
+static Bool TegraVideoOverlaySetColorKey(TegraVideoPtr priv,
+                                         ScrnInfoPtr scrn,
+                                         uint64_t color_key,
+                                         Bool enable,
+                                         Bool init)
+{
+    TegraPtr tegra = TegraPTR(scrn);
+    drmModeAtomicReqPtr req;
+    int err;
+    int id;
+
+    req = drmModeAtomicAlloc();
+    if (!req) {
+        ErrorMsg("drmModeAtomicAlloc() failed\n");
+        return FALSE;
+    }
+
+    for (id = 0; id < priv->overlays_num; id++) {
+        if (!TegraVideoOverlaySetPlaneColorKey(priv, scrn, req, id,
+                                               color_key, enable, init))
+        {
+            drmModeAtomicFree(req);
+            return FALSE;
+        }
+    }
+
+    err = TegraDrmModeAtomicCommit(tegra->fd, req, DRM_MODE_ATOMIC_NONBLOCK,
+                                   NULL);
+    drmModeAtomicFree(req);
+
+    if (err < 0) {
+        ErrorMsg("TegraDrmModeAtomicCommit failed: %d (%s)\n",
+                 err, strerror(-err));
+        return FALSE;
+    }
+
+    for (id = 0; id < priv->overlays_num; id++) {
+        priv->overlay[id].color_key = color_key;
+        priv->overlay[id].ckey_enb = enable;
+    }
+
+    return TRUE;
+}
+
 static int TegraVideoOverlaySetAttribute(ScrnInfoPtr scrn, Atom attribute,
                                          INT32 value, void *data)
 {
-    if (attribute != xvColorKey)
-        return BadMatch;
+    TegraVideoPtr priv = data;
 
-    return Success;
+    if (attribute == xvColorKey) {
+        if (!TegraVideoOverlaySetColorKey(priv, scrn, value, TRUE, FALSE))
+            return BadImplementation;
+
+        priv->color_key = value;
+        priv->ckey_probed = TRUE;
+
+        return Success;
+    }
+
+    return BadMatch;
 }
 
 static int TegraVideoOverlayGetAttribute(ScrnInfoPtr scrn, Atom attribute,
@@ -527,7 +668,17 @@ static int TegraVideoOverlayGetAttribute(ScrnInfoPtr scrn, Atom attribute,
     int id;
 
     if (attribute == xvColorKey) {
-        *value = 0x000000;
+        *value = priv->color_key;
+
+        if (priv->ckey_probed)
+            return Success;
+
+        if (!TegraVideoOverlaySetColorKey(priv, scrn, priv->color_key,
+                                          TRUE, FALSE))
+            return BadImplementation;
+
+        priv->ckey_probed = TRUE;
+
         return Success;
     }
 
@@ -561,6 +712,9 @@ static void TegraVideoOverlayStop(ScrnInfoPtr scrn, void *data, Bool cleanup)
         TegraVideoDestroyFramebuffer(scrn, &priv->fb);
 
         TegraVideoCloseGPU(priv);
+
+        TegraVideoOverlaySetColorKey(priv, scrn, DEFAULT_COLOR_KEY,
+                                     FALSE, TRUE);
     }
 }
 
@@ -570,6 +724,7 @@ static Bool TegraVideoOverlayInitialize(TegraVideoPtr priv, ScrnInfoPtr scrn,
     TegraOverlayPtr overlay = &priv->overlay[overlay_id];
     TegraPtr tegra          = TegraPTR(scrn);
     drmModeResPtr res;
+    uint32_t primary_plane_id;
     uint32_t plane_id;
     Bool success = TRUE;
     int err;
@@ -594,8 +749,15 @@ static Bool TegraVideoOverlayInitialize(TegraVideoPtr priv, ScrnInfoPtr scrn,
         goto end;
     }
 
-    overlay->crtc_id   = res->crtcs[overlay_id];
-    overlay->plane_id  = plane_id;
+    err = drm_get_primary_plane(tegra->fd, overlay_id, &primary_plane_id);
+    if (err) {
+        success = FALSE;
+        goto end;
+    }
+
+    overlay->crtc_id           = res->crtcs[overlay_id];
+    overlay->plane_id          = plane_id;
+    overlay->primary_plane_id  = primary_plane_id;
 
 end:
     free(res);
@@ -1254,6 +1416,56 @@ static Bool TegraXvGetDrmProps(ScrnInfoPtr scrn, TegraVideoPtr priv)
             goto err_free_props;
         }
 
+        if (!TegraXvGetDrmPlaneProperty(scrn, priv, properties, "zpos",
+                                        &overlay->zpos_prop_id)) {
+            /* colorkey optional */
+        }
+
+        if (!TegraXvGetDrmPlaneProperty(scrn, priv, properties, "colorkey.mode",
+                                        &overlay->ckey_mode_prop_id)) {
+            /* colorkey optional */
+        }
+
+        free(properties);
+
+        properties = drmModeObjectGetProperties(tegra->fd,
+                                                overlay->primary_plane_id,
+                                                DRM_MODE_OBJECT_PLANE);
+        if (!properties) {
+            ErrorMsg("drmModeObjectGetProperties() failed\n");
+            return FALSE;
+        }
+
+        if (!TegraXvGetDrmPlaneProperty(scrn, priv, properties, "zpos",
+                                        &overlay->primary_zpos_prop_id)) {
+            /* colorkey optional */
+        }
+
+        if (!TegraXvGetDrmPlaneProperty(scrn, priv, properties, "colorkey.mode",
+                                        &overlay->primary_ckey_mode_prop_id)) {
+            /* colorkey optional */
+        }
+
+        if (!TegraXvGetDrmPlaneProperty(scrn, priv, properties, "colorkey.min",
+                                        &overlay->primary_ckey_min_prop_id)) {
+            /* colorkey optional */
+        }
+
+        if (!TegraXvGetDrmPlaneProperty(scrn, priv, properties, "colorkey.max",
+                                        &overlay->primary_ckey_max_prop_id)) {
+            /* colorkey optional */
+        }
+
+        if (!TegraXvGetDrmPlaneProperty(scrn, priv, properties, "colorkey.plane_mask",
+                                        &overlay->primary_ckey_plane_mask_prop_id)) {
+            /* colorkey optional */
+        }
+
+        if (!TegraXvGetDrmPlaneProperty(scrn, priv, properties, "colorkey.mask",
+                                        &overlay->primary_ckey_mask_prop_id)) {
+            /* colorkey optional */
+        }
+
         free(properties);
     }
 
@@ -1270,6 +1482,7 @@ static void TegraXvInit(TegraVideoPtr priv, ScrnInfoPtr scrn)
     xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(scrn);
 
     priv->overlays_num = xf86_config->num_crtc;
+    priv->color_key    = DEFAULT_COLOR_KEY;
 }
 
 Bool TegraXvScreenInit(ScreenPtr pScreen)
@@ -1326,6 +1539,8 @@ Bool TegraXvScreenInit(ScreenPtr pScreen)
         ErrorMsg("xf86XVScreenInit failed\n");
         goto err_free_adaptor;
     }
+
+    TegraVideoOverlaySetColorKey(priv, scrn, DEFAULT_COLOR_KEY, FALSE, TRUE);
 
     xf86DrvMsg(scrn->scrnIndex, X_INFO, "XV adaptor initialized\n");
 
