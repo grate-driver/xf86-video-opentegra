@@ -24,7 +24,7 @@
 
 #include "driver.h"
 
-#define HANDLE_INVALID  UINT32_MAX
+#define HANDLE_INVALID  0
 
 #define MUNMAP_VERBOSE(PTR, SIZE)                       \
     if (PTR && munmap(PTR, page_align(SIZE)) != 0)      \
@@ -195,28 +195,31 @@ static drm_overlay_fb * drm_create_fb_internal(int drm_fd, uint32_t drm_format,
     if (from_handle)
         goto create_framebuffer;
 
-    bo_handles = alloca(sizeof(uint32_t) * 3);
+    bo_handles = alloca(sizeof(uint32_t) * 4);
     if (!bo_handles)
         return NULL;
 
-    pitches = alloca(sizeof(uint32_t) * 3);
+    pitches = alloca(sizeof(uint32_t) * 4);
     if (!pitches)
         return NULL;
 
-    offsets = alloca(sizeof(uint32_t) * 3);
+    offsets = alloca(sizeof(uint32_t) * 4);
     if (!offsets)
         return NULL;
 
     pitches[0] = fb_pitch(drm_format, width);
     pitches[1] = fb_pitch_c(drm_format, width);
     pitches[2] = fb_pitch_c(drm_format, width);
+    pitches[3] = 0;
 
     offsets[0] = 0;
     offsets[1] = 0;
     offsets[2] = 0;
+    offsets[3] = 0;
 
     bo_handles[1] = HANDLE_INVALID;
     bo_handles[2] = HANDLE_INVALID;
+    bo_handles[3] = HANDLE_INVALID;
 
     /* Allocate PLANE[0] */
     bo_handles[0] = create_gem(drm_fd, fb_size(drm_format, width, height));

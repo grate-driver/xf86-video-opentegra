@@ -493,7 +493,7 @@ static Bool
 SetMaster(ScrnInfoPtr pScrn)
 {
     TegraPtr tegra = TegraPTR(pScrn);
-    int ret;
+    int ret, err;
 
 #ifdef XF86_PDEV_SERVER_FD
     if (tegra->pEnt->location.type == BUS_PLATFORM &&
@@ -505,6 +505,11 @@ SetMaster(ScrnInfoPtr pScrn)
     if (ret)
         xf86DrvMsg(pScrn->scrnIndex, X_ERROR, "drmSetMaster failed: %s\n",
                    strerror(errno));
+
+    err = drmSetClientCap(tegra->fd, DRM_CLIENT_CAP_ATOMIC, 1);
+    if (err < 0)
+        xf86DrvMsg(pScrn->scrnIndex, X_ERROR, "drmSetClientCap failed: %s\n",
+                   strerror(err));
 
     return ret == 0;
 }

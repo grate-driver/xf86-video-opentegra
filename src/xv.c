@@ -31,12 +31,21 @@
 #define MAKE_ATOM(a) MakeAtom(a, sizeof(a) - 1, TRUE)
 
 static Atom xvColorKey;
+static Atom xvVdpauInfo;
+
+typedef union TegraXvVdpauInfo {
+    struct {
+        unsigned int visible : 1;
+        unsigned int crtc_pipe : 1;
+    };
+
+    uint32_t data;
+} TegraXvVdpauInfo;
 
 typedef struct TegraOverlay {
     drm_overlay_fb *fb;
     uint32_t plane_id;
     Bool visible;
-    Bool ready;
     int crtc_id;
 
     int src_x;
@@ -48,6 +57,17 @@ typedef struct TegraOverlay {
     int dst_y;
     int dst_w;
     int dst_h;
+
+    uint32_t crtc_id_prop_id;
+    uint32_t fb_id_prop_id;
+    uint32_t src_x_prop_id;
+    uint32_t src_y_prop_id;
+    uint32_t src_w_prop_id;
+    uint32_t src_h_prop_id;
+    uint32_t crtc_x_prop_id;
+    uint32_t crtc_y_prop_id;
+    uint32_t crtc_w_prop_id;
+    uint32_t crtc_h_prop_id;
 } TegraOverlay, *TegraOverlayPtr;
 
 typedef struct TegraVideo {
@@ -55,8 +75,10 @@ typedef struct TegraVideo {
     drm_overlay_fb *old_fb;
     drm_overlay_fb *fb;
 
-    uint8_t passthrough_data[PASSTHROUGH_DATA_SIZE];
-    Bool passthrough;
+    uint8_t passthrough_data[PASSTHROUGH_DATA_SIZE_V2];
+    int passthrough;
+
+    int best_overlay_id;
 } TegraVideo, *TegraVideoPtr;
 
 typedef struct TegraXvAdaptor {
@@ -74,6 +96,10 @@ static XF86ImageRec XvImages[] = {
     XVMC_RGB565,
     XVMC_XRGB8888,
     XVMC_XBGR8888,
+    XVMC_YV12_V2,
+    XVMC_RGB565_V2,
+    XVMC_XRGB8888_V2,
+    XVMC_XBGR8888_V2,
 };
 
 static XF86VideoFormatRec XvFormats[] = {
@@ -89,6 +115,12 @@ static XF86AttributeRec XvAttributes[] = {
         .min_value  = 0,
         .max_value  = 0xFFFFFF,
         .name       = (char *)"XV_COLORKEY",
+    },
+    {
+        .flags      = XvGettable,
+        .min_value  = 0,
+        .max_value  = 0xFFFFFFFF,
+        .name       = (char *)"XV_TEGRA_VDPAU_INFO",
     },
 };
 
@@ -118,6 +150,12 @@ static Bool xv_fourcc_valid(int format_id)
     case FOURCC_PASSTHROUGH_XBGR8888:
         return TRUE;
 
+    case FOURCC_PASSTHROUGH_YV12_V2:
+    case FOURCC_PASSTHROUGH_RGB565_V2:
+    case FOURCC_PASSTHROUGH_XRGB8888_V2:
+    case FOURCC_PASSTHROUGH_XBGR8888_V2:
+        return TRUE;
+
     default:
         break;
     }
@@ -141,15 +179,19 @@ static uint32_t xv_fourcc_to_drm(int format_id)
         return DRM_FORMAT_UYVY;
 
     case FOURCC_PASSTHROUGH_YV12:
+    case FOURCC_PASSTHROUGH_YV12_V2:
         return DRM_FORMAT_YUV420;
 
     case FOURCC_PASSTHROUGH_RGB565:
+    case FOURCC_PASSTHROUGH_RGB565_V2:
         return DRM_FORMAT_RGB565;
 
     case FOURCC_PASSTHROUGH_XRGB8888:
+    case FOURCC_PASSTHROUGH_XRGB8888_V2:
         return DRM_FORMAT_XRGB8888;
 
     case FOURCC_PASSTHROUGH_XBGR8888:
+    case FOURCC_PASSTHROUGH_XBGR8888_V2:
         return DRM_FORMAT_XBGR8888;
 
     default:
@@ -161,8 +203,92 @@ static uint32_t xv_fourcc_to_drm(int format_id)
     return 0xFFFFFFFF;
 }
 
-static void TegraVideoOverlayShow(TegraVideoPtr priv,
+static int TegraDrmModeAtomicCommit(int fd,
+                                    drmModeAtomicReqPtr req,
+                                    uint32_t flags,
+                                    void *user_data)
+{
+    int retries = 300;
+    int err;
+
+    goto commit;
+
+    do {
+        usleep(300);
+commit:
+        err = drmModeAtomicCommit(fd, req, flags, user_data);
+
+    } while (err == -EBUSY && (flags & DRM_MODE_ATOMIC_NONBLOCK) && retries--);
+
+    return err;
+}
+
+static Bool TegraVideoOverlayShowAtomic(TegraVideoPtr priv,
+                                        ScrnInfoPtr scrn,
+                                        drmModeAtomicReqPtr req,
+                                        int overlay_id,
+                                        int src_x, int src_y,
+                                        int src_w, int src_h,
+                                        int dst_x, int dst_y,
+                                        int dst_w, int dst_h)
+{
+    TegraOverlayPtr overlay = &priv->overlay[overlay_id];
+    drm_overlay_fb *fb      = priv->fb;
+    int ret = 0;
+
+    if (ret >= 0)
+        ret = drmModeAtomicAddProperty(req, overlay->plane_id,
+                                       overlay->crtc_id_prop_id,
+                                       overlay->crtc_id);
+    if (ret >= 0)
+        ret = drmModeAtomicAddProperty(req, overlay->plane_id,
+                                       overlay->fb_id_prop_id,
+                                       fb->fb_id);
+    if (ret >= 0)
+        ret = drmModeAtomicAddProperty(req, overlay->plane_id,
+                                       overlay->src_x_prop_id,
+                                       src_x << 16);
+    if (ret >= 0)
+        ret = drmModeAtomicAddProperty(req, overlay->plane_id,
+                                       overlay->src_y_prop_id,
+                                       src_y << 16);
+    if (ret >= 0)
+        ret = drmModeAtomicAddProperty(req, overlay->plane_id,
+                                       overlay->src_w_prop_id,
+                                       src_w << 16);
+    if (ret >= 0)
+        ret = drmModeAtomicAddProperty(req, overlay->plane_id,
+                                       overlay->src_h_prop_id,
+                                       src_h << 16);
+    if (ret >= 0)
+        ret = drmModeAtomicAddProperty(req, overlay->plane_id,
+                                       overlay->crtc_x_prop_id,
+                                       dst_x);
+    if (ret >= 0)
+        ret = drmModeAtomicAddProperty(req, overlay->plane_id,
+                                       overlay->crtc_y_prop_id,
+                                       dst_y);
+    if (ret >= 0)
+        ret = drmModeAtomicAddProperty(req, overlay->plane_id,
+                                       overlay->crtc_w_prop_id,
+                                       dst_w);
+    if (ret >= 0)
+        ret = drmModeAtomicAddProperty(req, overlay->plane_id,
+                                       overlay->crtc_h_prop_id,
+                                       dst_h);
+
+    if (ret < 0) {
+        ErrorMsg("drmModeAtomicAddProperty failed: %d (%s)\n",
+                 ret, strerror(-ret));
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+static Bool TegraVideoOverlayShow(TegraVideoPtr priv,
                                   ScrnInfoPtr scrn,
+                                  drmModeAtomicReqPtr req,
                                   int overlay_id,
                                   int src_x, int src_y,
                                   int src_w, int src_h,
@@ -170,9 +296,7 @@ static void TegraVideoOverlayShow(TegraVideoPtr priv,
                                   int dst_w, int dst_h)
 {
     TegraOverlayPtr overlay = &priv->overlay[overlay_id];
-    TegraPtr tegra          = TegraPTR(scrn);
     drm_overlay_fb *fb      = priv->fb;
-    int ret;
 
     if (overlay->src_x == src_x &&
         overlay->src_y == src_y &&
@@ -183,7 +307,7 @@ static void TegraVideoOverlayShow(TegraVideoPtr priv,
         overlay->dst_w == dst_w &&
         overlay->dst_h == dst_h &&
         overlay->fb    == fb)
-            return;
+            return TRUE;
 
     overlay->src_x = src_x;
     overlay->src_y = src_y;
@@ -195,18 +319,12 @@ static void TegraVideoOverlayShow(TegraVideoPtr priv,
     overlay->dst_h = dst_h;
     overlay->fb    = fb;
 
-    ret = drmModeSetPlane(tegra->fd,
-                          overlay->plane_id,
-                          overlay->crtc_id,
-                          fb->fb_id, 0,
-                          dst_x, dst_y,
-                          dst_w, dst_h,
-                          src_x << 16, src_y << 16,
-                          src_w << 16, src_h << 16);
-    if (ret < 0)
-        ErrorMsg("DRM set plane failed: %s\n", strerror(-ret));
-    else
-        overlay->visible = TRUE;
+    return TegraVideoOverlayShowAtomic(priv, scrn, req,
+                                       overlay_id,
+                                       src_x, src_y,
+                                       src_w, src_h,
+                                       dst_x, dst_y,
+                                       dst_w, dst_h);
 }
 
 static void TegraVideoOverlayClose(TegraVideoPtr priv, ScrnInfoPtr scrn,
@@ -215,9 +333,6 @@ static void TegraVideoOverlayClose(TegraVideoPtr priv, ScrnInfoPtr scrn,
     TegraOverlayPtr overlay = &priv->overlay[id];
     TegraPtr tegra          = TegraPTR(scrn);
     int ret;
-
-    if (!overlay->ready)
-        return;
 
     ret = drmModeSetPlane(tegra->fd, overlay->plane_id, id,
                           0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
@@ -278,16 +393,36 @@ static Bool TegraImportBo(ScrnInfoPtr scrn, uint32_t flink, uint32_t *handle)
 static Bool TegraVideoOverlayCreateFB(TegraVideoPtr priv, ScrnInfoPtr scrn,
                                       uint32_t drm_format,
                                       uint32_t width, uint32_t height,
-                                      Bool passthrough,
+                                      int passthrough,
                                       uint8_t *passthrough_data)
 {
-    TegraPtr tegra     = TegraPTR(scrn);
-    uint32_t *flinks   = (uint32_t*) (passthrough_data +  0);
-    uint32_t *pitches  = (uint32_t*) (passthrough_data + 12);
-    uint32_t *offsets  = (uint32_t*) (passthrough_data + 24);
+    TegraPtr tegra = TegraPTR(scrn);
+    uint32_t *flinks = NULL;
+    uint32_t *pitches = NULL;
+    uint32_t *offsets = NULL;
     uint32_t bo_handles[3];
+    unsigned int data_size = 0;
     drm_overlay_fb *fb;
     int i = 0, k = 0;
+
+    switch (passthrough) {
+    case 1:
+        data_size = PASSTHROUGH_DATA_SIZE;
+        flinks    = (uint32_t*) (passthrough_data +  0);
+        pitches   = (uint32_t*) (passthrough_data + 12);
+        offsets   = (uint32_t*) (passthrough_data + 24);
+        break;
+
+    case 2:
+        data_size = PASSTHROUGH_DATA_SIZE_V2;
+        flinks    = (uint32_t*) (passthrough_data +  0);
+        pitches   = (uint32_t*) (passthrough_data + 16);
+        offsets   = (uint32_t*) (passthrough_data + 32);
+        break;
+
+    default:
+        break;
+    }
 
     if (priv->fb &&
         priv->fb->format  == drm_format &&
@@ -298,8 +433,8 @@ static Bool TegraVideoOverlayCreateFB(TegraVideoPtr priv, ScrnInfoPtr scrn,
         if (!passthrough)
             return TRUE;
 
-        if (memcmp(passthrough_data, priv->passthrough_data,
-                   PASSTHROUGH_DATA_SIZE) == 0)
+        if (priv->passthrough == passthrough &&
+            memcmp(passthrough_data, priv->passthrough_data, data_size) == 0)
             return TRUE;
     }
 
@@ -328,8 +463,7 @@ static Bool TegraVideoOverlayCreateFB(TegraVideoPtr priv, ScrnInfoPtr scrn,
     }
 
     if (passthrough) {
-        memcpy(priv->passthrough_data, passthrough_data,
-               PASSTHROUGH_DATA_SIZE);
+        memcpy(priv->passthrough_data, passthrough_data, data_size);
     }
 
     priv->old_fb      = priv->fb;
@@ -371,12 +505,32 @@ static int TegraVideoOverlaySetAttribute(ScrnInfoPtr scrn, Atom attribute,
 static int TegraVideoOverlayGetAttribute(ScrnInfoPtr scrn, Atom attribute,
                                          INT32 *value, void *data)
 {
-    if (attribute != xvColorKey)
-        return BadMatch;
+    TegraVideoPtr priv = data;
+    TegraXvVdpauInfo vdpau_info;
+    TegraOverlayPtr overlay;
+    int id;
 
-    *value = 0x000000;
+    if (attribute == xvColorKey) {
+        *value = 0x000000;
+        return Success;
+    }
 
-    return Success;
+    if (attribute == xvVdpauInfo) {
+        vdpau_info.crtc_pipe = priv->best_overlay_id;
+        vdpau_info.visible = 0;
+
+        for (id = 0; id < TEGRA_ARRAY_SIZE(priv->overlay); id++) {
+            overlay = &priv->overlay[id];
+
+            vdpau_info.visible |= overlay->visible;
+        }
+
+        *value = vdpau_info.data;
+
+        return Success;
+    }
+
+    return BadMatch;
 }
 
 static void TegraVideoOverlayStop(ScrnInfoPtr scrn, void *data, Bool cleanup)
@@ -391,62 +545,147 @@ static void TegraVideoOverlayStop(ScrnInfoPtr scrn, void *data, Bool cleanup)
         TegraVideoDestroyFramebuffer(priv, scrn, &priv->fb);
 }
 
-static void TegraVideoOverlayInitialize(TegraVideoPtr priv, ScrnInfoPtr scrn,
+static Bool TegraVideoOverlayInitialize(TegraVideoPtr priv, ScrnInfoPtr scrn,
                                         int overlay_id)
 {
     TegraOverlayPtr overlay = &priv->overlay[overlay_id];
     TegraPtr tegra          = TegraPTR(scrn);
     drmModeResPtr res;
     uint32_t plane_id;
-
-    if (overlay->ready)
-        return;
+    Bool success = TRUE;
+    int err;
 
     res = drmModeGetResources(tegra->fd);
-    if (!res)
-        return;
+    if (!res) {
+        return FALSE;
+    }
 
-    if (overlay_id > res->count_crtcs)
+    if (overlay_id > res->count_crtcs) {
+        success = FALSE;
         goto end;
+    }
 
-    if (drm_get_overlay_plane(tegra->fd, overlay_id,
-                              DRM_FORMAT_YUV420, &plane_id) < 0)
+    err = drm_get_overlay_plane(tegra->fd, overlay_id,
+                                DRM_FORMAT_YUV420, &plane_id);
+    if (err) {
+        success = FALSE;
         goto end;
+    }
 
     overlay->crtc_id   = res->crtcs[overlay_id];
     overlay->plane_id  = plane_id;
-    overlay->ready     = TRUE;
 
 end:
     free(res);
+
+    if (!success) {
+        ErrorMsg("failed to initialize overlay %d\n", overlay_id);
+    }
+
+    return success;
 }
 
-static void TegraVideoOverlayPutImageOnOverlay(TegraVideoPtr priv,
+static Bool TegraVideoOverlayPutImageOnOverlay(TegraVideoPtr priv,
                                                ScrnInfoPtr scrn,
                                                int overlay_id,
+                                               drmModeAtomicReqPtr req,
                                                short src_x, short src_y,
                                                short dst_x, short dst_y,
                                                short src_w, short src_h,
                                                short dst_w, short dst_h,
-                                               short width, short height,
                                                DrawablePtr draw)
 {
     TegraOverlayPtr overlay       = &priv->overlay[overlay_id];
     xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(scrn);
     xf86CrtcPtr crtc              = xf86_config->crtc[overlay_id];
 
-    if (!overlay->ready)
-        return;
-
     if (!overlay->visible)
-        return;
+        return TRUE;
 
     dst_x -= crtc->x;
     dst_y -= crtc->y;
 
-    TegraVideoOverlayShow(priv, scrn, overlay_id,
-                          src_x, src_y, src_w, src_h,
-                          dst_x, dst_y, dst_w, dst_h);
+    return TegraVideoOverlayShow(priv, scrn, req, overlay_id,
+                                 src_x, src_y, src_w, src_h,
+                                 dst_x, dst_y, dst_w, dst_h);
+}
+
+static Bool TegraVideoOverlayPutImageOnOverlays(TegraVideoPtr priv,
+                                                ScrnInfoPtr scrn,
+                                                short src_x, short src_y,
+                                                short dst_x, short dst_y,
+                                                short src_w, short src_h,
+                                                short dst_w, short dst_h,
+                                                DrawablePtr draw)
+{
+    TegraPtr tegra = TegraPTR(scrn);
+    drmModeAtomicReqPtr req;
+    uint32_t flags = 0;
+    int err;
+    int id;
+
+    req = drmModeAtomicAlloc();
+    if (!req) {
+        ErrorMsg("drmModeAtomicAlloc() failed\n");
+        return FALSE;
+    }
+
+    for (id = 0; id < TEGRA_ARRAY_SIZE(priv->overlay); id++) {
+        if (!TegraVideoOverlayPutImageOnOverlay(priv, scrn, id, req,
+                                                src_x, src_y,
+                                                dst_x, dst_y,
+                                                src_w, src_h,
+                                                dst_w, dst_h,
+                                                draw))
+        {
+            drmModeAtomicFree(req);
+            return FALSE;
+        }
+    }
+
+    if (priv->passthrough > 1)
+        flags |= DRM_MODE_ATOMIC_NONBLOCK;
+
+    err = TegraDrmModeAtomicCommit(tegra->fd, req, flags, NULL);
+    drmModeAtomicFree(req);
+
+    if (err < 0) {
+        ErrorMsg("TegraDrmModeAtomicCommit failed: %d (%s)\n",
+                 err, strerror(-err));
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+static int TegraVideoUpdateOverlayCoverage(ScrnInfoPtr scrn,
+                                           TegraVideoPtr priv,
+                                           DrawablePtr draw)
+{
+    Bool visible        = FALSE;
+    int best_overlay_id = 0;
+    int best_coverage   = 0;
+    int coverage;
+    int id;
+
+    for (id = 0; id < TEGRA_ARRAY_SIZE(priv->overlay); id++) {
+        coverage = tegra_crtc_coverage(draw, id);
+        priv->overlay[id].visible = !!coverage;
+
+        if (coverage > best_coverage) {
+            best_coverage = coverage;
+            best_overlay_id = id;
+        }
+
+        if (!coverage)
+            TegraVideoOverlayClose(priv, scrn, id);
+        else
+            visible = TRUE;
+    }
+
+    priv->best_overlay_id = best_overlay_id;
+
+    return visible;
 }
 
 static int TegraVideoOverlayPutImage(ScrnInfoPtr scrn,
@@ -462,11 +701,10 @@ static int TegraVideoOverlayPutImage(ScrnInfoPtr scrn,
                                      RegionPtr clipBoxes,
                                      void *data, DrawablePtr draw)
 {
-    TegraVideoPtr priv = data;
-    Bool visible       = FALSE;
-    Bool passthrough   = FALSE;
-    int coverage;
-    int id;
+    TegraVideoPtr priv  = data;
+    int passthrough     = 0;
+    int ret = Success;
+    Bool visible;
 
     if (!xv_fourcc_valid(format))
         return BadImplementation;
@@ -476,44 +714,41 @@ static int TegraVideoOverlayPutImage(ScrnInfoPtr scrn,
     case FOURCC_PASSTHROUGH_RGB565:
     case FOURCC_PASSTHROUGH_XRGB8888:
     case FOURCC_PASSTHROUGH_XBGR8888:
-        passthrough = TRUE;
+        passthrough = 1;
+        break;
+
+    case FOURCC_PASSTHROUGH_YV12_V2:
+    case FOURCC_PASSTHROUGH_RGB565_V2:
+    case FOURCC_PASSTHROUGH_XRGB8888_V2:
+    case FOURCC_PASSTHROUGH_XBGR8888_V2:
+        passthrough = 2;
+        break;
     }
 
     if (!TegraVideoOverlayCreateFB(priv, scrn, xv_fourcc_to_drm(format),
                                    width, height, passthrough, buf) != Success)
         return BadImplementation;
 
-    for (id = 0; id < TEGRA_ARRAY_SIZE(priv->overlay); id++)
-        TegraVideoOverlayInitialize(priv, scrn, id);
-
-    for (id = 0; id < TEGRA_ARRAY_SIZE(priv->overlay); id++) {
-        coverage = tegra_crtc_coverage(draw, id);
-        priv->overlay[id].visible = !!coverage;
-
-        if (!coverage)
-            TegraVideoOverlayClose(priv, scrn, id);
-        else
-            visible = TRUE;
-    }
-
+    visible = TegraVideoUpdateOverlayCoverage(scrn, priv, draw);
     if (!visible)
-        return Success;
+        goto clean_up_old_fb;
 
     if (!passthrough)
         drm_copy_data_to_fb(priv->fb, buf, format == FOURCC_I420);
 
-    for (id = 0; id < TEGRA_ARRAY_SIZE(priv->overlay); id++)
-        TegraVideoOverlayPutImageOnOverlay(priv, scrn, id,
-                                           src_x, src_y,
-                                           dst_x, dst_y,
-                                           src_w, src_h,
-                                           dst_w, dst_h,
-                                           width, height,
-                                           draw);
+    if (!TegraVideoOverlayPutImageOnOverlays(priv, scrn,
+                                             src_x, src_y,
+                                             dst_x, dst_y,
+                                             src_w, src_h,
+                                             dst_w, dst_h,
+                                             draw))
+        ret = BadImplementation;
+
+clean_up_old_fb:
     if (priv->old_fb)
         TegraVideoDestroyFramebuffer(priv, scrn, &priv->old_fb);
 
-    return Success;
+    return ret;
 }
 
 static int TegraVideoOverlayReputImage(ScrnInfoPtr scrn,
@@ -525,31 +760,19 @@ static int TegraVideoOverlayReputImage(ScrnInfoPtr scrn,
                                      void *data, DrawablePtr draw)
 {
     TegraVideoPtr priv = data;
-    Bool visible       = FALSE;
-    int coverage;
-    int id;
+    Bool visible;
 
-    for (id = 0; id < TEGRA_ARRAY_SIZE(priv->overlay); id++) {
-        coverage = tegra_crtc_coverage(draw, id);
-        priv->overlay[id].visible = !!coverage;
-
-        if (!coverage)
-            TegraVideoOverlayClose(priv, scrn, id);
-        else
-            visible = TRUE;
-    }
-
+    visible = TegraVideoUpdateOverlayCoverage(scrn, priv, draw);
     if (!visible)
         return Success;
 
-    for (id = 0; id < TEGRA_ARRAY_SIZE(priv->overlay); id++)
-        TegraVideoOverlayPutImageOnOverlay(priv, scrn, id,
-                                           src_x, src_y,
-                                           dst_x, dst_y,
-                                           src_w, src_h,
-                                           dst_w, dst_h,
-                                           0, 0,
-                                           draw);
+    if (!TegraVideoOverlayPutImageOnOverlays(priv, scrn,
+                                             src_x, src_y,
+                                             dst_x, dst_y,
+                                             src_w, src_h,
+                                             dst_w, dst_h,
+                                             draw))
+        return BadImplementation;
 
     return Success;
 }
@@ -602,6 +825,12 @@ static int TegraVideoOverlayQuery(ScrnInfoPtr scrn,
     case FOURCC_PASSTHROUGH_XBGR8888:
         size = PASSTHROUGH_DATA_SIZE;
         break;
+    case FOURCC_PASSTHROUGH_YV12_V2:
+    case FOURCC_PASSTHROUGH_RGB565_V2:
+    case FOURCC_PASSTHROUGH_XRGB8888_V2:
+    case FOURCC_PASSTHROUGH_XBGR8888_V2:
+        size = PASSTHROUGH_DATA_SIZE_V2;
+        break;
     default:
         return BadValue;
     }
@@ -609,11 +838,123 @@ static int TegraVideoOverlayQuery(ScrnInfoPtr scrn,
     return size;
 }
 
+static Bool
+TegraXvGetDrmPlaneProperty(ScrnInfoPtr scrn,
+                           TegraVideoPtr priv,
+                           drmModeObjectPropertiesPtr properties,
+                           const char *prop_name,
+                           uint32_t *prop_id)
+{
+    TegraPtr tegra = TegraPTR(scrn);
+    drmModePropertyPtr property;
+    unsigned int i;
+
+    for (i = 0; i < properties->count_props; i++) {
+        property = drmModeGetProperty(tegra->fd, properties->props[i]);
+        if (!property)
+            continue;
+
+        if (!strcmp(property->name, prop_name)) {
+            *prop_id = property->prop_id;
+            free(property);
+            return TRUE;
+        }
+
+        free(property);
+    }
+
+    ErrorMsg("Failed to get \"%s\" property\n", prop_name);
+
+    *prop_id = 0;
+
+    return FALSE;
+}
+
+static Bool TegraXvGetDrmProps(ScrnInfoPtr scrn, TegraVideoPtr priv)
+{
+    TegraPtr tegra = TegraPTR(scrn);
+    TegraOverlayPtr overlay;
+    drmModeObjectPropertiesPtr properties;
+    int id;
+
+    for (id = 0; id < TEGRA_ARRAY_SIZE(priv->overlay); id++) {
+        overlay = &priv->overlay[id];
+
+        properties = drmModeObjectGetProperties(tegra->fd, overlay->plane_id,
+                                                DRM_MODE_OBJECT_PLANE);
+        if (!properties) {
+            ErrorMsg("drmModeObjectGetProperties() failed\n");
+            return FALSE;
+        }
+
+        if (!TegraXvGetDrmPlaneProperty(scrn, priv, properties, "CRTC_ID",
+                                        &overlay->crtc_id_prop_id)) {
+            goto err_free_props;
+        }
+
+        if (!TegraXvGetDrmPlaneProperty(scrn, priv, properties, "FB_ID",
+                                        &overlay->fb_id_prop_id)) {
+            goto err_free_props;
+        }
+
+        if (!TegraXvGetDrmPlaneProperty(scrn, priv, properties, "SRC_X",
+                                        &overlay->src_x_prop_id)) {
+            goto err_free_props;
+        }
+
+        if (!TegraXvGetDrmPlaneProperty(scrn, priv, properties, "SRC_Y",
+                                        &overlay->src_y_prop_id)) {
+            goto err_free_props;
+        }
+
+        if (!TegraXvGetDrmPlaneProperty(scrn, priv, properties, "SRC_W",
+                                        &overlay->src_w_prop_id)) {
+            goto err_free_props;
+        }
+
+        if (!TegraXvGetDrmPlaneProperty(scrn, priv, properties, "SRC_H",
+                                        &overlay->src_h_prop_id)) {
+            goto err_free_props;
+        }
+
+        if (!TegraXvGetDrmPlaneProperty(scrn, priv, properties, "CRTC_X",
+                                        &overlay->crtc_x_prop_id)) {
+            goto err_free_props;
+        }
+
+        if (!TegraXvGetDrmPlaneProperty(scrn, priv, properties, "CRTC_Y",
+                                        &overlay->crtc_y_prop_id)) {
+            goto err_free_props;
+        }
+
+        if (!TegraXvGetDrmPlaneProperty(scrn, priv, properties, "CRTC_W",
+                                        &overlay->crtc_w_prop_id)) {
+            goto err_free_props;
+        }
+
+        if (!TegraXvGetDrmPlaneProperty(scrn, priv, properties, "CRTC_H",
+                                        &overlay->crtc_h_prop_id)) {
+            goto err_free_props;
+        }
+
+        free(properties);
+    }
+
+    return TRUE;
+
+err_free_props:
+    free(properties);
+
+    return FALSE;
+}
+
 void TegraXvScreenInit(ScreenPtr pScreen)
 {
     ScrnInfoPtr scrn = xf86ScreenToScrn(pScreen);
     XF86VideoAdaptorPtr xvAdaptor;
     TegraXvAdaptorPtr adaptor;
+    TegraVideoPtr priv;
+    int id;
 
     if (noXvExtension)
         return;
@@ -643,12 +984,24 @@ void TegraXvScreenInit(ScreenPtr pScreen)
     adaptor->xv.flags                = VIDEO_OVERLAID_IMAGES;
 
     xvColorKey = MAKE_ATOM("XV_COLORKEY");
+    xvVdpauInfo = MAKE_ATOM("XV_TEGRA_VDPAU_INFO");
     xvAdaptor = &adaptor->xv;
+    priv = &adaptor->private;
 
-    if (!xf86XVScreenInit(pScreen, &xvAdaptor, 1)) {
-        free(adaptor);
-        return;
+    for (id = 0; id < TEGRA_ARRAY_SIZE(priv->overlay); id++) {
+        if (!TegraVideoOverlayInitialize(priv, scrn, id))
+            goto err_free_adaptor;
     }
 
+    if (!TegraXvGetDrmProps(scrn, priv))
+        goto err_free_adaptor;
+
+    if (!xf86XVScreenInit(pScreen, &xvAdaptor, 1))
+        goto err_free_adaptor;
+
     xf86DrvMsg(scrn->scrnIndex, X_INFO, "XV adaptor initialized\n");
+    return;
+
+err_free_adaptor:
+    free(adaptor);
 }
