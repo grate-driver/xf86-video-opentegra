@@ -383,15 +383,28 @@ static void TegraCompositeFlush(struct drm_tegra *drm, TegraEXAPtr tegra)
     TegraCompositeSetupAttributes(tegra);
 }
 
+static Bool TegraEXACheckComposite2D(int op, PicturePtr pSrcPicture,
+                                     PicturePtr pMaskPicture,
+                                     PicturePtr pDstPicture)
+{
+    if (op != PictOpSrc && op != PictOpClear)
+        return FALSE;
+
+    if (pMaskPicture && pMaskPicture->pDrawable)
+        return FALSE;
+
+    if (pSrcPicture && pSrcPicture->pDrawable)
+        return FALSE;
+
+    return TRUE;
+}
+
 Bool TegraEXACheckComposite(int op, PicturePtr pSrcPicture,
                             PicturePtr pMaskPicture,
                             PicturePtr pDstPicture)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pDstPicture->pDrawable->pScreen);
     TegraPtr tegra = TegraPTR(pScrn);
-
-    if (!tegra->exa_compositing)
-        return FALSE;
 
     if (!TegraCompositeProgram3D(op, pSrcPicture, pMaskPicture))
         return FALSE;
@@ -454,6 +467,12 @@ Bool TegraEXACheckComposite(int op, PicturePtr pSrcPicture,
                 return FALSE;
         }
     }
+
+    if (TegraEXACheckComposite2D(op, pSrcPicture, pMaskPicture, pDstPicture))
+        return TRUE;
+
+    if (!tegra->exa_compositing)
+        return FALSE;
 
     return TRUE;
 }
@@ -708,10 +727,16 @@ Bool TegraEXAPrepareComposite(int op, PicturePtr pSrcPicture,
                               PixmapPtr pMask,
                               PixmapPtr pDst)
 {
+    ScrnInfoPtr pScrn = xf86ScreenToScrn(pDst->drawable.pScreen);
+    TegraPtr tegra = TegraPTR(pScrn);
+
     /* Use GR2D for simple solid fills as usually it is more optimal. */
     if (TegraEXAPrepareComposite2D(op, pSrcPicture, pMaskPicture,
                                    pDstPicture, pSrc, pMask, pDst))
         return TRUE;
+
+    if (!tegra->exa_compositing)
+        return FALSE;
 
     return TegraEXAPrepareComposite3D(op, pSrcPicture, pMaskPicture,
                                       pDstPicture, pSrc, pMask, pDst);
