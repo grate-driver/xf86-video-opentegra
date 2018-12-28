@@ -142,6 +142,46 @@ void TegraEXAWaitFence(struct tegra_fence *fence);
 
 unsigned TegraPixmapSize(TegraPixmapPtr pixmap);
 
+unsigned long TegraEXAPixmapOffset(PixmapPtr pix);
+
+struct drm_tegra_bo * TegraEXAPixmapBO(PixmapPtr pix);
+
+Bool TegraEXAPrepareSolid(PixmapPtr pPixmap, int op, Pixel planemask,
+                          Pixel color);
+
+void TegraEXASolid(PixmapPtr pPixmap, int px1, int py1, int px2, int py2);
+
+void TegraEXADoneSolid(PixmapPtr pPixmap);
+
+Bool TegraEXAPrepareCopy(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
+                         int dx, int dy, int op, Pixel planemask);
+
+void TegraEXACopy(PixmapPtr pDstPixmap, int srcX, int srcY, int dstX,
+                  int dstY, int width, int height);
+
+void TegraEXADoneCopy(PixmapPtr pDstPixmap);
+
+void TegraCompositeReleaseAttribBuffers(TegraEXAScratchPtr scratch);
+
+Bool TegraEXACheckComposite(int op, PicturePtr pSrcPicture,
+                            PicturePtr pMaskPicture,
+                            PicturePtr pDstPicture);
+
+Bool TegraEXAPrepareComposite(int op, PicturePtr pSrcPicture,
+                              PicturePtr pMaskPicture,
+                              PicturePtr pDstPicture,
+                              PixmapPtr pSrc,
+                              PixmapPtr pMask,
+                              PixmapPtr pDst);
+
+void TegraEXAComposite(PixmapPtr pDst,
+                       int srcX, int srcY,
+                       int maskX, int maskY,
+                       int dstX, int dstY,
+                       int width, int height);
+
+void TegraEXADoneComposite(PixmapPtr pDst);
+
 #endif
 
 /* vim: set et sts=4 sw=4 ts=4: */
