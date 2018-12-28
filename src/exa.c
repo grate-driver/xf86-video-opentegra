@@ -546,6 +546,24 @@ static Bool TegraEXAModifyPixmapHeader(PixmapPtr pPixmap, int width,
             return TRUE;
         }
 
+        if (pPixData == drmmode_crtc_map_rotate_bo(pScrn, 0)) {
+            scanout = drmmode_crtc_get_rotate_bo(pScrn, 0);
+            priv->type = TEGRA_EXA_PIXMAP_TYPE_BO;
+            priv->bo = drm_tegra_bo_ref(scanout);
+            priv->scanout = TRUE;
+            priv->accel = TRUE;
+            return TRUE;
+        }
+
+        if (pPixData == drmmode_crtc_map_rotate_bo(pScrn, 1)) {
+            scanout = drmmode_crtc_get_rotate_bo(pScrn, 1);
+            priv->type = TEGRA_EXA_PIXMAP_TYPE_BO;
+            priv->bo = drm_tegra_bo_ref(scanout);
+            priv->scanout = TRUE;
+            priv->accel = TRUE;
+            return TRUE;
+        }
+
         return FALSE;
     } else if (!priv->accel) {
         /* this tells EXA that this pixmap is unacceleratable */

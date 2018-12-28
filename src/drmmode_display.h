@@ -145,6 +145,9 @@ struct drm_tegra_bo *drmmode_get_front_bo(drmmode_ptr drmmode);
 Bool drmmode_map_cursor_bos(ScrnInfoPtr pScrn, drmmode_ptr drmmode);
 void drmmode_free_bos(ScrnInfoPtr pScrn, drmmode_ptr drmmode);
 void drmmode_get_default_bpp(ScrnInfoPtr pScrn, drmmode_ptr drmmmode, int *depth, int *bpp);
+void *drmmode_crtc_map_rotate_bo(ScrnInfoPtr scrn, int crtc_num);
+struct drm_tegra_bo *
+drmmode_crtc_get_rotate_bo(ScrnInfoPtr scrn, int crtc_num);
 
 #ifndef DRM_CAP_DUMB_PREFERRED_DEPTH
 #define DRM_CAP_DUMB_PREFERRED_DEPTH 3

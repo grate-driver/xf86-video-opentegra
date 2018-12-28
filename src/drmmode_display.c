@@ -1560,6 +1560,53 @@ struct drm_tegra_bo *drmmode_get_front_bo(drmmode_ptr drmmode)
     return drmmode->front_bo->bo;
 }
 
+void *drmmode_crtc_map_rotate_bo(ScrnInfoPtr scrn, int crtc_num)
+{
+    xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(scrn);
+    drmmode_crtc_private_ptr drmmode_crtc;
+    drmmode_ptr drmmode;
+    xf86CrtcPtr crtc;
+    int ret;
+
+    if (crtc_num > xf86_config->num_crtc)
+        return NULL;
+
+    crtc = xf86_config->crtc[crtc_num];
+    drmmode_crtc = crtc->driver_private;
+    drmmode = drmmode_crtc->drmmode;
+
+    if (!drmmode_crtc->rotate_bo)
+        return NULL;
+
+    if (drmmode_crtc->rotate_bo->ptr)
+        return drmmode_crtc->rotate_bo->ptr;
+
+    ret = dumb_bo_map(drmmode->fd, drmmode_crtc->rotate_bo);
+    if (ret)
+        return NULL;
+
+    return drmmode_crtc->rotate_bo->ptr;
+}
+
+struct drm_tegra_bo *
+drmmode_crtc_get_rotate_bo(ScrnInfoPtr scrn, int crtc_num)
+{
+    xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(scrn);
+    drmmode_crtc_private_ptr drmmode_crtc;
+    xf86CrtcPtr crtc;
+
+    if (crtc_num > xf86_config->num_crtc)
+        return NULL;
+
+    crtc = xf86_config->crtc[crtc_num];
+    drmmode_crtc = crtc->driver_private;
+
+    if (!drmmode_crtc->rotate_bo)
+        return NULL;
+
+    return drmmode_crtc->rotate_bo->bo;
+}
+
 #ifdef TEGRA_OUTPUT_SLAVE_SUPPORT
 void *drmmode_map_slave_bo(drmmode_ptr drmmode, TegraPixmapPrivPtr ppriv)
 {
