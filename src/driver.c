@@ -42,7 +42,6 @@ typedef enum
 {
     OPTION_SW_CURSOR,
     OPTION_DEVICE_PATH,
-    OPTION_SHADOW_FB,
     OPTION_EXA_DISABLED,
     OPTION_EXA_COMPOSITING,
     OPTION_EXA_POOL_ALLOC,
@@ -56,7 +55,6 @@ typedef enum
 static const OptionInfoRec Options[] = {
     { OPTION_SW_CURSOR, "SWcursor", OPTV_BOOLEAN, { 0 }, FALSE },
     { OPTION_DEVICE_PATH, "device", OPTV_STRING, { 0 }, FALSE },
-    { OPTION_SHADOW_FB, "ShadowFB", OPTV_BOOLEAN, { 0 }, FALSE },
     { OPTION_EXA_DISABLED, "NoAccel", OPTV_BOOLEAN, { 0 }, FALSE },
     { OPTION_EXA_COMPOSITING, "AccelCompositing", OPTV_BOOLEAN, { 0 }, FALSE },
     { OPTION_EXA_POOL_ALLOC, "DisablePoolAllocator", OPTV_BOOLEAN, { 0 }, FALSE },
@@ -195,7 +193,6 @@ TegraPreInit(ScrnInfoPtr pScrn, int flags)
     rgb defaultWeight = { 0, 0, 0 };
     EntityInfoPtr pEnt;
     EntPtr tegraEnt = NULL;
-    Bool prefer_shadow = TRUE;
     uint64_t value = 0;
     int ret;
     int bppflags;
@@ -322,10 +319,6 @@ TegraPreInit(ScrnInfoPtr pScrn, int flags)
     xf86DrvMsg(pScrn->scrnIndex, X_INFO, "HW Cursor: enabled %s\n",
                tegra->drmmode.sw_cursor ? "NO" : "YES");
 
-    ret = drmGetCap(tegra->fd, DRM_CAP_DUMB_PREFER_SHADOW, &value);
-    if (!ret)
-        prefer_shadow = !!value;
-
     tegra->cursor_width = 64;
     tegra->cursor_height = 64;
     ret = drmGetCap(tegra->fd, DRM_CAP_CURSOR_WIDTH, &value);
@@ -336,16 +329,6 @@ TegraPreInit(ScrnInfoPtr pScrn, int flags)
     if (!ret) {
         tegra->cursor_height = value;
     }
-
-
-    tegra->drmmode.shadow_enable = xf86ReturnOptValBool(tegra->Options,
-                                                        OPTION_SHADOW_FB,
-                                                        prefer_shadow);
-
-    xf86DrvMsg(pScrn->scrnIndex, X_INFO,
-               "ShadowFB: preferred %s, enabled %s\n",
-               prefer_shadow ? "YES" : "NO",
-               tegra->drmmode.shadow_enable ? "YES" : "NO");
 
     if (!drmmode_pre_init(pScrn, &tegra->drmmode, pScrn->bitsPerPixel / 8)) {
         xf86DrvMsg(pScrn->scrnIndex, X_ERROR, "KMS setup failed\n");
@@ -448,13 +431,8 @@ TegraPreInit(ScrnInfoPtr pScrn, int flags)
         !xf86LoadSubModule(pScrn, "fb"))
         return FALSE;
 
-    if (tegra->drmmode.shadow_enable) {
-        if (!xf86LoadSubModule(pScrn, "shadow"))
-            return FALSE;
-    } else if (tegra->exa_enabled) {
-        if (!xf86LoadSubModule(pScrn, "exa"))
-            return FALSE;
-    }
+    if (tegra->exa_enabled && !xf86LoadSubModule(pScrn, "exa"))
+        return FALSE;
 
     return TRUE;
 }
@@ -522,35 +500,6 @@ TegraLeaveVT(VT_FUNC_ARGS_DECL)
 }
 
 static Bool
-TegraShadowInit(ScreenPtr pScreen)
-{
-    if (!shadowSetup(pScreen))
-        return FALSE;
-
-    return TRUE;
-}
-
-static void *
-TegraShadowWindow(ScreenPtr screen, CARD32 row, CARD32 offset, int mode,
-                  CARD32 *size, void *closure)
-{
-    ScrnInfoPtr pScrn = xf86ScreenToScrn(screen);
-    TegraPtr tegra = TegraPTR(pScrn);
-    int stride;
-
-    stride = (pScrn->displayWidth * pScrn->bitsPerPixel) / 8;
-    *size = stride;
-
-    return ((uint8_t *)tegra->drmmode.front_bo->ptr + row * stride + offset);
-}
-
-static void
-TegraUpdatePacked(ScreenPtr pScreen, shadowBufPtr pBuf)
-{
-    shadowUpdatePacked(pScreen, pBuf);
-}
-
-static Bool
 TegraCreateScreenResources(ScreenPtr pScreen)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pScreen);
@@ -577,17 +526,8 @@ TegraCreateScreenResources(ScreenPtr pScreen)
 
     rootPixmap = pScreen->GetScreenPixmap(pScreen);
 
-    if (tegra->drmmode.shadow_enable)
-        pixels = tegra->drmmode.shadow_fb;
-
     if (!pScreen->ModifyPixmapHeader(rootPixmap, -1, -1, -1, -1, -1, pixels))
         FatalError("Couldn't adjust screen pixmap\n");
-
-    if (tegra->drmmode.shadow_enable) {
-        if (!shadowAdd(pScreen, rootPixmap, TegraUpdatePacked,
-                       TegraShadowWindow, 0, 0))
-            return FALSE;
-    }
 
     return ret;
 }
@@ -597,12 +537,6 @@ TegraCloseScreen(CLOSE_SCREEN_ARGS_DECL)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pScreen);
     TegraPtr tegra = TegraPTR(pScrn);
-
-    if (tegra->drmmode.shadow_enable) {
-        shadowRemove(pScreen, pScreen->GetScreenPixmap(pScreen));
-        free(tegra->drmmode.shadow_fb);
-        tegra->drmmode.shadow_fb = NULL;
-    }
 
     drmmode_uevent_fini(pScrn, &tegra->drmmode);
     drmmode_free_bos(pScrn, &tegra->drmmode);
@@ -636,13 +570,6 @@ TegraScreenInit(SCREEN_INIT_ARGS_DECL)
 
     if (!drmmode_create_initial_bos(pScrn, &tegra->drmmode))
         return FALSE;
-
-    if (tegra->drmmode.shadow_enable) {
-        tegra->drmmode.shadow_fb = calloc(1, pScrn->displayWidth * pScrn->virtualY *
-                                             ((pScrn->bitsPerPixel + 7) >> 3));
-        if (!tegra->drmmode.shadow_fb)
-            tegra->drmmode.shadow_enable = FALSE;
-    }
 
     miClearVisualTypes();
 
@@ -678,11 +605,6 @@ TegraScreenInit(SCREEN_INIT_ARGS_DECL)
     }
 
     fbPictureInit(pScreen, NULL, 0);
-
-    if (tegra->drmmode.shadow_enable && !TegraShadowInit(pScreen)) {
-        xf86DrvMsg(pScrn->scrnIndex, X_ERROR, "shadow fb init failed\n");
-        return FALSE;
-    }
 
     tegra->createScreenResources = pScreen->CreateScreenResources;
     pScreen->CreateScreenResources = TegraCreateScreenResources;

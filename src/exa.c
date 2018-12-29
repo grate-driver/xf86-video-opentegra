@@ -570,11 +570,6 @@ void TegraEXAScreenInit(ScreenPtr pScreen)
     TegraEXAPtr priv;
     int err;
 
-    if (tegra->drmmode.shadow_enable) {
-        ErrorMsg("using \"Shadow Framebuffer\" - acceleration disabled\n");
-        return;
-    }
-
     if (!tegra->exa_enabled)
         return;
 

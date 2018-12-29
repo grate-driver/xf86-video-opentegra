@@ -50,9 +50,6 @@ typedef struct {
     struct dumb_bo *front_bo;
     Bool sw_cursor;
 
-    Bool shadow_enable;
-    void *shadow_fb;
-
 #ifdef HAVE_SCREEN_SPECIFIC_PRIVATE_KEYS
     DevPrivateKeyRec pixmapPrivateKeyRec;
 #endif
@@ -126,10 +123,6 @@ drmmode_crtc_get_rotate_bo(ScrnInfoPtr scrn, int crtc_num);
 
 #ifndef DRM_CAP_DUMB_PREFERRED_DEPTH
 #define DRM_CAP_DUMB_PREFERRED_DEPTH 3
-#endif
-
-#ifndef DRM_CAP_DUMB_PREFER_SHADOW
-#define DRM_CAP_DUMB_PREFER_SHADOW 4
 #endif
 
 #endif

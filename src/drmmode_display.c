@@ -1099,23 +1099,7 @@ drmmode_xf86crtc_resize(ScrnInfoPtr scrn, int width, int height)
     if (!new_pixels)
         goto fail;
 
-    if (!drmmode->shadow_enable)
-        screen->ModifyPixmapHeader(ppix, width, height, -1, -1, pitch,
-                                   new_pixels);
-    else {
-        uint32_t size = scrn->displayWidth * scrn->virtualY *
-                        ((scrn->bitsPerPixel + 7) >> 3);
-        void *new_shadow;
-
-        new_shadow = calloc(1, size);
-        if (new_shadow == NULL)
-            goto fail;
-
-        free(drmmode->shadow_fb);
-        drmmode->shadow_fb = new_shadow;
-        screen->ModifyPixmapHeader(ppix, width, height, -1, -1, pitch,
-                                   drmmode->shadow_fb);
-    }
+    screen->ModifyPixmapHeader(ppix, width, height, -1, -1, pitch, new_pixels);
 
 #if XORG_VERSION_CURRENT < XORG_VERSION_NUMERIC(1,9,99,1,0)
     scrn->pixmapPrivate.ptr = ppix->devPrivate.ptr;
