@@ -81,44 +81,6 @@ static int dumb_bo_destroy(struct dumb_bo *bo)
     return 0;
 }
 
-#ifdef TEGRA_OUTPUT_SLAVE_SUPPORT
-static struct dumb_bo *dumb_get_bo_from_handle(int fd, int handle, int pitch,
-                                               int size)
-{
-    struct dumb_bo *bo;
-    int ret;
-
-    bo = calloc(1, sizeof(*bo));
-    if (!bo)
-        return NULL;
-
-    ret = drmPrimeFDToHandle(fd, handle, &bo->handle);
-    if (ret) {
-        free(bo);
-        return NULL;
-    }
-
-    bo->pitch = pitch;
-    bo->size = size;
-    return bo;
-}
-#endif
-
-#ifdef TEGRA_OUTPUT_SLAVE_SUPPORT
-Bool drmmode_SetSlaveBO(PixmapPtr ppix, drmmode_ptr drmmode, int fd_handle,
-                        int pitch, int size)
-{
-    TegraPixmapPrivPtr ppriv = TegraGetPixmapPriv(drmmode, ppix);
-
-    ppriv->backing_bo = dumb_get_bo_from_handle(drmmode->fd, fd_handle, pitch, size);
-    if (!ppriv->backing_bo)
-        return FALSE;
-
-    close(fd_handle);
-    return TRUE;
-}
-#endif
-
 static void
 drmmode_ConvertFromKMode(ScrnInfoPtr scrn, drmModeModeInfo *kmode,
                          DisplayModePtr mode)
@@ -263,13 +225,6 @@ drmmode_set_mode_major(xf86CrtcPtr crtc, DisplayModePtr mode,
 
         fb_id = drmmode->fb_id;
 
-#ifdef TEGRA_OUTPUT_SLAVE_SUPPORT
-        if (crtc->randr_crtc->scanout_pixmap) {
-            TegraPixmapPrivPtr ppriv = TegraGetPixmapPriv(drmmode, crtc->randr_crtc->scanout_pixmap);
-            fb_id = ppriv->fb_id;
-            x = y = 0;
-        } else
-#endif
         if (drmmode_crtc->rotate_fb_id) {
             fb_id = drmmode_crtc->rotate_fb_id;
             x = y = 0;
@@ -446,53 +401,6 @@ drmmode_crtc_gamma_set(xf86CrtcPtr crtc, uint16_t *red, uint16_t *green,
                         size, red, green, blue);
 }
 
-#ifdef TEGRA_OUTPUT_SLAVE_SUPPORT
-static Bool
-drmmode_set_scanout_pixmap(xf86CrtcPtr crtc, PixmapPtr ppix)
-{
-    drmmode_crtc_private_ptr drmmode_crtc = crtc->driver_private;
-    drmmode_ptr drmmode = drmmode_crtc->drmmode;
-    TegraPixmapPrivPtr ppriv;
-    void *ptr;
-
-    if (!ppix) {
-        if (crtc->randr_crtc->scanout_pixmap) {
-            ppriv = TegraGetPixmapPriv(drmmode, crtc->randr_crtc->scanout_pixmap);
-            drmModeRmFB(drmmode->fd, ppriv->fb_id);
-        }
-
-        if (drmmode_crtc->slave_damage) {
-            DamageUnregister(&crtc->randr_crtc->scanout_pixmap->drawable,
-                             drmmode_crtc->slave_damage);
-            drmmode_crtc->slave_damage = NULL;
-        }
-
-        return TRUE;
-    }
-
-    ppriv = TegraGetPixmapPriv(drmmode, ppix);
-
-    if (!drmmode_crtc->slave_damage)
-        drmmode_crtc->slave_damage = DamageCreate(NULL, NULL,
-                                                  DamageReportNone, TRUE,
-                                                  crtc->randr_crtc->pScreen,
-                                                  NULL);
-
-    ptr = drmmode_map_slave_bo(drmmode, ppriv);
-    ppix->devPrivate.ptr = ptr;
-
-    DamageRegister(&ppix->drawable, drmmode_crtc->slave_damage);
-
-    if (ppriv->fb_id == 0) {
-        drmModeAddFB(drmmode->fd, ppix->drawable.width, ppix->drawable.height,
-                     ppix->drawable.depth, ppix->drawable.bitsPerPixel,
-                     ppix->devKind, ppriv->backing_bo->handle, &ppriv->fb_id);
-    }
-
-    return TRUE;
-}
-#endif
-
 static void *
 drmmode_shadow_allocate(xf86CrtcPtr crtc, int width, int height)
 {
@@ -621,9 +529,6 @@ static const xf86CrtcFuncsRec drmmode_crtc_funcs = {
 
     .gamma_set = drmmode_crtc_gamma_set,
     .destroy = NULL, /* XXX */
-#ifdef TEGRA_OUTPUT_SLAVE_SUPPORT
-    .set_scanout_pixmap = drmmode_set_scanout_pixmap,
-#endif
     .shadow_allocate = drmmode_shadow_allocate,
     .shadow_create = drmmode_shadow_create,
     .shadow_destroy = drmmode_shadow_destroy,
@@ -1607,22 +1512,6 @@ drmmode_crtc_get_rotate_bo(ScrnInfoPtr scrn, int crtc_num)
 
     return drmmode_crtc->rotate_bo->bo;
 }
-
-#ifdef TEGRA_OUTPUT_SLAVE_SUPPORT
-void *drmmode_map_slave_bo(drmmode_ptr drmmode, TegraPixmapPrivPtr ppriv)
-{
-        int ret;
-
-        if (ppriv->backing_bo->ptr)
-                return ppriv->backing_bo->ptr;
-
-        ret = dumb_bo_map(drmmode->fd, ppriv->backing_bo);
-        if (ret)
-                return NULL;
-
-        return ppriv->backing_bo->ptr;
-}
-#endif
 
 Bool drmmode_map_cursor_bos(ScrnInfoPtr pScrn, drmmode_ptr drmmode)
 {

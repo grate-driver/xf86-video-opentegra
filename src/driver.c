@@ -103,26 +103,6 @@ FreeRec(ScrnInfoPtr pScrn)
     free(tegra);
 }
 
-#ifdef TEGRA_OUTPUT_SLAVE_SUPPORT
-static Bool
-TegraSetSharedPixmapBacking(PixmapPtr ppix, void *fd_handle)
-{
-    ScreenPtr screen = ppix->drawable.pScreen;
-    ScrnInfoPtr scrn = xf86ScreenToScrn(screen);
-    TegraPtr tegra = TegraPTR(scrn);
-    Bool ret;
-    int size = ppix->devKind * ppix->drawable.height;
-    int ihandle = (int)(long)fd_handle;
-
-    ret = drmmode_SetSlaveBO(ppix, &tegra->drmmode, ihandle, ppix->devKind,
-                             size);
-    if (ret == FALSE)
-        return ret;
-
-    return TRUE;
-}
-#endif
-
 static void
 TegraIdentify(int flags)
 {
@@ -294,16 +274,6 @@ TegraPreInit(ScrnInfoPtr pScrn, int flags)
     tegra->path = drmGetDeviceNameFromFd(tegra->fd);
     tegra->drmmode.fd = tegra->fd;
 
-#ifdef TEGRA_OUTPUT_SLAVE_SUPPORT
-    pScrn->capabilities = 0;
-#ifdef DRM_CAP_PRIME
-    ret = drmGetCap(tegra->fd, DRM_CAP_PRIME, &value);
-    if (ret == 0) {
-        if (value & DRM_PRIME_CAP_IMPORT)
-            pScrn->capabilities |= RR_Capability_SinkOutput;
-    }
-#endif
-#endif
     drmmode_get_default_bpp(pScrn, &tegra->drmmode, &defaultdepth, &defaultbpp);
     if (defaultdepth == 24 && defaultbpp == 24)
         bppflags = SupportConvert32to24 | Support24bppFb;
@@ -683,14 +653,6 @@ TegraScreenInit(SCREEN_INIT_ARGS_DECL)
     if (!miSetPixmapDepths())
         return FALSE;
 
-#ifdef TEGRA_OUTPUT_SLAVE_SUPPORT
-    if (!dixRegisterScreenSpecificPrivateKey(pScreen,
-                                             &tegra->drmmode.pixmapPrivateKeyRec,
-                                             PRIVATE_PIXMAP,
-                                             sizeof(TegraPixmapPrivRec)))
-        return FALSE;
-#endif
-
     pScrn->memPhysBase = 0;
     pScrn->fbOffset = 0;
 
@@ -748,10 +710,6 @@ TegraScreenInit(SCREEN_INIT_ARGS_DECL)
     pScreen->SaveScreen = xf86SaveScreen;
     tegra->CloseScreen = pScreen->CloseScreen;
     pScreen->CloseScreen = TegraCloseScreen;
-
-#ifdef TEGRA_OUTPUT_SLAVE_SUPPORT
-    pScreen->SetSharedPixmapBacking = TegraSetSharedPixmapBacking;
-#endif
 
     if (!xf86CrtcScreenInit(pScreen))
         return FALSE;

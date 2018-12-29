@@ -28,15 +28,6 @@
 #ifndef DRMMODE_DISPLAY_H
 #define DRMMODE_DISPLAY_H
 
-/* the perfect storm */
-#if XF86_CRTC_VERSION >= 5
-#  if defined(HAVE_DRMPRIMEFDTOHANDLE)
-#    if HAVE_SCREEN_SPECIFIC_PRIVATE_KEYS
-#      define TEGRA_OUTPUT_SLAVE_SUPPORT 1
-#    endif
-#  endif
-#endif
-
 struct dumb_bo {
     struct drm_tegra_bo *bo;
     uint32_t handle;
@@ -114,22 +105,6 @@ typedef struct {
     int enc_mask;
     int enc_clone_mask;
 } drmmode_output_private_rec, *drmmode_output_private_ptr;
-
-#ifdef TEGRA_OUTPUT_SLAVE_SUPPORT
-typedef struct _TegraPixmapPriv {
-    uint32_t fb_id;
-    struct dumb_bo *backing_bo; /* if this pixmap is backed by a dumb bo */
-} TegraPixmapPrivRec, *TegraPixmapPrivPtr;
-
-extern DevPrivateKeyRec TegraPixmapPrivateKeyRec;
-#define TegraPixmapPrivateKey (&TegraPixmapPrivateKeyRec)
-
-#define TegraGetPixmapPriv(drmmode, p) ((TegraPixmapPrivPtr)dixGetPrivateAddr(&(p)->devPrivates, &(drmmode)->pixmapPrivateKeyRec))
-
-void *drmmode_map_slave_bo(drmmode_ptr drmmode, TegraPixmapPrivPtr ppriv);
-Bool drmmode_SetSlaveBO(PixmapPtr ppix, drmmode_ptr drmmode, int fd_handle,
-                        int pitch, int size);
-#endif
 
 extern Bool drmmode_pre_init(ScrnInfoPtr pScrn, drmmode_ptr drmmode, int cpp);
 void drmmode_adjust_frame(ScrnInfoPtr pScrn, drmmode_ptr drmmode, int x, int y);
