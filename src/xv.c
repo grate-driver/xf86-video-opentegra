@@ -948,7 +948,7 @@ err_free_props:
     return FALSE;
 }
 
-void TegraXvScreenInit(ScreenPtr pScreen)
+Bool TegraXvScreenInit(ScreenPtr pScreen)
 {
     ScrnInfoPtr scrn = xf86ScreenToScrn(pScreen);
     XF86VideoAdaptorPtr xvAdaptor;
@@ -957,7 +957,7 @@ void TegraXvScreenInit(ScreenPtr pScreen)
     int id;
 
     if (noXvExtension)
-        return;
+        return TRUE;
 
     adaptor = xnfcalloc(1, sizeof(*adaptor));
 
@@ -1000,8 +1000,11 @@ void TegraXvScreenInit(ScreenPtr pScreen)
         goto err_free_adaptor;
 
     xf86DrvMsg(scrn->scrnIndex, X_INFO, "XV adaptor initialized\n");
-    return;
+
+    return TRUE;
 
 err_free_adaptor:
     free(adaptor);
+
+    return FALSE;
 }

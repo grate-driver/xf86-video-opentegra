@@ -539,49 +539,28 @@ TegraCloseScreen(CLOSE_SCREEN_ARGS_DECL)
     TegraPtr tegra = TegraPTR(pScrn);
 
     drmmode_uevent_fini(pScrn, &tegra->drmmode);
+
+    xf86_cursors_fini(pScreen);
+    TegraDRI2ScreenExit(pScreen);
+    TegraVBlankScreenExit(pScreen);
+    TegraEXAScreenExit(pScreen);
+
     drmmode_free_bos(pScrn, &tegra->drmmode);
 
     if (pScrn->vtSema)
         TegraLeaveVT(VT_FUNC_ARGS);
 
-    TegraEXAScreenExit(pScreen);
-    TegraDRI2ScreenExit(pScreen);
-    TegraVBlankScreenExit(pScreen);
-
     pScrn->vtSema = FALSE;
+    pScreen->CreateScreenResources = tegra->createScreenResources;
     pScreen->CloseScreen = tegra->CloseScreen;
     return (*pScreen->CloseScreen)(CLOSE_SCREEN_ARGS);
 }
 
 static Bool
-TegraScreenInit(SCREEN_INIT_ARGS_DECL)
+TegraScreenFbInit(ScreenPtr pScreen)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pScreen);
-    TegraPtr tegra = TegraPTR(pScrn);
     VisualPtr visual;
-
-    pScrn->pScreen = pScreen;
-
-    if (!SetMaster(pScrn))
-        return FALSE;
-
-    /* HW dependent - FIXME */
-    pScrn->displayWidth = pScrn->virtualX;
-
-    if (!drmmode_create_initial_bos(pScrn, &tegra->drmmode))
-        return FALSE;
-
-    miClearVisualTypes();
-
-    if (!miSetVisualTypes(pScrn->depth, miGetDefaultVisualMask(pScrn->depth),
-                          pScrn->rgbBits, pScrn->defaultVisual))
-        return FALSE;
-
-    if (!miSetPixmapDepths())
-        return FALSE;
-
-    pScrn->memPhysBase = 0;
-    pScrn->fbOffset = 0;
 
     if (!fbScreenInit(pScreen, NULL, pScrn->virtualX, pScrn->virtualY,
                       pScrn->xDpi, pScrn->yDpi, pScrn->displayWidth,
@@ -606,17 +585,37 @@ TegraScreenInit(SCREEN_INIT_ARGS_DECL)
 
     fbPictureInit(pScreen, NULL, 0);
 
-    tegra->createScreenResources = pScreen->CreateScreenResources;
-    pScreen->CreateScreenResources = TegraCreateScreenResources;
+    return TRUE;
+}
 
-    xf86SetBlackWhitePixels(pScreen);
+static Bool
+TegraScreenVisualsInit(ScreenPtr pScreen)
+{
+    ScrnInfoPtr pScrn = xf86ScreenToScrn(pScreen);
 
-    /* EXA must be initialized before the cursor! Otherwise there are
-     * graphics corruptions and Xorg assertions fail. */
-    TegraEXAScreenInit(pScreen);
+    miClearVisualTypes();
+
+    if (!miSetVisualTypes(pScrn->depth, miGetDefaultVisualMask(pScrn->depth),
+                          pScrn->rgbBits, pScrn->defaultVisual))
+        return FALSE;
+
+    if (!miSetPixmapDepths())
+        return FALSE;
+
+    return TRUE;
+}
+
+static Bool
+TegraScreenXf86Init(ScreenPtr pScreen)
+{
+    ScrnInfoPtr pScrn = xf86ScreenToScrn(pScreen);
+    TegraPtr tegra = TegraPTR(pScrn);
 
     xf86SetBackingStore(pScreen);
     xf86SetSilkenMouse(pScreen);
+
+    /* Initialize software cursor.
+     * Must precede creation of the default colormap. */
     miDCInitialize(pScreen, xf86GetPointerScreenFuncs());
 
     /* Need to extend HWcursor support to handle mask interleave */
@@ -625,28 +624,69 @@ TegraScreenInit(SCREEN_INIT_ARGS_DECL)
                           HARDWARE_CURSOR_SOURCE_MASK_INTERLEAVE_64 |
                           HARDWARE_CURSOR_ARGB);
 
+    pScreen->SaveScreen = xf86SaveScreen;
+
+    if (serverGeneration == 1)
+        xf86ShowUnusedOptions(pScrn->scrnIndex, pScrn->options);
+
+    return TRUE;
+}
+
+static Bool
+TegraScreenInit(SCREEN_INIT_ARGS_DECL)
+{
+    ScrnInfoPtr pScrn = xf86ScreenToScrn(pScreen);
+    TegraPtr tegra = TegraPTR(pScrn);
+
+    pScrn->pScreen = pScreen;
+
+    if (!SetMaster(pScrn))
+        return FALSE;
+
+    pScrn->displayWidth = pScrn->virtualX; /* HW dependent - FIXME */
+    pScrn->memPhysBase = 0;
+    pScrn->fbOffset = 0;
+
     /* Must force it before EnterVT, so we are in control of VT and
      * later memory should be bound when allocating, e.g rotate_mem */
     pScrn->vtSema = TRUE;
 
-    pScreen->SaveScreen = xf86SaveScreen;
+    if (!drmmode_create_initial_bos(pScrn, &tegra->drmmode))
+        return FALSE;
+
+    TegraScreenVisualsInit(pScreen);
+    TegraScreenFbInit(pScreen);
+
+    xf86DPMSInit(pScreen, xf86DPMSSet, 0);
+
+    tegra->createScreenResources = pScreen->CreateScreenResources;
+    pScreen->CreateScreenResources = TegraCreateScreenResources;
+
     tegra->CloseScreen = pScreen->CloseScreen;
     pScreen->CloseScreen = TegraCloseScreen;
 
     if (!xf86CrtcScreenInit(pScreen))
         return FALSE;
 
-    if (!miCreateDefColormap(pScreen))
+    xf86SetBlackWhitePixels(pScreen);
+
+    if (!TegraEXAScreenInit(pScreen))
         return FALSE;
 
-    xf86DPMSInit(pScreen, xf86DPMSSet, 0);
+    if (!TegraScreenXf86Init(pScreen))
+        return FALSE;
 
-    if (serverGeneration == 1)
-        xf86ShowUnusedOptions(pScrn->scrnIndex, pScrn->options);
+    if (!TegraXvScreenInit(pScreen))
+        return FALSE;
 
-    TegraXvScreenInit(pScreen);
-    TegraDRI2ScreenInit(pScreen);
-    TegraVBlankScreenInit(pScreen);
+    if (!TegraVBlankScreenInit(pScreen))
+        return FALSE;
+
+    if (!TegraDRI2ScreenInit(pScreen))
+        return FALSE;
+
+    if (!miCreateDefColormap(pScreen))
+        return FALSE;
 
     return TegraEnterVT(VT_FUNC_ARGS);
 }

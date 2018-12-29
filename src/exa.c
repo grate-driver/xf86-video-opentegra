@@ -562,7 +562,7 @@ static void TegraEXAUnWrapProc(ScreenPtr pScreen)
     pScreen->BlockHandler = exa->BlockHandler;
 }
 
-void TegraEXAScreenInit(ScreenPtr pScreen)
+Bool TegraEXAScreenInit(ScreenPtr pScreen)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pScreen);
     TegraPtr tegra = TegraPTR(pScrn);
@@ -571,12 +571,12 @@ void TegraEXAScreenInit(ScreenPtr pScreen)
     int err;
 
     if (!tegra->exa_enabled)
-        return;
+        return TRUE;
 
     exa = exaDriverAlloc();
     if (!exa) {
         ErrorMsg("EXA allocation failed\n");
-        return;
+        return FALSE;
     }
 
     priv = calloc(1, sizeof(*priv));
@@ -656,7 +656,7 @@ void TegraEXAScreenInit(ScreenPtr pScreen)
 
     TegraEXAWrapProc(pScreen);
 
-    return;
+    return TRUE;
 
 release_mm:
     TegraEXAReleaseMM(tegra, priv);
@@ -670,6 +670,8 @@ free_priv:
     free(priv);
 free_exa:
     free(exa);
+
+    return FALSE;
 }
 
 void TegraEXAScreenExit(ScreenPtr pScreen)
@@ -679,8 +681,8 @@ void TegraEXAScreenExit(ScreenPtr pScreen)
     TegraEXAPtr priv = tegra->exa;
 
     if (priv) {
-        TegraEXAUnWrapProc(pScreen);
         exaDriverFini(pScreen);
+        TegraEXAUnWrapProc(pScreen);
         free(priv->driver);
 
         TegraEXAReleaseMM(tegra, priv);
