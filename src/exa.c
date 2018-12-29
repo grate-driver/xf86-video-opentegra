@@ -264,12 +264,40 @@ out_final:
     TegraEXATrimHeap(exa);
 }
 
-unsigned TegraPixmapSize(TegraPixmapPtr pixmap)
+unsigned TegraEXAHeightHwAligned(unsigned int height, unsigned int bpp)
 {
-    unsigned size = pixmap->pPixmap->devKind *
-                    pixmap->pPixmap->drawable.height;
+    /*
+     * Some of GR2D units operate with 16x16 (bytes) blocks, other HW units
+     * may too.
+     */
+    return TEGRA_ALIGN(height, 16 / (bpp >> 3));
+}
+
+static unsigned TegraEXAPixmapSizeAligned(unsigned pitch, unsigned height,
+                                          unsigned bpp)
+{
+    unsigned int size;
+
+    size = pitch * TegraEXAHeightHwAligned(height, bpp);
 
     return TEGRA_ALIGN(size, TEGRA_EXA_OFFSET_ALIGN);
+}
+
+unsigned TegraPixmapSize(TegraPixmapPtr pixmap)
+{
+    PixmapPtr pPixmap = pixmap->pPixmap;
+
+    if (pixmap->accel)
+        return TegraEXAPixmapSizeAligned(pPixmap->devKind,
+                                         pPixmap->drawable.height,
+                                         pPixmap->drawable.bitsPerPixel);
+
+    return pPixmap->devKind * pPixmap->drawable.height;
+}
+
+static Bool TegraEXAAccelerated(unsigned bpp)
+{
+    return bpp == 8 || bpp == 16 || bpp == 32;
 }
 
 static Bool TegraEXAAllocatePixmapData(TegraPtr tegra,
@@ -279,10 +307,14 @@ static Bool TegraEXAAllocatePixmapData(TegraPtr tegra,
                                        unsigned int bpp)
 {
     unsigned int pitch = TegraEXAPitch(width, height, bpp);
-    unsigned int size = pitch * height;
+    unsigned int size;
 
-    pixmap->accel = (bpp == 8 || bpp == 16 || bpp == 32);
-    size = TEGRA_ALIGN(size, TEGRA_EXA_OFFSET_ALIGN);
+    pixmap->accel = TegraEXAAccelerated(bpp);
+
+    if (pixmap->accel)
+        size = TegraEXAPixmapSizeAligned(pitch, height, bpp);
+    else
+        size = pitch * height;
 
     return (TegraEXAAllocateDRMFromPool(tegra, pixmap, size) ||
             TegraEXAAllocateDRM(tegra, pixmap, size) ||
@@ -360,8 +392,10 @@ static Bool TegraEXAModifyPixmapHeader(PixmapPtr pPixmap, int width,
             scanout = drmmode_crtc_get_rotate_bo(pScrn, 0);
             priv->type = TEGRA_EXA_PIXMAP_TYPE_BO;
             priv->bo = drm_tegra_bo_ref(scanout);
+            priv->scanout_rotated = TRUE;
             priv->scanout = TRUE;
             priv->accel = TRUE;
+            priv->crtc = 0;
             return TRUE;
         }
 
@@ -369,8 +403,10 @@ static Bool TegraEXAModifyPixmapHeader(PixmapPtr pPixmap, int width,
             scanout = drmmode_crtc_get_rotate_bo(pScrn, 1);
             priv->type = TEGRA_EXA_PIXMAP_TYPE_BO;
             priv->bo = drm_tegra_bo_ref(scanout);
+            priv->scanout_rotated = TRUE;
             priv->scanout = TRUE;
             priv->accel = TRUE;
+            priv->crtc = 1;
             return TRUE;
         }
 

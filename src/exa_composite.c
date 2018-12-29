@@ -383,18 +383,117 @@ static void TegraCompositeFlush(struct drm_tegra *drm, TegraEXAPtr tegra)
     TegraCompositeSetupAttributes(tegra);
 }
 
-static Bool TegraEXACheckComposite2D(int op, PicturePtr pSrcPicture,
+static Bool
+TegraEXA2DTransformIsSupported(int32_t dw, int32_t dh,
+                               int32_t sw, int32_t sh,
+                               unsigned bpp, PictTransformPtr t,
+                               enum Tegra2DOrientation *orientation)
+{
+    unsigned int i, k;
+    int16_t e[4];
+
+    /*
+     * GR2D performs transformation using 16x16 bytes buffer and its
+     * Fast Rotate (FR) hardware unit doesn't clip / re-align written data.
+     *
+     * TODO: support 3d / 2d transformation mix or check somehow that
+     * the actual transformed area (EXA doesn't provide that information)
+     * conforms the requirement.
+     */
+    if (!TEGRA_ALIGNED(dw * bpp / 8, 16) ||
+        !TEGRA_ALIGNED(dh * bpp / 8, 16) ||
+        !TEGRA_ALIGNED(sw * bpp / 8, 16) ||
+        !TEGRA_ALIGNED(sh * bpp / 8, 16))
+        return FALSE;
+
+    /* FR limitation */
+    if (dw > 4096 || dh > 4096 || sw > 4096 || sh > 4096)
+        return FALSE;
+
+    /* check whether matrix contains only integer values */
+    for (i = 0; i < 2; i++) {
+        for (k = 0; k < 2; k++) {
+            /* s16.16 format */
+            if (t->matrix[i][k] & 0xffff)
+                return FALSE;
+        }
+    }
+
+    e[0] = pixman_fixed_to_int(t->matrix[0][0]);
+    e[1] = pixman_fixed_to_int(t->matrix[0][1]);
+    e[2] = pixman_fixed_to_int(t->matrix[1][0]);
+    e[3] = pixman_fixed_to_int(t->matrix[1][1]);
+
+    if (e[0] == 0 && e[1] == -1 && e[2] == 1 && e[3] == 0) {
+        *orientation = TEGRA2D_ROT_90;
+        return TRUE;
+    }
+
+    if (e[0] == -1 && e[1] == 0 && e[2] == 0 && e[3] == -1) {
+        *orientation = TEGRA2D_ROT_180;
+        return TRUE;
+    }
+
+    if (e[0] == 0 && e[1] == 1 && e[2] == -1 && e[3] == 0) {
+        *orientation = TEGRA2D_ROT_270;
+        return TRUE;
+    }
+
+    if (e[0] == -1 && e[1] == 0 && e[2] == 0 && e[3] == 1) {
+        *orientation = TEGRA2D_FLIP_X;
+        return TRUE;
+    }
+
+    if (e[0] == 1 && e[1] == 0 && e[2] == 0 && e[3] == -1) {
+        *orientation = TEGRA2D_FLIP_Y;
+        return TRUE;
+    }
+
+    /*
+     * Transposing currently unimplemented (no real use-case),
+     * More complex transformations (like scaling, skewing) can't be done
+     * on GR2D.
+     */
+    return FALSE;
+}
+
+static Bool TegraEXACheckComposite2D(TegraEXAPtr tegra,
+                                     int op, PicturePtr pSrcPicture,
                                      PicturePtr pMaskPicture,
                                      PicturePtr pDstPicture)
 {
+    enum Tegra2DOrientation orientation;
+
     if (op != PictOpSrc && op != PictOpClear)
         return FALSE;
 
     if (pMaskPicture && pMaskPicture->pDrawable)
         return FALSE;
 
-    if (pSrcPicture && pSrcPicture->pDrawable)
-        return FALSE;
+    if (pSrcPicture && pSrcPicture->pDrawable) {
+        if (op != PictOpSrc)
+            return FALSE;
+
+        if (pMaskPicture)
+            return FALSE;
+
+        if (!pSrcPicture->transform)
+                return FALSE;
+
+        if (pSrcPicture->pDrawable->bitsPerPixel !=
+            pDstPicture->pDrawable->bitsPerPixel)
+            return FALSE;
+
+        if (!TegraEXA2DTransformIsSupported(pDstPicture->pDrawable->width,
+                                            pDstPicture->pDrawable->height,
+                                            pSrcPicture->pDrawable->width,
+                                            pSrcPicture->pDrawable->height,
+                                            pDstPicture->pDrawable->bitsPerPixel,
+                                            pSrcPicture->transform, &orientation))
+            return FALSE;
+
+        tegra->scratch.orientation = orientation;
+    }
 
     return TRUE;
 }
@@ -405,6 +504,10 @@ Bool TegraEXACheckComposite(int op, PicturePtr pSrcPicture,
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pDstPicture->pDrawable->pScreen);
     TegraPtr tegra = TegraPTR(pScrn);
+
+    if (TegraEXACheckComposite2D(TegraPTR(pScrn)->exa,
+                                 op, pSrcPicture, pMaskPicture, pDstPicture))
+        return TRUE;
 
     if (!TegraCompositeProgram3D(op, pSrcPicture, pMaskPicture))
         return FALSE;
@@ -429,9 +532,6 @@ Bool TegraEXACheckComposite(int op, PicturePtr pSrcPicture,
             return FALSE;
 
         if (pSrcPicture->pDrawable) {
-            if (pSrcPicture->transform)
-                return FALSE;
-
             if (pSrcPicture->filter >= PictFilterConvolution)
                 return FALSE;
 
@@ -468,10 +568,11 @@ Bool TegraEXACheckComposite(int op, PicturePtr pSrcPicture,
         }
     }
 
-    if (TegraEXACheckComposite2D(op, pSrcPicture, pMaskPicture, pDstPicture))
-        return TRUE;
-
     if (!tegra->exa_compositing)
+        return FALSE;
+
+    /* TODO: support GR3D transforms */
+    if (pSrcPicture && pSrcPicture->pDrawable && pSrcPicture->transform)
         return FALSE;
 
     return TRUE;
@@ -505,23 +606,19 @@ static Pixel TegraPixelRGB888to565(Pixel pixel)
     return p;
 }
 
-static Bool TegraEXAPrepareComposite2D(int op,
-                                       PicturePtr pSrcPicture,
-                                       PicturePtr pMaskPicture,
-                                       PicturePtr pDstPicture,
-                                       PixmapPtr pSrc,
-                                       PixmapPtr pMask,
-                                       PixmapPtr pDst)
+static Bool TegraEXAPrepareSolid2D(int op,
+                                   PicturePtr pSrcPicture,
+                                   PicturePtr pMaskPicture,
+                                   PicturePtr pDstPicture,
+                                   PixmapPtr pDst)
 {
-    ScrnInfoPtr pScrn = xf86ScreenToScrn(pDst->drawable.pScreen);
-    TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
     Pixel solid, mask;
 
-    if ((pSrcPicture && pSrcPicture->pDrawable) ||
-        (pMaskPicture && pMaskPicture->pDrawable))
+    if (pSrcPicture && pSrcPicture->pDrawable)
         return FALSE;
 
-    tegra->scratch.solid2D = TRUE;
+    if (pMaskPicture && pMaskPicture->pDrawable)
+        return FALSE;
 
     if (op == PictOpSrc) {
         solid = pSrcPicture ? pSrcPicture->pSourcePict->solidFill.color :
@@ -556,11 +653,93 @@ static Bool TegraEXAPrepareComposite2D(int op,
             pDstPicture->format == PICT_b5g6r5)
             solid = TegraPixelRGB888to565(solid);
 
-        return TegraEXAPrepareSolid(pDst, GXcopy, FB_ALLONES, solid);
+        if (!TegraEXAPrepareSolid(pDst, GXcopy, FB_ALLONES, solid))
+            return FALSE;
+
+        return TRUE;
     }
 
-    if (op == PictOpClear)
-        return TegraEXAPrepareSolid(pDst, GXcopy, FB_ALLONES, 0x00000000);
+    if (op == PictOpClear) {
+        if (!TegraEXAPrepareSolid(pDst, GXcopy, FB_ALLONES, 0x00000000))
+            return FALSE;
+
+        return TRUE;
+    }
+
+    return FALSE;
+}
+
+static Bool TegraEXAPrepareCopy2D(int op,
+                                  PicturePtr pSrcPicture,
+                                  PicturePtr pMaskPicture,
+                                  PicturePtr pDstPicture,
+                                  PixmapPtr pSrc,
+                                  PixmapPtr pDst)
+{
+    ScrnInfoPtr pScrn             = xf86ScreenToScrn(pDst->drawable.pScreen);
+    TegraEXAPtr tegra             = TegraPTR(pScrn)->exa;
+    xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(pScrn);
+    TegraPixmapPtr priv_src, priv_dst;
+    xf86CrtcPtr crtc;
+
+    if (pMaskPicture)
+        return FALSE;
+
+    if (op != PictOpSrc)
+        return FALSE;
+
+    if (!pSrcPicture ||
+            !pSrcPicture->pDrawable ||
+                !pSrcPicture->transform)
+        return FALSE;
+
+    priv_src = exaGetPixmapDriverPrivate(pSrc);
+    priv_dst = exaGetPixmapDriverPrivate(pDst);
+
+    /*
+     * Only predictable transformations are supported via GR2D due to its
+     * memory addressing limitations.
+     */
+    if (!priv_src->scanout || !priv_dst->scanout_rotated)
+        return FALSE;
+
+    /* destination is rotated in terms of Xorg display rotation */
+    crtc = xf86_config->crtc[priv_dst->crtc];
+
+    /* coordinates may become unaligned due to display's panning */
+    if (!TEGRA_ALIGNED(crtc->x + pDst->drawable.width, 4) ||
+        !TEGRA_ALIGNED(crtc->y + pDst->drawable.height, 4))
+        return FALSE;
+
+    tegra->scratch.transform = *pSrcPicture->transform;
+
+    return TegraEXAPrepareCopyExt(pSrc, pDst, GXcopy, FB_ALLONES);
+}
+
+static Bool TegraEXAPrepareComposite2D(int op,
+                                       PicturePtr pSrcPicture,
+                                       PicturePtr pMaskPicture,
+                                       PicturePtr pDstPicture,
+                                       PixmapPtr pSrc,
+                                       PixmapPtr pMask,
+                                       PixmapPtr pDst)
+{
+    ScrnInfoPtr pScrn = xf86ScreenToScrn(pDst->drawable.pScreen);
+    TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
+
+    tegra->scratch.op2d = TEGRA2D_NONE;
+
+    if (TegraEXAPrepareSolid2D(op, pSrcPicture, pMaskPicture, pDstPicture,
+                               pDst)) {
+        tegra->scratch.op2d = TEGRA2D_SOLID;
+        return TRUE;
+    }
+
+    if (TegraEXAPrepareCopy2D(op, pSrcPicture, pMaskPicture, pDstPicture,
+                              pSrc, pDst)) {
+        tegra->scratch.op2d = TEGRA2D_COPY;
+        return TRUE;
+    }
 
     return FALSE;
 }
@@ -588,11 +767,13 @@ static Bool TegraEXAPrepareComposite3D(int op,
     Pixel solid;
     int err;
 
+    if (src_tex && pSrcPicture->transform)
+        return FALSE;
+
     prog = TegraCompositeProgram3D(op, pSrcPicture, pMaskPicture);
     if (!prog)
         return FALSE;
 
-    tegra->scratch.solid2D = FALSE;
     tegra->scratch.pMask = (op != PictOpClear && mask_tex) ? pMask : NULL;
     tegra->scratch.pSrc = (op != PictOpClear && src_tex) ? pSrc : NULL;
     tegra->scratch.ops = 0;
@@ -720,33 +901,11 @@ static Bool TegraEXAPrepareComposite3D(int op,
     return TRUE;
 }
 
-Bool TegraEXAPrepareComposite(int op, PicturePtr pSrcPicture,
-                              PicturePtr pMaskPicture,
-                              PicturePtr pDstPicture,
-                              PixmapPtr pSrc,
-                              PixmapPtr pMask,
-                              PixmapPtr pDst)
-{
-    ScrnInfoPtr pScrn = xf86ScreenToScrn(pDst->drawable.pScreen);
-    TegraPtr tegra = TegraPTR(pScrn);
-
-    /* Use GR2D for simple solid fills as usually it is more optimal. */
-    if (TegraEXAPrepareComposite2D(op, pSrcPicture, pMaskPicture,
-                                   pDstPicture, pSrc, pMask, pDst))
-        return TRUE;
-
-    if (!tegra->exa_compositing)
-        return FALSE;
-
-    return TegraEXAPrepareComposite3D(op, pSrcPicture, pMaskPicture,
-                                      pDstPicture, pSrc, pMask, pDst);
-}
-
-void TegraEXAComposite(PixmapPtr pDst,
-                       int srcX, int srcY,
-                       int maskX, int maskY,
-                       int dstX, int dstY,
-                       int width, int height)
+static void TegraEXAComposite3D(PixmapPtr pDst,
+                                int srcX, int srcY,
+                                int maskX, int maskY,
+                                int dstX, int dstY,
+                                int width, int height)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pDst->drawable.pScreen);
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
@@ -755,9 +914,6 @@ void TegraEXAComposite(PixmapPtr pDst,
     float mask_left, mask_right, mask_top, mask_bottom;
     bool push_mask = !!tegra->scratch.pMask;
     bool push_src = !!tegra->scratch.pSrc;
-
-    if (tegra->scratch.solid2D)
-        return TegraEXASolid(pDst, dstX, dstY, dstX + width, dstY + height);
 
     /* do not proceed if previous reallocation failed */
     if (tegra->scratch.attribs_alloc_err)
@@ -819,15 +975,12 @@ void TegraEXAComposite(PixmapPtr pDst,
     tegra->scratch.vtx_cnt += 6;
 }
 
-void TegraEXADoneComposite(PixmapPtr pDst)
+static void TegraEXADoneComposite3D(PixmapPtr pDst)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pDst->drawable.pScreen);
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
     struct tegra_fence *fence = NULL;
     TegraPixmapPtr priv;
-
-    if (tegra->scratch.solid2D)
-        return TegraEXADoneSolid(pDst);
 
     TegraEXACompositeDraw(tegra);
 
@@ -890,6 +1043,61 @@ void TegraEXADoneComposite(PixmapPtr pDst)
     TegraEXACoolPixmap(tegra->scratch.pSrc, FALSE);
     TegraEXACoolPixmap(tegra->scratch.pMask, FALSE);
     TegraEXACoolPixmap(pDst, TRUE);
+}
+
+Bool TegraEXAPrepareComposite(int op, PicturePtr pSrcPicture,
+                              PicturePtr pMaskPicture,
+                              PicturePtr pDstPicture,
+                              PixmapPtr pSrc,
+                              PixmapPtr pMask,
+                              PixmapPtr pDst)
+{
+    ScrnInfoPtr pScrn = xf86ScreenToScrn(pDst->drawable.pScreen);
+    TegraPtr tegra = TegraPTR(pScrn);
+
+    /* Use GR2D for simple solid fills as usually it is more optimal. */
+    if (TegraEXAPrepareComposite2D(op, pSrcPicture, pMaskPicture,
+                                   pDstPicture, pSrc, pMask, pDst))
+        return TRUE;
+
+    if (!tegra->exa_compositing)
+        return FALSE;
+
+    return TegraEXAPrepareComposite3D(op, pSrcPicture, pMaskPicture,
+                                      pDstPicture, pSrc, pMask, pDst);
+}
+
+void TegraEXAComposite(PixmapPtr pDst,
+                       int srcX, int srcY,
+                       int maskX, int maskY,
+                       int dstX, int dstY,
+                       int width, int height)
+{
+    ScrnInfoPtr pScrn = xf86ScreenToScrn(pDst->drawable.pScreen);
+    TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
+
+    if (tegra->scratch.op2d == TEGRA2D_SOLID)
+        return TegraEXASolid(pDst, dstX, dstY, dstX + width, dstY + height);
+
+    if (tegra->scratch.op2d == TEGRA2D_COPY)
+        return TegraEXACopyExt(pDst, srcX, srcY, dstX, dstY, width, height);
+
+    return TegraEXAComposite3D(pDst, srcX, srcY, maskX, maskY, dstX, dstY,
+                               width, height);
+}
+
+void TegraEXADoneComposite(PixmapPtr pDst)
+{
+    ScrnInfoPtr pScrn = xf86ScreenToScrn(pDst->drawable.pScreen);
+    TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
+
+    if (tegra->scratch.op2d == TEGRA2D_SOLID)
+        return TegraEXADoneSolid(pDst);
+
+    if (tegra->scratch.op2d == TEGRA2D_COPY)
+        return TegraEXADoneCopy(pDst);
+
+    return TegraEXADoneComposite3D(pDst);
 }
 
 /* vim: set et sts=4 sw=4 ts=4: */

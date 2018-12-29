@@ -24,6 +24,10 @@
 #include "driver.h"
 #include "exa_mm.h"
 
+#define ErrorMsg(fmt, args...)                                              \
+    xf86DrvMsg(-1, X_ERROR, "%s:%d/%s(): " fmt, __FILE__,                   \
+               __LINE__, __func__, ##args)
+
 static const uint8_t rop3[] = {
     0x00, /* GXclear */
     0x88, /* GXand */
@@ -42,6 +46,18 @@ static const uint8_t rop3[] = {
     0x77, /* GXnand */
     0xff, /* GXset */
 };
+
+static uint32_t sb_offset(PixmapPtr pix, unsigned xpos, unsigned ypos)
+{
+    unsigned bytes_per_pixel = pix->drawable.bitsPerPixel >> 3;
+    unsigned pitch = exaGetPixmapPitch(pix);
+    uint32_t offset;
+
+    offset = ypos * pitch;
+    offset += xpos * bytes_per_pixel;
+
+    return TegraEXAPixmapOffset(pix) + offset;
+}
 
 Bool TegraEXAPrepareSolid(PixmapPtr pPixmap, int op, Pixel planemask,
                           Pixel color)
@@ -150,9 +166,31 @@ Bool TegraEXAPrepareCopy(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pDstPixmap->drawable.pScreen);
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
+
+    tegra->scratch.orientation = TEGRA2D_IDENTITY;
+
+    return TegraEXAPrepareCopyExt(pSrcPixmap, pDstPixmap, op, planemask);
+}
+
+Bool TegraEXAPrepareCopyExt(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
+                            int op, Pixel planemask)
+{
+    ScrnInfoPtr pScrn = xf86ScreenToScrn(pDstPixmap->drawable.pScreen);
+    TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
+    enum Tegra2DOrientation orientation;
     TegraPixmapPtr priv;
     unsigned int bpp;
+    int fr_mode;
     int err;
+
+    orientation = tegra->scratch.orientation;
+
+    if (orientation == TEGRA2D_IDENTITY)
+        fr_mode = 0; /* DISABLE */
+    else if (pSrcPixmap != pDstPixmap)
+        fr_mode = 1; /* SRC_DST_COPY */
+    else
+        fr_mode = 2; /* SQUARE */
 
     /*
      * It should be possible to support this, but let's bail for now
@@ -189,15 +227,17 @@ Bool TegraEXAPrepareCopy(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
 
     err = tegra_stream_begin(&tegra->cmds, tegra->gr2d);
     if (err < 0)
-            return FALSE;
+        return FALSE;
 
-    tegra_stream_prep(&tegra->cmds, 14);
+    tegra_stream_prep(&tegra->cmds, orientation == TEGRA2D_IDENTITY ? 14 : 12);
     tegra_stream_push_setclass(&tegra->cmds, HOST1X_CLASS_GR2D);
     tegra_stream_push(&tegra->cmds, HOST1X_OPCODE_MASK(0x9, 0x9));
-    tegra_stream_push(&tegra->cmds, 0x0000003a); /* trigger */
+    tegra_stream_push(&tegra->cmds, orientation == TEGRA2D_IDENTITY ?
+                                    0x0000003a : 0x00000037 ); /* trigger */
     tegra_stream_push(&tegra->cmds, 0x00000000); /* cmdsel */
     tegra_stream_push(&tegra->cmds, HOST1X_OPCODE_MASK(0x01e, 0x5));
-    tegra_stream_push(&tegra->cmds, 0x00000000); /* controlsecond */
+    tegra_stream_push(&tegra->cmds, /* controlsecond */
+                      orientation << 26 | fr_mode << 24);
     tegra_stream_push(&tegra->cmds, rop3[op]); /* ropfade */
     tegra_stream_push(&tegra->cmds, HOST1X_OPCODE_NONINCR(0x046, 1));
     /*
@@ -205,17 +245,24 @@ Bool TegraEXAPrepareCopy(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
      * [ 0: 0] tile mode Y/RGB (0: linear, 1: tiled)
      */
     tegra_stream_push(&tegra->cmds, 0x00000000); /* tilemode */
-    tegra_stream_push(&tegra->cmds, HOST1X_OPCODE_MASK(0x2b, 0x149));
 
-    tegra_stream_push_reloc(&tegra->cmds, TegraEXAPixmapBO(pDstPixmap),
-                            TegraEXAPixmapOffset(pDstPixmap));
-    tegra_stream_push(&tegra->cmds,
-                      exaGetPixmapPitch(pDstPixmap)); /* dstst */
+    if (orientation == TEGRA2D_IDENTITY) {
+        tegra_stream_push(&tegra->cmds, HOST1X_OPCODE_MASK(0x2b, 0x149));
 
-    tegra_stream_push_reloc(&tegra->cmds, TegraEXAPixmapBO(pSrcPixmap),
-                            TegraEXAPixmapOffset(pSrcPixmap));
-    tegra_stream_push(&tegra->cmds,
-                      exaGetPixmapPitch(pSrcPixmap)); /* srcst */
+        tegra_stream_push_reloc(&tegra->cmds, TegraEXAPixmapBO(pDstPixmap),
+                                TegraEXAPixmapOffset(pDstPixmap));
+        tegra_stream_push(&tegra->cmds,
+                          exaGetPixmapPitch(pDstPixmap)); /* dstst */
+
+        tegra_stream_push_reloc(&tegra->cmds, TegraEXAPixmapBO(pSrcPixmap),
+                                TegraEXAPixmapOffset(pSrcPixmap));
+        tegra_stream_push(&tegra->cmds,
+                          exaGetPixmapPitch(pSrcPixmap)); /* srcst */
+    } else {
+        tegra_stream_push(&tegra->cmds, HOST1X_OPCODE_MASK(0x2b, 0x108));
+        tegra_stream_push(&tegra->cmds, exaGetPixmapPitch(pDstPixmap)); /* dstst */
+        tegra_stream_push(&tegra->cmds, exaGetPixmapPitch(pSrcPixmap)); /* srcst */
+    }
 
     if (tegra->cmds.status != TEGRADRM_STREAM_CONSTRUCT) {
         tegra_stream_cleanup(&tegra->cmds);
@@ -223,9 +270,141 @@ Bool TegraEXAPrepareCopy(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
     }
 
     tegra->scratch.pSrc = pSrcPixmap;
+    tegra->scratch.srcX = -1;
+    tegra->scratch.srcY = -1;
+    tegra->scratch.dstX = -1;
+    tegra->scratch.dstY = -1;
     tegra->scratch.ops = 0;
 
     return TRUE;
+}
+
+void TegraEXACopyExt(PixmapPtr pDstPixmap, int srcX, int srcY, int dstX,
+                     int dstY, int width, int height)
+{
+    ScrnInfoPtr pScrn = xf86ScreenToScrn(pDstPixmap->drawable.pScreen);
+    TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
+    int tsrcX, tsrcY, tdstX, tdstY, twidth, theight;
+    struct drm_tegra_bo * src_bo;
+    struct drm_tegra_bo * dst_bo;
+    PixmapPtr pSrcPixmap;
+    uint32_t controlmain;
+    unsigned cell_size;
+    unsigned bpp;
+    PictVector v;
+    BoxRec grid;
+
+    pSrcPixmap = tegra->scratch.pSrc;
+    src_bo     = TegraEXAPixmapBO(pSrcPixmap);
+    dst_bo     = TegraEXAPixmapBO(pDstPixmap);
+    bpp        = pDstPixmap->drawable.bitsPerPixel;
+    cell_size  = 16 / (bpp >> 3);
+
+    /*
+     * From TRM 29.2.3 comment to FR_MODE:
+     *
+     * Source and destination base address must be 128-bit word aligned
+     * engine works on FR_BLOCK granularity: transformed surface width in
+     * multiples of 16-bytes, transformed surface height in multiples of
+     * 16/8/4 lines for bpp8/bpp16/bpp32.
+     */
+
+    grid.x1 = TEGRA_ROUND_DOWN(dstX, cell_size);
+    grid.y1 = TEGRA_ROUND_DOWN(dstY, cell_size);
+    grid.x2 = TEGRA_ROUND_UP(dstX + width,  cell_size);
+    grid.y2 = TEGRA_ROUND_UP(dstY + height, cell_size);
+
+    twidth  = grid.x2 - grid.x1;
+    theight = grid.y2 - grid.y1;
+
+    tdstX = grid.x1;
+    tdstY = grid.y1;
+
+    v.vector[0] = tdstX << 16;
+    v.vector[1] = tdstY << 16;
+    v.vector[2] = 1 << 16;
+
+    PictureTransformPoint3d(&tegra->scratch.transform, &v);
+
+    tsrcX = v.vector[0] >> 16;
+    tsrcY = v.vector[1] >> 16;
+
+    v.vector[0] = twidth  << 16;
+    v.vector[1] = theight << 16;
+    v.vector[2] = 0;
+
+    PictureTransformPoint3d(&tegra->scratch.transform, &v);
+
+    twidth  = v.vector[0] >> 16;
+    theight = v.vector[1] >> 16;
+
+    if (twidth < 0) {
+        tsrcX += twidth;
+        twidth = -twidth;
+    }
+
+    if (theight < 0) {
+        tsrcY  += theight;
+        theight = -theight;
+    }
+
+    /*
+     * The copying region may happen to become unaligned after
+     * transformation if acceleration-checking missed some case.
+     */
+    if (!TEGRA_ALIGNED(tsrcX, cell_size) ||
+        !TEGRA_ALIGNED(tsrcY, cell_size) ||
+        !TEGRA_ALIGNED(twidth, cell_size) ||
+        !TEGRA_ALIGNED(theight, cell_size)) {
+
+        ErrorMsg("shouldn't happen %d:%d %d:%d\n",
+                 tsrcX, tsrcY, twidth, theight);
+        return;
+    }
+
+    srcX   = tsrcX;
+    srcY   = tsrcY;
+    dstX   = tdstX;
+    dstY   = tdstY;
+    width  = twidth  - 1;
+    height = theight - 1;
+
+    tegra_stream_prep(&tegra->cmds, 11);
+
+    if (tegra->scratch.dstX != dstX || tegra->scratch.dstY != dstY) {
+        tegra_stream_push(&tegra->cmds, HOST1X_OPCODE_NONINCR(0x2b, 1));
+
+        tegra_stream_push_reloc(&tegra->cmds, dst_bo,
+                                sb_offset(pDstPixmap, dstX, dstY));
+
+        tegra->scratch.dstX = dstX;
+        tegra->scratch.dstY = dstY;
+    }
+
+    if (tegra->scratch.srcX != srcX || tegra->scratch.srcY != srcY) {
+        tegra_stream_push(&tegra->cmds, HOST1X_OPCODE_NONINCR(0x31, 1));
+
+        tegra_stream_push_reloc(&tegra->cmds, src_bo,
+                                sb_offset(pSrcPixmap, srcX, srcY));
+
+        tegra->scratch.srcX = srcX;
+        tegra->scratch.srcY = srcY;
+    }
+
+    /*
+     * [29:29] fast rotate wait for read (0: disable, 1: enable)
+     * [20:20] source color depth (0: mono, 1: same)
+     * [17:16] destination color depth (0: 8 bpp, 1: 16 bpp, 2: 32 bpp)
+     */
+    controlmain = (1 << 29) | (1 << 20) | ((bpp >> 4) << 16);
+
+    tegra_stream_push(&tegra->cmds, HOST1X_OPCODE_NONINCR(0x01f, 1));
+    tegra_stream_push(&tegra->cmds, controlmain);
+    tegra_stream_push(&tegra->cmds, HOST1X_OPCODE_NONINCR(0x37, 0x1));
+    tegra_stream_push(&tegra->cmds, height << 16 | width); /* srcsize */
+    tegra_stream_sync(&tegra->cmds, DRM_TEGRA_SYNCPT_COND_OP_DONE);
+
+    tegra->scratch.ops++;
 }
 
 void TegraEXACopy(PixmapPtr pDstPixmap, int srcX, int srcY, int dstX,
