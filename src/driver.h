@@ -104,6 +104,8 @@
 #include <xf86drm.h>
 #include <xf86drmMode.h>
 
+#include <libdrm/tegra.h>
+
 #include "common_helpers.h"
 #include "compat-api.h"
 #include "drmmode_display.h"

@@ -28,19 +28,38 @@
 #define TEGRA_VIDEO_OVERLAY_MAX_WIDTH   4096
 #define TEGRA_VIDEO_OVERLAY_MAX_HEIGHT  4096
 
-#define PASSTHROUGH_DATA_SIZE    36
-
 #define FOURCC_PASSTHROUGH_YV12     (('1' << 24) + ('2' << 16) + ('V' << 8) + 'Y')
 #define FOURCC_PASSTHROUGH_RGB565   (('1' << 24) + ('B' << 16) + ('G' << 8) + 'R')
 #define FOURCC_PASSTHROUGH_XRGB8888 (('X' << 24) + ('B' << 16) + ('G' << 8) + 'R')
 #define FOURCC_PASSTHROUGH_XBGR8888 (('X' << 24) + ('R' << 16) + ('G' << 8) + 'B')
 
-#define PASSTHROUGH_DATA_SIZE_V2 128
+typedef struct TegraXvPassthroughDataV1 {
+    uint32_t flinks[3];
+    uint32_t pitches[3];
+    uint32_t offsets[3];
+} __attribute__((packed)) TegraXvPassthroughDataV1;
+
+#define PASSTHROUGH_DATA_SIZE   sizeof(struct TegraXvPassthroughDataV1)
 
 #define FOURCC_PASSTHROUGH_YV12_V2     (('T' << 24) + ('G' << 16) + ('R' << 8) + '1')
 #define FOURCC_PASSTHROUGH_RGB565_V2   (('T' << 24) + ('G' << 16) + ('R' << 8) + '2')
 #define FOURCC_PASSTHROUGH_XRGB8888_V2 (('T' << 24) + ('G' << 16) + ('R' << 8) + '3')
 #define FOURCC_PASSTHROUGH_XBGR8888_V2 (('T' << 24) + ('G' << 16) + ('R' << 8) + '4')
+
+typedef struct TegraXvPassthroughDataV2 {
+    uint32_t flinks[4];
+    uint32_t pitches[4];
+    uint32_t offsets[4];
+
+    /* reserved must be 0 */
+    uint32_t reserved0[4];
+    uint32_t reserved1[4];
+    uint32_t reserved2[4];
+    uint32_t reserved3[4];
+    uint32_t reserved4[4];
+} __attribute__((packed)) TegraXvPassthroughDataV2;
+
+#define PASSTHROUGH_DATA_SIZE_V2 sizeof(struct TegraXvPassthroughDataV2)
 
 #define XVMC_YV12                                   \
 {                                                   \
