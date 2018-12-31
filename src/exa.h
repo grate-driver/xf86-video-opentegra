@@ -134,7 +134,8 @@ typedef struct {
         struct {
             union {
                 struct {
-                    struct tegra_fence *fence;
+                    struct tegra_fence *fence_write;
+                    struct tegra_fence *fence_read;
 
                     union {
                         struct mem_pool_entry pool_entry;

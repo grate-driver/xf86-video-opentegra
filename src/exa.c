@@ -138,9 +138,22 @@ static Bool __TegraEXAPrepareAccess(PixmapPtr pPix, int idx, void **ptr)
      * EXA doesn't sync for Upload/DownloadFromScreen, assuming that HW
      * will take care of the fencing.
      *
-     * Wait for the HW writes to be completed.
+     * Wait for the HW operations to be completed.
      */
-    TegraEXAWaitFence(priv->fence);
+    switch (idx) {
+    default:
+    case EXA_PREPARE_DEST:
+    case EXA_PREPARE_AUX_DEST:
+        TegraEXAWaitFence(priv->fence_read);
+
+        /* fall through */
+    case EXA_PREPARE_SRC:
+    case EXA_PREPARE_MASK:
+    case EXA_PREPARE_AUX_SRC:
+    case EXA_PREPARE_AUX_MASK:
+    case EXA_NUM_PREPARE_INDICES:
+        TegraEXAWaitFence(priv->fence_write);
+    }
 
     if (priv->type == TEGRA_EXA_PIXMAP_TYPE_POOL) {
         *ptr = mem_pool_entry_addr(&priv->pool_entry);
@@ -241,11 +254,18 @@ static void TegraEXAReleasePixmapData(TegraPtr tegra, TegraPixmapPtr priv)
      * this will be resolved by BO reservation that right now isn't supported
      * by kernel driver.
      */
-    if (priv->fence) {
-        TegraEXAWaitFence(priv->fence);
+    if (priv->fence_read) {
+        TegraEXAWaitFence(priv->fence_read);
 
-        tegra_stream_put_fence(priv->fence);
-        priv->fence = NULL;
+        tegra_stream_put_fence(priv->fence_read);
+        priv->fence_read = NULL;
+    }
+
+    if (priv->fence_write) {
+        TegraEXAWaitFence(priv->fence_write);
+
+        tegra_stream_put_fence(priv->fence_write);
+        priv->fence_write = NULL;
     }
 
     if (priv->type == TEGRA_EXA_PIXMAP_TYPE_POOL) {

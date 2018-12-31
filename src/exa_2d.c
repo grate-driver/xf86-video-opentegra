@@ -144,15 +144,18 @@ void TegraEXADoneSolid(PixmapPtr pPixmap)
     struct tegra_fence *fence;
 
     if (tegra->scratch.ops && tegra->cmds.status == TEGRADRM_STREAM_CONSTRUCT) {
-        if (priv->fence && !priv->fence->gr2d)
-            TegraEXAWaitFence(priv->fence);
+        if (priv->fence_write && !priv->fence_write->gr2d)
+            TegraEXAWaitFence(priv->fence_write);
+
+        if (priv->fence_read && !priv->fence_read->gr2d)
+            TegraEXAWaitFence(priv->fence_read);
 
         tegra_stream_end(&tegra->cmds);
         fence = tegra_stream_submit(&tegra->cmds, true);
 
-        if (priv->fence != fence) {
-            tegra_stream_put_fence(priv->fence);
-            priv->fence = tegra_stream_ref_fence(fence, &tegra->scratch);
+        if (priv->fence_write != fence) {
+            tegra_stream_put_fence(priv->fence_write);
+            priv->fence_write = tegra_stream_ref_fence(fence, &tegra->scratch);
         }
     } else {
         tegra_stream_cleanup(&tegra->cmds);
@@ -458,24 +461,36 @@ void TegraEXADoneCopy(PixmapPtr pDstPixmap)
         if (tegra->scratch.pSrc) {
             priv = exaGetPixmapDriverPrivate(tegra->scratch.pSrc);
 
-            if (priv->fence && !priv->fence->gr2d) {
-                TegraEXAWaitFence(priv->fence);
+            if (priv->fence_write && !priv->fence_write->gr2d) {
+                TegraEXAWaitFence(priv->fence_write);
 
-                tegra_stream_put_fence(priv->fence);
-                priv->fence = NULL;
+                tegra_stream_put_fence(priv->fence_write);
+                priv->fence_write = NULL;
             }
         }
 
         priv = exaGetPixmapDriverPrivate(pDstPixmap);
-        if (priv->fence && !priv->fence->gr2d)
-            TegraEXAWaitFence(priv->fence);
+        if (priv->fence_write && !priv->fence_write->gr2d)
+            TegraEXAWaitFence(priv->fence_write);
+
+        if (priv->fence_read && !priv->fence_read->gr2d)
+            TegraEXAWaitFence(priv->fence_read);
 
         tegra_stream_end(&tegra->cmds);
         fence = tegra_stream_submit(&tegra->cmds, true);
 
-        if (priv->fence != fence) {
-            tegra_stream_put_fence(priv->fence);
-            priv->fence = tegra_stream_ref_fence(fence, &tegra->scratch);
+        if (priv->fence_write != fence) {
+            tegra_stream_put_fence(priv->fence_write);
+            priv->fence_write = tegra_stream_ref_fence(fence, &tegra->scratch);
+        }
+
+        if (tegra->scratch.pSrc) {
+            priv = exaGetPixmapDriverPrivate(tegra->scratch.pSrc);
+
+            if (priv->fence_read != fence) {
+                tegra_stream_put_fence(priv->fence_read);
+                priv->fence_read = tegra_stream_ref_fence(fence, &tegra->scratch);
+            }
         }
     } else {
         tegra_stream_cleanup(&tegra->cmds);
