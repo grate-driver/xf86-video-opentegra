@@ -44,6 +44,11 @@ typedef union TegraXvVdpauInfo {
 
 typedef struct TegraOverlay {
     drm_overlay_fb *fb;
+
+    drm_overlay_fb *old_fb_rotated;
+    drm_overlay_fb *fb_rotated;
+    Rotation rotation;
+
     uint32_t plane_id;
     Bool visible;
     int crtc_id;
@@ -74,6 +79,9 @@ typedef struct TegraVideo {
     TegraOverlay overlay[2];
     drm_overlay_fb *old_fb;
     drm_overlay_fb *fb;
+
+    struct drm_tegra_channel *gr2d;
+    struct tegra_stream cmds;
 
     uint8_t passthrough_data[PASSTHROUGH_DATA_SIZE_V2];
     int passthrough;
@@ -203,6 +211,40 @@ static uint32_t xv_fourcc_to_drm(int format_id)
     return 0xFFFFFFFF;
 }
 
+static Bool TegraVideoOpenGPU(TegraVideoPtr priv, ScrnInfoPtr scrn)
+{
+    TegraPtr tegra = TegraPTR(scrn);
+    int err;
+
+    if (!priv->gr2d) {
+        err = drm_tegra_channel_open(&priv->gr2d, tegra->drm, DRM_TEGRA_GR2D);
+        if (err) {
+            ErrorMsg("failed to open 2D channel: %d\n", err);
+            priv->gr2d = NULL;
+            return FALSE;
+        }
+
+        err = tegra_stream_create(&priv->cmds);
+        if (err) {
+            ErrorMsg("failed to create command stream: %d\n", err);
+            drm_tegra_channel_close(priv->gr2d);
+            priv->gr2d = NULL;
+            return FALSE;
+        }
+    }
+
+    return TRUE;
+}
+
+static void TegraVideoCloseGPU(TegraVideoPtr priv)
+{
+    if (priv->gr2d) {
+        tegra_stream_destroy(&priv->cmds);
+        drm_tegra_channel_close(priv->gr2d);
+        priv->gr2d = NULL;
+    }
+}
+
 static int TegraDrmModeAtomicCommit(int fd,
                                     drmModeAtomicReqPtr req,
                                     uint32_t flags,
@@ -233,8 +275,13 @@ static Bool TegraVideoOverlayShowAtomic(TegraVideoPtr priv,
                                         int dst_w, int dst_h)
 {
     TegraOverlayPtr overlay = &priv->overlay[overlay_id];
-    drm_overlay_fb *fb      = priv->fb;
+    drm_overlay_fb *fb;
     int ret = 0;
+
+    if (overlay->fb_rotated)
+        fb = overlay->fb_rotated;
+    else
+        fb = overlay->fb;
 
     if (ret >= 0)
         ret = drmModeAtomicAddProperty(req, overlay->plane_id,
@@ -286,45 +333,15 @@ static Bool TegraVideoOverlayShowAtomic(TegraVideoPtr priv,
     return TRUE;
 }
 
-static Bool TegraVideoOverlayShow(TegraVideoPtr priv,
-                                  ScrnInfoPtr scrn,
-                                  drmModeAtomicReqPtr req,
-                                  int overlay_id,
-                                  int src_x, int src_y,
-                                  int src_w, int src_h,
-                                  int dst_x, int dst_y,
-                                  int dst_w, int dst_h)
+static void TegraVideoDestroyFramebuffer(ScrnInfoPtr scrn,
+                                         drm_overlay_fb **fb)
 {
-    TegraOverlayPtr overlay = &priv->overlay[overlay_id];
-    drm_overlay_fb *fb      = priv->fb;
+    TegraPtr tegra = TegraPTR(scrn);
 
-    if (overlay->src_x == src_x &&
-        overlay->src_y == src_y &&
-        overlay->src_w == src_w &&
-        overlay->src_h == src_h &&
-        overlay->dst_x == dst_x &&
-        overlay->dst_y == dst_y &&
-        overlay->dst_w == dst_w &&
-        overlay->dst_h == dst_h &&
-        overlay->fb    == fb)
-            return TRUE;
-
-    overlay->src_x = src_x;
-    overlay->src_y = src_y;
-    overlay->src_w = src_w;
-    overlay->src_h = src_h;
-    overlay->dst_x = dst_x;
-    overlay->dst_y = dst_y;
-    overlay->dst_w = dst_w;
-    overlay->dst_h = dst_h;
-    overlay->fb    = fb;
-
-    return TegraVideoOverlayShowAtomic(priv, scrn, req,
-                                       overlay_id,
-                                       src_x, src_y,
-                                       src_w, src_h,
-                                       dst_x, dst_y,
-                                       dst_w, dst_h);
+    if (*fb) {
+        drm_free_overlay_fb(tegra->fd, *fb);
+        *fb = NULL;
+    }
 }
 
 static void TegraVideoOverlayClose(TegraVideoPtr priv, ScrnInfoPtr scrn,
@@ -341,15 +358,9 @@ static void TegraVideoOverlayClose(TegraVideoPtr priv, ScrnInfoPtr scrn,
 
     overlay->visible = FALSE;
     overlay->fb      = NULL;
-}
 
-static void TegraVideoDestroyFramebuffer(TegraVideoPtr priv, ScrnInfoPtr scrn,
-                                         drm_overlay_fb **fb)
-{
-    TegraPtr tegra = TegraPTR(scrn);
-
-    drm_free_overlay_fb(tegra->fd, *fb);
-    *fb = NULL;
+    TegraVideoDestroyFramebuffer(scrn, &overlay->fb_rotated);
+    TegraVideoDestroyFramebuffer(scrn, &overlay->old_fb_rotated);
 }
 
 static Bool TegraCloseBo(ScrnInfoPtr scrn, uint32_t handle)
@@ -394,30 +405,32 @@ static Bool TegraVideoOverlayCreateFB(TegraVideoPtr priv, ScrnInfoPtr scrn,
                                       uint32_t drm_format,
                                       uint32_t width, uint32_t height,
                                       int passthrough,
-                                      uint8_t *passthrough_data)
+                                      void *passthrough_data)
 {
-    TegraPtr tegra = TegraPTR(scrn);
-    uint32_t *flinks = NULL;
-    uint32_t *pitches = NULL;
-    uint32_t *offsets = NULL;
+    TegraPtr tegra                   = TegraPTR(scrn);
+    TegraXvPassthroughDataV1 *pdata1 = passthrough_data;
+    TegraXvPassthroughDataV2 *pdata2 = passthrough_data;
+    uint32_t *flinks                 = NULL;
+    uint32_t *pitches                = NULL;
+    uint32_t *offsets                = NULL;
+    unsigned int data_size           = 0;
     uint32_t bo_handles[3];
-    unsigned int data_size = 0;
     drm_overlay_fb *fb;
     int i = 0, k = 0;
 
     switch (passthrough) {
     case 1:
         data_size = PASSTHROUGH_DATA_SIZE;
-        flinks    = (uint32_t*) (passthrough_data +  0);
-        pitches   = (uint32_t*) (passthrough_data + 12);
-        offsets   = (uint32_t*) (passthrough_data + 24);
+        flinks    = pdata1->flinks;
+        pitches   = pdata1->pitches;
+        offsets   = pdata1->offsets;
         break;
 
     case 2:
         data_size = PASSTHROUGH_DATA_SIZE_V2;
-        flinks    = (uint32_t*) (passthrough_data +  0);
-        pitches   = (uint32_t*) (passthrough_data + 16);
-        offsets   = (uint32_t*) (passthrough_data + 32);
+        flinks    = pdata2->flinks;
+        pitches   = pdata2->pitches;
+        offsets   = pdata2->offsets;
         break;
 
     default:
@@ -430,10 +443,7 @@ static Bool TegraVideoOverlayCreateFB(TegraVideoPtr priv, ScrnInfoPtr scrn,
         priv->fb->height  == height &&
         priv->passthrough == passthrough)
     {
-        if (!passthrough)
-            return TRUE;
-
-        if (priv->passthrough == passthrough &&
+        if (passthrough && priv->passthrough == passthrough &&
             memcmp(passthrough_data, priv->passthrough_data, data_size) == 0)
             return TRUE;
     }
@@ -452,10 +462,11 @@ static Bool TegraVideoOverlayCreateFB(TegraVideoPtr priv, ScrnInfoPtr scrn,
                 goto fail;
         }
 
-        fb = drm_create_fb_from_handle(tegra->fd, drm_format, width, height,
-                                       bo_handles, pitches, offsets);
+        fb = drm_create_fb_from_handle(tegra->drm, tegra->fd, drm_format,
+                                       width, height, bo_handles,
+                                       pitches, offsets);
     } else {
-        fb = drm_create_fb(tegra->fd, drm_format, width, height);
+        fb = drm_create_fb(tegra->drm, tegra->fd, drm_format, width, height);
     }
 
     if (fb == NULL) {
@@ -541,8 +552,11 @@ static void TegraVideoOverlayStop(ScrnInfoPtr scrn, void *data, Bool cleanup)
     for (id = 0; id < TEGRA_ARRAY_SIZE(priv->overlay); id++)
         TegraVideoOverlayClose(priv, scrn, id);
 
-    if (cleanup)
-        TegraVideoDestroyFramebuffer(priv, scrn, &priv->fb);
+    if (cleanup) {
+        TegraVideoDestroyFramebuffer(scrn, &priv->fb);
+
+        TegraVideoCloseGPU(priv);
+    }
 }
 
 static Bool TegraVideoOverlayInitialize(TegraVideoPtr priv, ScrnInfoPtr scrn,
@@ -585,6 +599,211 @@ end:
     return success;
 }
 
+static Bool TegraVideoCopyRotatedPlane(TegraVideoPtr priv,
+                                       struct drm_tegra_bo *dst_bo,
+                                       struct drm_tegra_bo *src_bo,
+                                       unsigned width, unsigned height,
+                                       unsigned pitch_dst, unsigned pitch_src,
+                                       uint32_t offset_dst, uint32_t offset_src,
+                                       unsigned bpp, Rotation rotation)
+{
+    struct tegra_fence *fence;
+    unsigned src_height;
+    unsigned src_width;
+    unsigned fr_type;
+    int err;
+
+    if (!dst_bo && !src_bo)
+        return TRUE;
+
+    if (!dst_bo || !src_bo)
+        return FALSE;
+
+    switch (rotation) {
+    case RR_Rotate_90:
+        fr_type = TEGRA2D_ROT_90;
+        src_width = height - 1;
+        src_height = width - 1;
+        break;
+
+    case RR_Rotate_180:
+        fr_type = TEGRA2D_ROT_180;
+        src_width = width - 1;
+        src_height = height - 1;
+        break;
+
+    case RR_Rotate_270:
+        fr_type = TEGRA2D_ROT_270;
+        src_width = height - 1;
+        src_height = width - 1;
+        break;
+
+    default:
+        return FALSE;
+    }
+
+    err = tegra_stream_begin(&priv->cmds, priv->gr2d);
+    if (err)
+        return FALSE;
+
+    tegra_stream_prep(&priv->cmds, 16);
+
+    tegra_stream_push_setclass(&priv->cmds, HOST1X_CLASS_GR2D);
+
+    tegra_stream_push(&priv->cmds, HOST1X_OPCODE_MASK(0x9, 0x9));
+    tegra_stream_push(&priv->cmds, 0x00000046); /* trigger 0 */
+    tegra_stream_push(&priv->cmds, 0x00000000); /* cmdsel */
+
+    tegra_stream_push(&priv->cmds, HOST1X_OPCODE_MASK(0x01e, 0x3));
+    tegra_stream_push(&priv->cmds, /* controlsecond*/
+                      (fr_type << 26) | (1 << 24));
+    tegra_stream_push(&priv->cmds, /* controlmain */
+                      (1 << 29) | (1 << 20) | ((bpp >> 4) << 16));
+
+    tegra_stream_push(&priv->cmds, HOST1X_OPCODE_MASK(0x2b, 0x1149));
+    tegra_stream_push_reloc(&priv->cmds, dst_bo, offset_dst);
+    tegra_stream_push(&priv->cmds, pitch_dst);
+    tegra_stream_push_reloc(&priv->cmds, src_bo, offset_src);
+    tegra_stream_push(&priv->cmds, pitch_src);
+    tegra_stream_push(&priv->cmds, src_height << 16 | src_width);
+
+    tegra_stream_push(&priv->cmds, HOST1X_OPCODE_NONINCR(0x046, 1));
+    tegra_stream_push(&priv->cmds, 0x00000000); /* tilemode */
+
+    tegra_stream_sync(&priv->cmds, DRM_TEGRA_SYNCPT_COND_OP_DONE);
+
+    tegra_stream_end(&priv->cmds);
+
+    fence = tegra_stream_submit(&priv->cmds, true);
+    if (!fence)
+        return FALSE;
+
+    return TRUE;
+}
+
+static Bool TegraVideoOverlayUpdateRotatedFb(TegraVideoPtr priv,
+                                             ScrnInfoPtr scrn,
+                                             TegraOverlayPtr sibling,
+                                             TegraOverlayPtr overlay,
+                                             Rotation rotation)
+{
+    TegraPtr tegra = TegraPTR(scrn);
+    drm_overlay_fb *fb_rotated;
+    uint32_t offsets[4];
+    int width, height;
+
+    switch (rotation) {
+    case RR_Rotate_0:
+        fb_rotated = NULL;
+        goto done;
+
+    case RR_Rotate_90:
+        width  = priv->fb->height;
+        height = priv->fb->width;
+
+        offsets[0] = priv->fb->width_pad;
+        offsets[1] = priv->fb->width_c_pad;
+        offsets[2] = priv->fb->width_c_pad;
+        offsets[3] = 0;
+        break;
+
+    case RR_Rotate_180:
+        width  = priv->fb->width;
+        height = priv->fb->height;
+
+        offsets[0] = priv->fb->height_pad;
+        offsets[1] = priv->fb->height_c_pad;
+        offsets[2] = priv->fb->height_c_pad;
+        offsets[3] = 0;
+        break;
+
+    case RR_Rotate_270:
+        width  = priv->fb->height;
+        height = priv->fb->width;
+
+        offsets[0] = priv->fb->height_offset;
+        offsets[1] = priv->fb->height_c_offset;
+        offsets[2] = priv->fb->height_c_offset;
+        offsets[3] = 0;
+        break;
+
+    default:
+        return FALSE;
+    }
+
+    if (sibling->fb_rotated &&
+        sibling->fb == priv->fb &&
+        sibling->rotation == rotation)
+    {
+        fb_rotated = drm_clone_fb(tegra->fd, sibling->fb_rotated);
+        if (!fb_rotated)
+            return FALSE;
+
+        goto done;
+    }
+
+    if (!TegraVideoOpenGPU(priv, scrn))
+        return FALSE;
+
+    fb_rotated = drm_create_fb2(tegra->drm, tegra->fd, priv->fb->format,
+                                width, height, offsets, FALSE);
+    if (!fb_rotated)
+        return FALSE;
+
+    if (!TegraVideoCopyRotatedPlane(priv,
+                                    fb_rotated->bo_y,
+                                    priv->fb->bo_y,
+                                    fb_rotated->width,
+                                    fb_rotated->height,
+                                    fb_rotated->pitch_y,
+                                    priv->fb->pitch_y,
+                                    0, priv->fb->offset_y,
+                                    priv->fb->bpp_y,
+                                    rotation))
+        goto err_destroy_fb;
+
+    if (!TegraVideoCopyRotatedPlane(priv,
+                                    fb_rotated->bo_cb,
+                                    priv->fb->bo_cb,
+                                    fb_rotated->width_c,
+                                    fb_rotated->height_c,
+                                    fb_rotated->pitch_cb,
+                                    priv->fb->pitch_cb,
+                                    0, priv->fb->offset_cb,
+                                    priv->fb->bpp_c,
+                                    rotation))
+        goto err_destroy_fb;
+
+    if (!TegraVideoCopyRotatedPlane(priv,
+                                    fb_rotated->bo_cr,
+                                    priv->fb->bo_cr,
+                                    fb_rotated->width_c,
+                                    fb_rotated->height_c,
+                                    fb_rotated->pitch_cr,
+                                    priv->fb->pitch_cr,
+                                    0, priv->fb->offset_cr,
+                                    priv->fb->bpp_c,
+                                    rotation))
+        goto err_destroy_fb;
+
+    tegra_stream_flush(&priv->cmds);
+
+done:
+    TegraVideoDestroyFramebuffer(scrn, &overlay->old_fb_rotated);
+
+    overlay->old_fb_rotated = overlay->fb_rotated;
+    overlay->fb_rotated     = fb_rotated;
+
+    return TRUE;
+
+err_destroy_fb:
+    tegra_stream_flush(&priv->cmds);
+
+    TegraVideoDestroyFramebuffer(scrn, &fb_rotated);
+
+    return FALSE;
+}
+
 static Bool TegraVideoOverlayPutImageOnOverlay(TegraVideoPtr priv,
                                                ScrnInfoPtr scrn,
                                                int overlay_id,
@@ -595,19 +814,104 @@ static Bool TegraVideoOverlayPutImageOnOverlay(TegraVideoPtr priv,
                                                short dst_w, short dst_h,
                                                DrawablePtr draw)
 {
+    TegraOverlayPtr sibling       = &priv->overlay[!overlay_id];
     TegraOverlayPtr overlay       = &priv->overlay[overlay_id];
     xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(scrn);
     xf86CrtcPtr crtc              = xf86_config->crtc[overlay_id];
+    drm_overlay_fb *fb            = priv->fb;
+    Rotation rotation             = crtc->rotation;
+    int dx = dst_x - crtc->x;
+    int dy = dst_y - crtc->y;
+    int dw = dst_w, dh = dst_h;
+    int sx = src_x, sy = src_y;
+    int sw = src_w, sh = src_h;
 
     if (!overlay->visible)
         return TRUE;
 
-    dst_x -= crtc->x;
-    dst_y -= crtc->y;
+    switch (rotation) {
+    case RR_Rotate_0:
+        dst_x = dx;
+        dst_y = dy;
+        break;
 
-    return TegraVideoOverlayShow(priv, scrn, req, overlay_id,
-                                 src_x, src_y, src_w, src_h,
-                                 dst_x, dst_y, dst_w, dst_h);
+    case RR_Rotate_90:
+        dst_x = dy;
+        dst_y = crtc->mode.VDisplay - dw - dx;
+        dst_w = dh;
+        dst_h = dw;
+
+        src_x = sy;
+        src_y = fb->width - sw - sx;
+        src_w = sh;
+        src_h = sw;
+        break;
+
+    case RR_Rotate_180:
+        dst_x = crtc->mode.HDisplay - dw - dx;
+        dst_y = crtc->mode.VDisplay - dh - dy;
+        dst_w = dw;
+        dst_h = dh;
+
+        src_x = fb->width - sw - sx;
+        src_y = fb->height - sh - sy;
+        src_w = sw;
+        src_h = sh;
+        break;
+
+    case RR_Rotate_270:
+        dst_x = crtc->mode.HDisplay - dh - dy;
+        dst_y = dx;
+        dst_w = dh;
+        dst_h = dw;
+
+        src_x = fb->height - sh - sy;
+        src_y = sx;
+        src_w = sh;
+        src_h = sw;
+        break;
+
+    default:
+        return FALSE;
+    }
+
+    if (overlay->fb != fb || overlay->rotation != rotation) {
+        if (!TegraVideoOverlayUpdateRotatedFb(priv, scrn, sibling, overlay,
+                                              rotation)) {
+            ErrorMsg("Failed to rotate framebuffer\n");
+            return FALSE;
+        }
+    }
+
+    if (overlay->rotation == rotation &&
+        overlay->src_x    == src_x &&
+        overlay->src_y    == src_y &&
+        overlay->src_w    == src_w &&
+        overlay->src_h    == src_h &&
+        overlay->dst_x    == dst_x &&
+        overlay->dst_y    == dst_y &&
+        overlay->dst_w    == dst_w &&
+        overlay->dst_h    == dst_h &&
+        overlay->fb       == fb)
+            return TRUE;
+
+    overlay->rotation = rotation;
+    overlay->src_x    = src_x;
+    overlay->src_y    = src_y;
+    overlay->src_w    = src_w;
+    overlay->src_h    = src_h;
+    overlay->dst_x    = dst_x;
+    overlay->dst_y    = dst_y;
+    overlay->dst_w    = dst_w;
+    overlay->dst_h    = dst_h;
+    overlay->fb       = fb;
+
+    return TegraVideoOverlayShowAtomic(priv, scrn, req,
+                                       overlay_id,
+                                       src_x, src_y,
+                                       src_w, src_h,
+                                       dst_x, dst_y,
+                                       dst_w, dst_h);
 }
 
 static Bool TegraVideoOverlayPutImageOnOverlays(TegraVideoPtr priv,
@@ -643,7 +947,7 @@ static Bool TegraVideoOverlayPutImageOnOverlays(TegraVideoPtr priv,
         }
     }
 
-    if (priv->passthrough > 1)
+    if (priv->passthrough != 1)
         flags |= DRM_MODE_ATOMIC_NONBLOCK;
 
     err = TegraDrmModeAtomicCommit(tegra->fd, req, flags, NULL);
@@ -703,7 +1007,8 @@ static int TegraVideoOverlayPutImage(ScrnInfoPtr scrn,
 {
     TegraVideoPtr priv  = data;
     int passthrough     = 0;
-    int ret = Success;
+    int ret             = Success;
+    int id;
     Bool visible;
 
     if (!xv_fourcc_valid(format))
@@ -745,8 +1050,12 @@ static int TegraVideoOverlayPutImage(ScrnInfoPtr scrn,
         ret = BadImplementation;
 
 clean_up_old_fb:
-    if (priv->old_fb)
-        TegraVideoDestroyFramebuffer(priv, scrn, &priv->old_fb);
+    TegraVideoDestroyFramebuffer(scrn, &priv->old_fb);
+
+    for (id = 0; id < TEGRA_ARRAY_SIZE(priv->overlay); id++) {
+        TegraOverlayPtr overlay = &priv->overlay[id];
+        TegraVideoDestroyFramebuffer(scrn, &overlay->old_fb_rotated);
+    }
 
     return ret;
 }
