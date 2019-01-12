@@ -126,8 +126,13 @@
 
 #define TEGRA_ARRAY_SIZE(x) (sizeof(x) / sizeof(*x))
 
-#define __TEGRA_ALIGN_MASK(x, mask) (((x) + (mask)) & ~(mask))
-#define TEGRA_ALIGN(x, a)           __TEGRA_ALIGN_MASK(x, (typeof(x))(a) - 1)
+#define __TEGRA_ALIGN_MASK(x, y)    ((__typeof__(x))((y)-1))
+#define TEGRA_ROUND_UP(x, y)        ((((x)-1) | __TEGRA_ALIGN_MASK(x, y))+1)
+#define TEGRA_ROUND_DOWN(x, y)      ((x) & ~__TEGRA_ALIGN_MASK(x, y))
+
+#define TEGRA_ALIGN(x, a)           TEGRA_ROUND_UP(x, a)
+
+#define TEGRA_ALIGNED(x, a)         (!((x) & ((a) - 1)))
 
 #define TEGRA_PITCH_ALIGN(width, bpp, align)    \
     TEGRA_ALIGN(width * ((bpp + 7) / 8), align)
@@ -188,12 +193,12 @@ typedef struct _TegraRec
 
 #define TegraPTR(p) ((TegraPtr)((p)->driverPrivate))
 
-void TegraXvScreenInit(ScreenPtr pScreen);
+Bool TegraXvScreenInit(ScreenPtr pScreen);
 
-void TegraEXAScreenInit(ScreenPtr pScreen);
+Bool TegraEXAScreenInit(ScreenPtr pScreen);
 void TegraEXAScreenExit(ScreenPtr pScreen);
 
-void TegraDRI2ScreenInit(ScreenPtr pScreen);
+Bool TegraDRI2ScreenInit(ScreenPtr pScreen);
 void TegraDRI2ScreenExit(ScreenPtr pScreen);
 
 Bool TegraVBlankScreenInit(ScreenPtr screen);

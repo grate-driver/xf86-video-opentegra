@@ -179,11 +179,11 @@ static void * TegraEXAFridgeMapPixmap(TegraPixmapPtr pixmap)
     if (pixmap->type == TEGRA_EXA_PIXMAP_TYPE_FALLBACK)
         return pixmap->fallback;
 
-    if (pixmap->fence) {
-        TegraEXAWaitFence(pixmap->fence);
+    if (pixmap->fence_write) {
+        TegraEXAWaitFence(pixmap->fence_write);
 
-        tegra_stream_put_fence(pixmap->fence);
-        pixmap->fence = NULL;
+        tegra_stream_put_fence(pixmap->fence_write);
+        pixmap->fence_write = NULL;
     }
 
     if (pixmap->type == TEGRA_EXA_PIXMAP_TYPE_POOL)
@@ -261,7 +261,8 @@ static void TegraEXAResurrectAccelPixmap(TegraPtr tegra, TegraPixmapPtr pixmap)
            TegraEXAAllocateDRM(tegra, pixmap, data_size));
 
     if (ret == TRUE) {
-        pixmap->fence = NULL;
+        pixmap->fence_write = NULL;
+        pixmap->fence_read  = NULL;
         pixmap_data = TegraEXAFridgeMapPixmap(pixmap);
 
         if (!pixmap_data) {
@@ -538,7 +539,8 @@ static void TegraEXAThawPixmapData(TegraPtr tegra, TegraPixmapPtr pixmap,
     carg.format             = pixmap->picture_format;
 
     data_size = TegraPixmapSize(pixmap);
-    pixmap->fence = NULL;
+    pixmap->fence_write = NULL;
+    pixmap->fence_read  = NULL;
 
 retry:
     if (accel || pixmap->accelerated)
@@ -595,6 +597,13 @@ static int TegraEXAFreezePixmap(TegraPtr tegra, TegraPixmapPtr pixmap)
     if (!pixmap_data) {
         ErrorMsg("failed to map pixmap data\n");
         return -1;
+    }
+
+    if (pixmap->fence_read) {
+        TegraEXAWaitFence(pixmap->fence_read);
+
+        tegra_stream_put_fence(pixmap->fence_read);
+        pixmap->fence_read = NULL;
     }
 
     carg = TegraEXASelectCompression(tegra, pixmap, data_size, pixmap_data);

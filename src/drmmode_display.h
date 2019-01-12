@@ -28,15 +28,6 @@
 #ifndef DRMMODE_DISPLAY_H
 #define DRMMODE_DISPLAY_H
 
-/* the perfect storm */
-#if XF86_CRTC_VERSION >= 5
-#  if defined(HAVE_DRMPRIMEFDTOHANDLE)
-#    if HAVE_SCREEN_SPECIFIC_PRIVATE_KEYS
-#      define TEGRA_OUTPUT_SLAVE_SUPPORT 1
-#    endif
-#  endif
-#endif
-
 struct dumb_bo {
     struct drm_tegra_bo *bo;
     uint32_t handle;
@@ -58,9 +49,6 @@ typedef struct {
     drmEventContext event_context;
     struct dumb_bo *front_bo;
     Bool sw_cursor;
-
-    Bool shadow_enable;
-    void *shadow_fb;
 
 #ifdef HAVE_SCREEN_SPECIFIC_PRIVATE_KEYS
     DevPrivateKeyRec pixmapPrivateKeyRec;
@@ -115,22 +103,6 @@ typedef struct {
     int enc_clone_mask;
 } drmmode_output_private_rec, *drmmode_output_private_ptr;
 
-#ifdef TEGRA_OUTPUT_SLAVE_SUPPORT
-typedef struct _TegraPixmapPriv {
-    uint32_t fb_id;
-    struct dumb_bo *backing_bo; /* if this pixmap is backed by a dumb bo */
-} TegraPixmapPrivRec, *TegraPixmapPrivPtr;
-
-extern DevPrivateKeyRec TegraPixmapPrivateKeyRec;
-#define TegraPixmapPrivateKey (&TegraPixmapPrivateKeyRec)
-
-#define TegraGetPixmapPriv(drmmode, p) ((TegraPixmapPrivPtr)dixGetPrivateAddr(&(p)->devPrivates, &(drmmode)->pixmapPrivateKeyRec))
-
-void *drmmode_map_slave_bo(drmmode_ptr drmmode, TegraPixmapPrivPtr ppriv);
-Bool drmmode_SetSlaveBO(PixmapPtr ppix, drmmode_ptr drmmode, int fd_handle,
-                        int pitch, int size);
-#endif
-
 extern Bool drmmode_pre_init(ScrnInfoPtr pScrn, drmmode_ptr drmmode, int cpp);
 void drmmode_adjust_frame(ScrnInfoPtr pScrn, drmmode_ptr drmmode, int x, int y);
 extern Bool drmmode_set_desired_modes(ScrnInfoPtr pScrn, drmmode_ptr drmmode);
@@ -145,13 +117,12 @@ struct drm_tegra_bo *drmmode_get_front_bo(drmmode_ptr drmmode);
 Bool drmmode_map_cursor_bos(ScrnInfoPtr pScrn, drmmode_ptr drmmode);
 void drmmode_free_bos(ScrnInfoPtr pScrn, drmmode_ptr drmmode);
 void drmmode_get_default_bpp(ScrnInfoPtr pScrn, drmmode_ptr drmmmode, int *depth, int *bpp);
+void *drmmode_crtc_map_rotate_bo(ScrnInfoPtr scrn, int crtc_num);
+struct drm_tegra_bo *
+drmmode_crtc_get_rotate_bo(ScrnInfoPtr scrn, int crtc_num);
 
 #ifndef DRM_CAP_DUMB_PREFERRED_DEPTH
 #define DRM_CAP_DUMB_PREFERRED_DEPTH 3
-#endif
-
-#ifndef DRM_CAP_DUMB_PREFER_SHADOW
-#define DRM_CAP_DUMB_PREFER_SHADOW 4
 #endif
 
 #endif

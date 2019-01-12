@@ -788,7 +788,7 @@ tegra_dri2_register_frame_event_resource_types(void)
     return TRUE;
 }
 
-void TegraDRI2ScreenInit(ScreenPtr screen)
+Bool TegraDRI2ScreenInit(ScreenPtr screen)
 {
     ScrnInfoPtr scrn = xf86ScreenToScrn(screen);
     TegraPtr tegra = TegraPTR(scrn);
@@ -799,21 +799,21 @@ void TegraDRI2ScreenInit(ScreenPtr screen)
     };
 
     if (tegra->dri2_enabled)
-        return;
+        return TRUE;
 
     if (!xf86LoaderCheckSymbol("DRI2Version"))
-        return;
+        return FALSE;
 
     if (!dixRegisterPrivateKey(&tegra_dri2_client_key,
                                PRIVATE_CLIENT, sizeof(XID)))
-        return;
+        return FALSE;
 
     if (serverGeneration != tegra_dri2_server_generation) {
         tegra_dri2_server_generation = serverGeneration;
         if (!tegra_dri2_register_frame_event_resource_types()) {
             xf86DrvMsg(scrn->scrnIndex, X_WARNING,
                        "Cannot register DRI2 frame event resources\n");
-            return;
+            return FALSE;
         }
     }
 
@@ -837,6 +837,8 @@ void TegraDRI2ScreenInit(ScreenPtr screen)
     DRI2ScreenInit(screen, &info);
 
     tegra->dri2_enabled = TRUE;
+
+    return TRUE;
 }
 
 void TegraDRI2ScreenExit(ScreenPtr screen)

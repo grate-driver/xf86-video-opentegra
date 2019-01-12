@@ -37,17 +37,40 @@ typedef struct tegra_attrib_bo {
     __fp16 *map;
 } TegraEXAAttribBo;
 
+enum Tegra2DOrientation {
+    TEGRA2D_FLIP_X,
+    TEGRA2D_FLIP_Y,
+    TEGRA2D_TRANS_LR,
+    TEGRA2D_TRANS_RL,
+    TEGRA2D_ROT_90,
+    TEGRA2D_ROT_180,
+    TEGRA2D_ROT_270,
+    TEGRA2D_IDENTITY,
+};
+
+enum Tegra2DCompositeOp {
+    TEGRA2D_NONE,
+    TEGRA2D_SOLID,
+    TEGRA2D_COPY,
+};
+
 typedef struct tegra_exa_scratch {
+    enum Tegra2DOrientation orientation;
+    enum Tegra2DCompositeOp op2d;
     struct tegra_fence *marker;
     TegraEXAAttribBo *attribs;
+    PictTransform transform;
     Bool attribs_alloc_err;
     struct drm_tegra *drm;
     unsigned attrib_itr;
     unsigned vtx_cnt;
     PixmapPtr pMask;
     PixmapPtr pSrc;
-    Bool solid2D;
     unsigned ops;
+    int srcX;
+    int srcY;
+    int dstX;
+    int dstY;
 } TegraEXAScratch, *TegraEXAScratchPtr;
 
 typedef struct {
@@ -94,13 +117,16 @@ typedef struct _TegraEXARec{
 #define TEGRA_EXA_COMPRESSION_PNG           4
 
 typedef struct {
-    Bool no_compress : 1;   /* pixmap's data compress poorly */
-    Bool accelerated : 1;   /* pixmap was accelerated at least once */
-    Bool scanout : 1;       /* pixmap backs frontbuffer BO */
-    Bool frozen : 1;        /* pixmap's data compressed */
-    Bool accel : 1;         /* pixmap acceleratable */
-    Bool cold : 1;          /* pixmap scheduled for compression */
-    Bool dri : 1;           /* pixmap's BO was exported */
+    Bool scanout_rotated : 1;   /* pixmap backs rotated frontbuffer BO */
+    Bool no_compress : 1;       /* pixmap's data compress poorly */
+    Bool accelerated : 1;       /* pixmap was accelerated at least once */
+    Bool scanout : 1;           /* pixmap backs frontbuffer BO */
+    Bool frozen : 1;            /* pixmap's data compressed */
+    Bool accel : 1;             /* pixmap acceleratable */
+    Bool cold : 1;              /* pixmap scheduled for compression */
+    Bool dri : 1;               /* pixmap's BO was exported */
+
+    unsigned crtc : 2;          /* pixmap's CRTC ID (for display rotation) */
 
     unsigned type : 2;
 
@@ -108,7 +134,8 @@ typedef struct {
         struct {
             union {
                 struct {
-                    struct tegra_fence *fence;
+                    struct tegra_fence *fence_write;
+                    struct tegra_fence *fence_read;
 
                     union {
                         struct mem_pool_entry pool_entry;
@@ -141,6 +168,54 @@ unsigned int TegraEXAPitch(unsigned int width, unsigned int height,
 void TegraEXAWaitFence(struct tegra_fence *fence);
 
 unsigned TegraPixmapSize(TegraPixmapPtr pixmap);
+
+unsigned TegraEXAHeightHwAligned(unsigned int height, unsigned int bpp);
+
+unsigned long TegraEXAPixmapOffset(PixmapPtr pix);
+
+struct drm_tegra_bo * TegraEXAPixmapBO(PixmapPtr pix);
+
+Bool TegraEXAPrepareSolid(PixmapPtr pPixmap, int op, Pixel planemask,
+                          Pixel color);
+
+void TegraEXASolid(PixmapPtr pPixmap, int px1, int py1, int px2, int py2);
+
+void TegraEXADoneSolid(PixmapPtr pPixmap);
+
+Bool TegraEXAPrepareCopyExt(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
+                            int op, Pixel planemask);
+
+Bool TegraEXAPrepareCopy(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
+                         int dx, int dy, int op, Pixel planemask);
+
+void TegraEXACopy(PixmapPtr pDstPixmap, int srcX, int srcY, int dstX,
+                  int dstY, int width, int height);
+
+void TegraEXACopyExt(PixmapPtr pDstPixmap, int srcX, int srcY, int dstX,
+                     int dstY, int width, int height);
+
+void TegraEXADoneCopy(PixmapPtr pDstPixmap);
+
+void TegraCompositeReleaseAttribBuffers(TegraEXAScratchPtr scratch);
+
+Bool TegraEXACheckComposite(int op, PicturePtr pSrcPicture,
+                            PicturePtr pMaskPicture,
+                            PicturePtr pDstPicture);
+
+Bool TegraEXAPrepareComposite(int op, PicturePtr pSrcPicture,
+                              PicturePtr pMaskPicture,
+                              PicturePtr pDstPicture,
+                              PixmapPtr pSrc,
+                              PixmapPtr pMask,
+                              PixmapPtr pDst);
+
+void TegraEXAComposite(PixmapPtr pDst,
+                       int srcX, int srcY,
+                       int maskX, int maskY,
+                       int dstX, int dstY,
+                       int width, int height);
+
+void TegraEXADoneComposite(PixmapPtr pDst);
 
 #endif
 
