@@ -838,6 +838,8 @@ Bool TegraDRI2ScreenInit(ScreenPtr screen)
 
     tegra->dri2_enabled = TRUE;
 
+    xf86DrvMsg(scrn->scrnIndex, X_INFO, "DRI2 initialized\n");
+
     return TRUE;
 }
 

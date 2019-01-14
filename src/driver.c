@@ -670,20 +670,14 @@ TegraScreenInit(SCREEN_INIT_ARGS_DECL)
 
     xf86SetBlackWhitePixels(pScreen);
 
-    if (!TegraEXAScreenInit(pScreen))
-        return FALSE;
+    TegraEXAScreenInit(pScreen);
 
     if (!TegraScreenXf86Init(pScreen))
         return FALSE;
 
-    if (!TegraXvScreenInit(pScreen))
-        return FALSE;
-
-    if (!TegraVBlankScreenInit(pScreen))
-        return FALSE;
-
-    if (!TegraDRI2ScreenInit(pScreen))
-        return FALSE;
+    TegraXvScreenInit(pScreen);
+    TegraVBlankScreenInit(pScreen);
+    TegraDRI2ScreenInit(pScreen);
 
     if (!miCreateDefColormap(pScreen))
         return FALSE;

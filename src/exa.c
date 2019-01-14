@@ -671,6 +671,8 @@ Bool TegraEXAScreenInit(ScreenPtr pScreen)
         goto release_mm;
     }
 
+    xf86DrvMsg(pScrn->scrnIndex, X_INFO, "EXA initialized\n");
+
     priv->driver = exa;
     tegra->exa = priv;
 

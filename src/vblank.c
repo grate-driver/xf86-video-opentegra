@@ -315,6 +315,8 @@ TegraVBlankScreenInit(ScreenPtr screen)
                                    tegra_drm_wakeup_handler, screen);
 #endif
 
+    xf86DrvMsg(scrn->scrnIndex, X_INFO, "VBLANK initialized\n");
+
     return TRUE;
 }
 
