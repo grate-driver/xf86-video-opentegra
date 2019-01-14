@@ -86,7 +86,8 @@ typedef struct TegraVideo {
     uint8_t passthrough_data[PASSTHROUGH_DATA_SIZE_V2];
     int passthrough;
 
-    int best_overlay_id;
+    unsigned int overlays_num;
+    unsigned int best_overlay_id;
 } TegraVideo, *TegraVideoPtr;
 
 typedef struct TegraXvAdaptor {
@@ -530,7 +531,7 @@ static int TegraVideoOverlayGetAttribute(ScrnInfoPtr scrn, Atom attribute,
         vdpau_info.crtc_pipe = priv->best_overlay_id;
         vdpau_info.visible = 0;
 
-        for (id = 0; id < TEGRA_ARRAY_SIZE(priv->overlay); id++) {
+        for (id = 0; id < priv->overlays_num; id++) {
             overlay = &priv->overlay[id];
 
             vdpau_info.visible |= overlay->visible;
@@ -549,7 +550,7 @@ static void TegraVideoOverlayStop(ScrnInfoPtr scrn, void *data, Bool cleanup)
     TegraVideoPtr priv = data;
     int id;
 
-    for (id = 0; id < TEGRA_ARRAY_SIZE(priv->overlay); id++)
+    for (id = 0; id < priv->overlays_num; id++)
         TegraVideoOverlayClose(priv, scrn, id);
 
     if (cleanup) {
@@ -934,7 +935,7 @@ static Bool TegraVideoOverlayPutImageOnOverlays(TegraVideoPtr priv,
         return FALSE;
     }
 
-    for (id = 0; id < TEGRA_ARRAY_SIZE(priv->overlay); id++) {
+    for (id = 0; id < priv->overlays_num; id++) {
         if (!TegraVideoOverlayPutImageOnOverlay(priv, scrn, id, req,
                                                 src_x, src_y,
                                                 dst_x, dst_y,
@@ -972,7 +973,7 @@ static int TegraVideoUpdateOverlayCoverage(ScrnInfoPtr scrn,
     int coverage;
     int id;
 
-    for (id = 0; id < TEGRA_ARRAY_SIZE(priv->overlay); id++) {
+    for (id = 0; id < priv->overlays_num; id++) {
         coverage = tegra_crtc_coverage(draw, id);
         priv->overlay[id].visible = !!coverage;
 
@@ -1052,7 +1053,7 @@ static int TegraVideoOverlayPutImage(ScrnInfoPtr scrn,
 clean_up_old_fb:
     TegraVideoDestroyFramebuffer(scrn, &priv->old_fb);
 
-    for (id = 0; id < TEGRA_ARRAY_SIZE(priv->overlay); id++) {
+    for (id = 0; id < priv->overlays_num; id++) {
         TegraOverlayPtr overlay = &priv->overlay[id];
         TegraVideoDestroyFramebuffer(scrn, &overlay->old_fb_rotated);
     }
@@ -1186,7 +1187,7 @@ static Bool TegraXvGetDrmProps(ScrnInfoPtr scrn, TegraVideoPtr priv)
     drmModeObjectPropertiesPtr properties;
     int id;
 
-    for (id = 0; id < TEGRA_ARRAY_SIZE(priv->overlay); id++) {
+    for (id = 0; id < priv->overlays_num; id++) {
         overlay = &priv->overlay[id];
 
         properties = drmModeObjectGetProperties(tegra->fd, overlay->plane_id,
@@ -1257,6 +1258,13 @@ err_free_props:
     return FALSE;
 }
 
+static void TegraXvInit(TegraVideoPtr priv, ScrnInfoPtr scrn)
+{
+    xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(scrn);
+
+    priv->overlays_num = xf86_config->num_crtc;
+}
+
 Bool TegraXvScreenInit(ScreenPtr pScreen)
 {
     ScrnInfoPtr scrn = xf86ScreenToScrn(pScreen);
@@ -1297,7 +1305,9 @@ Bool TegraXvScreenInit(ScreenPtr pScreen)
     xvAdaptor = &adaptor->xv;
     priv = &adaptor->private;
 
-    for (id = 0; id < TEGRA_ARRAY_SIZE(priv->overlay); id++) {
+    TegraXvInit(priv, scrn);
+
+    for (id = 0; id < priv->overlays_num; id++) {
         if (!TegraVideoOverlayInitialize(priv, scrn, id))
             goto err_free_adaptor;
     }
