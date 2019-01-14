@@ -1315,5 +1315,7 @@ Bool TegraXvScreenInit(ScreenPtr pScreen)
 err_free_adaptor:
     free(adaptor);
 
+    ErrorMsg("XV initialization failed\n");
+
     return FALSE;
 }
