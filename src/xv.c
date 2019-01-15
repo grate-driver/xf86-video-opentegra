@@ -113,6 +113,10 @@ static XF86ImageRec XvImages[] = {
 
 static XF86VideoFormatRec XvFormats[] = {
     {
+        .depth = 16,
+        .class = TrueColor,
+    },
+    {
         .depth = 24,
         .class = TrueColor,
     },
