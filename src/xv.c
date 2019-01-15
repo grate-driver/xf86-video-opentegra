@@ -572,10 +572,13 @@ static Bool TegraVideoOverlayInitialize(TegraVideoPtr priv, ScrnInfoPtr scrn,
 
     res = drmModeGetResources(tegra->fd);
     if (!res) {
-        return FALSE;
+        ErrorMsg("drmModeGetResources failed\n");
+        success = FALSE;
+        goto end;
     }
 
     if (overlay_id > res->count_crtcs) {
+        ErrorMsg("Invalid overlay_id %u:%u\n", overlay_id, res->count_crtcs);
         success = FALSE;
         goto end;
     }
@@ -1315,8 +1318,10 @@ Bool TegraXvScreenInit(ScreenPtr pScreen)
     if (!TegraXvGetDrmProps(scrn, priv))
         goto err_free_adaptor;
 
-    if (!xf86XVScreenInit(pScreen, &xvAdaptor, 1))
+    if (!xf86XVScreenInit(pScreen, &xvAdaptor, 1)) {
+        ErrorMsg("xf86XVScreenInit failed\n");
         goto err_free_adaptor;
+    }
 
     xf86DrvMsg(scrn->scrnIndex, X_INFO, "XV adaptor initialized\n");
 
