@@ -670,7 +670,7 @@ Bool TegraEXAScreenInit(ScreenPtr pScreen)
         goto close_gr2d;
     }
 
-    err = tegra_stream_create(&priv->cmds);
+    err = tegra_stream_create(&priv->cmds, tegra);
     if (err < 0) {
         ErrorMsg("failed to create command stream: %d\n", err);
         goto close_gr3d;

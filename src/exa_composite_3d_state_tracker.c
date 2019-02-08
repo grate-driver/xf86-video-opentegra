@@ -528,7 +528,7 @@ static Bool TegraGR3DStateAppend(TegraGR3DStatePtr state, TegraEXAPtr tegra,
     int err;
 
     if (state->clean) {
-        err = tegra_stream_begin(cmds, tegra->gr3d);
+        err = tegra_stream_begin(cmds);
         if (err)
             return FALSE;
     }

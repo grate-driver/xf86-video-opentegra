@@ -110,7 +110,7 @@ static Bool TegraEXAPrepareSolid(PixmapPtr pPixmap, int op, Pixel planemask,
         return FALSE;
     }
 
-    err = tegra_stream_begin(&tegra->cmds, tegra->gr2d);
+    err = tegra_stream_begin(&tegra->cmds);
     if (err < 0)
             return FALSE;
 
@@ -166,7 +166,7 @@ static void TegraEXASolid(PixmapPtr pPixmap, int px1, int py1, int px2, int py2)
     tegra_stream_push(&tegra->cmds, HOST1X_OPCODE_MASK(0x38, 0x5));
     tegra_stream_push(&tegra->cmds, (py2 - py1) << 16 | (px2 - px1));
     tegra_stream_push(&tegra->cmds, py1 << 16 | px1);
-    tegra_stream_sync(&tegra->cmds, DRM_TEGRA_SYNCPT_COND_OP_DONE);
+    tegra_stream_sync(&tegra->cmds, DRM_TEGRA_SYNCPT_COND_OP_DONE, true);
 
     tegra->scratch.ops++;
 }
@@ -291,7 +291,7 @@ static Bool TegraEXAPrepareCopyExt(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
              pDstPixmap->drawable.bitsPerPixel,
              pDstPixmap->devKind);
 
-    err = tegra_stream_begin(&tegra->cmds, tegra->gr2d);
+    err = tegra_stream_begin(&tegra->cmds);
     if (err < 0)
         return FALSE;
 
@@ -482,7 +482,7 @@ static void TegraEXACopyExt(PixmapPtr pDstPixmap, int srcX, int srcY, int dstX,
     tegra_stream_push(&tegra->cmds, controlmain);
     tegra_stream_push(&tegra->cmds, HOST1X_OPCODE_NONINCR(0x37, 0x1));
     tegra_stream_push(&tegra->cmds, height << 16 | width); /* srcsize */
-    tegra_stream_sync(&tegra->cmds, DRM_TEGRA_SYNCPT_COND_OP_DONE);
+    tegra_stream_sync(&tegra->cmds, DRM_TEGRA_SYNCPT_COND_OP_DONE, true);
 
     tegra->scratch.ops++;
 }
@@ -525,7 +525,7 @@ static void TegraEXACopy(PixmapPtr pDstPixmap, int srcX, int srcY, int dstX,
     tegra_stream_push(&tegra->cmds, height << 16 | width); /* dstsize */
     tegra_stream_push(&tegra->cmds, srcY << 16 | srcX); /* srcps */
     tegra_stream_push(&tegra->cmds, dstY << 16 | dstX); /* dstps */
-    tegra_stream_sync(&tegra->cmds, DRM_TEGRA_SYNCPT_COND_OP_DONE);
+    tegra_stream_sync(&tegra->cmds, DRM_TEGRA_SYNCPT_COND_OP_DONE, true);
 
     tegra->scratch.ops++;
 }

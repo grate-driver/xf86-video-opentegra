@@ -382,7 +382,7 @@ static Bool TegraVideoOpenGPU(TegraVideoPtr priv, ScrnInfoPtr scrn)
             return FALSE;
         }
 
-        err = tegra_stream_create(&priv->cmds);
+        err = tegra_stream_create(&priv->cmds, tegra);
         if (err) {
             ErrorMsg("failed to create command stream: %d\n", err);
             drm_tegra_channel_close(priv->gr2d);
@@ -1188,7 +1188,7 @@ static Bool TegraVideoCopyRotatedPlane(TegraVideoPtr priv,
         return FALSE;
     }
 
-    err = tegra_stream_begin(&priv->cmds, priv->gr2d);
+    err = tegra_stream_begin(&priv->cmds);
     if (err)
         return FALSE;
 
@@ -1216,7 +1216,7 @@ static Bool TegraVideoCopyRotatedPlane(TegraVideoPtr priv,
     tegra_stream_push(&priv->cmds, HOST1X_OPCODE_NONINCR(0x046, 1));
     tegra_stream_push(&priv->cmds, 0x00000000); /* tilemode */
 
-    tegra_stream_sync(&priv->cmds, DRM_TEGRA_SYNCPT_COND_OP_DONE);
+    tegra_stream_sync(&priv->cmds, DRM_TEGRA_SYNCPT_COND_OP_DONE, false);
 
     tegra_stream_end(&priv->cmds);
 
