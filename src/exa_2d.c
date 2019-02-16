@@ -71,21 +71,27 @@ Bool TegraEXAPrepareSolid(PixmapPtr pPixmap, int op, Pixel planemask,
     /*
      * It should be possible to support this, but let's bail for now
      */
-    if (planemask != FB_ALLONES)
+    if (planemask != FB_ALLONES) {
+        FallbackMsg("unsupported planemask 0x%08lx\n", planemask);
         return FALSE;
+    }
 
     /*
      * It should be possible to support all GX* raster operations given the
      * mapping in the rop3 table, but none other than GXcopy have been
      * validated.
      */
-    if (op != GXcopy)
+    if (op != GXcopy) {
+        FallbackMsg("unsupported operation %d\n", op);
         return FALSE;
+    }
 
     TegraEXAThawPixmap(pPixmap, TRUE);
 
-    if (priv->type <= TEGRA_EXA_PIXMAP_TYPE_FALLBACK)
+    if (priv->type <= TEGRA_EXA_PIXMAP_TYPE_FALLBACK) {
+        FallbackMsg("unaccelerateable pixmap\n");
         return FALSE;
+    }
 
     err = tegra_stream_begin(&tegra->cmds, tegra->gr2d);
     if (err < 0)
@@ -198,35 +204,46 @@ Bool TegraEXAPrepareCopyExt(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
     /*
      * It should be possible to support this, but let's bail for now
      */
-    if (planemask != FB_ALLONES)
+    if (planemask != FB_ALLONES) {
+        FallbackMsg("unsupported planemask 0x%08lx\n", planemask);
         return FALSE;
+    }
 
     /*
      * It should be possible to support all GX* raster operations given the
      * mapping in the rop3 table, but none other than GXcopy have been
      * validated.
      */
-    if (op != GXcopy)
+    if (op != GXcopy) {
+        FallbackMsg("unsupported operation %d\n", op);
         return FALSE;
+    }
 
     /*
      * Some restrictions apply to the hardware accelerated copying.
      */
     bpp = pSrcPixmap->drawable.bitsPerPixel;
 
-    if (pDstPixmap->drawable.bitsPerPixel != bpp)
+    if (pDstPixmap->drawable.bitsPerPixel != bpp) {
+        FallbackMsg("BPP mismatch %u %u\n",
+                    pDstPixmap->drawable.bitsPerPixel, bpp);
         return FALSE;
+    }
 
     TegraEXAThawPixmap(pSrcPixmap, TRUE);
     TegraEXAThawPixmap(pDstPixmap, TRUE);
 
     priv = exaGetPixmapDriverPrivate(pSrcPixmap);
-    if (priv->type <= TEGRA_EXA_PIXMAP_TYPE_FALLBACK)
+    if (priv->type <= TEGRA_EXA_PIXMAP_TYPE_FALLBACK) {
+        FallbackMsg("unaccelerateable pixmap\n");
         return FALSE;
+    }
 
     priv = exaGetPixmapDriverPrivate(pDstPixmap);
-    if (priv->type <= TEGRA_EXA_PIXMAP_TYPE_FALLBACK)
+    if (priv->type <= TEGRA_EXA_PIXMAP_TYPE_FALLBACK) {
+        FallbackMsg("unaccelerateable pixmap\n");
         return FALSE;
+    }
 
     err = tegra_stream_begin(&tegra->cmds, tegra->gr2d);
     if (err < 0)

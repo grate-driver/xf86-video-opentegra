@@ -31,6 +31,13 @@
 
 #define TEGRA_EXA_OFFSET_ALIGN          256
 
+#if 0
+#define FallbackMsg(fmt, args...)                                           \
+    printf("FALLBACK: %s:%d/%s(): " fmt, __FILE__, __LINE__, __func__, ##args)
+#else
+#define FallbackMsg(fmt, args...) do {} while(0)
+#endif
+
 typedef struct tegra_attrib_bo {
     struct tegra_attrib_bo *next;
     struct drm_tegra_bo *bo;

@@ -202,8 +202,10 @@ static const struct shader_program * TegraCompositeProgram3D(
     Bool mask_tex = (pMaskPicture && pMaskPicture->pDrawable);
     Bool src_tex = (pSrcPicture && pSrcPicture->pDrawable);
 
-    if (op > PictOpSaturate)
+    if (op > PictOpSaturate) {
+        FallbackMsg("unsupported operation %d\n", op);
         return NULL;
+    }
 
     return cfg->prog[src_tex][mask_tex];
 }
@@ -276,23 +278,31 @@ static Bool TegraCompositeCheckTexture(PicturePtr pic, PixmapPtr pix)
         width = pic->pDrawable->width;
         height = pic->pDrawable->height;
 
-        if (width > 2048 || height > 2048)
+        if (width > 2048 || height > 2048) {
+            FallbackMsg("too large texture %ux%u\n", width, height);
             return FALSE;
+        }
 
         if (!IS_POW2(width) || !IS_POW2(height)) {
-            if (pic->filter == PictFilterBilinear)
+            if (pic->filter == PictFilterBilinear) {
+                FallbackMsg("bilinear filtering for non-pow2 texture\n");
                 return FALSE;
+            }
 
             if (pic->repeat && (pic->repeatType == RepeatReflect ||
-                                pic->repeatType == RepeatNormal))
+                                pic->repeatType == RepeatNormal)) {
+                FallbackMsg("unsupported repeat type %u\n", pic->repeatType);
                 return FALSE;
+            }
         }
     } else if (pix) {
         width = pix->drawable.width;
         height = pix->drawable.height;
 
-        if (width > 2048 || height > 2048)
+        if (width > 2048 || height > 2048) {
+            FallbackMsg("too large texture %ux%u\n", width, height);
             return FALSE;
+        }
     }
 
     return TRUE;
@@ -407,15 +417,19 @@ TegraEXA2DTransformIsSupported(int32_t dw, int32_t dh,
         return FALSE;
 
     /* FR limitation */
-    if (dw > 4096 || dh > 4096 || sw > 4096 || sh > 4096)
+    if (dw > 4096 || dh > 4096 || sw > 4096 || sh > 4096) {
+        FallbackMsg("FR limitation\n");
         return FALSE;
+    }
 
     /* check whether matrix contains only integer values */
     for (i = 0; i < 2; i++) {
         for (k = 0; k < 2; k++) {
             /* s16.16 format */
-            if (t->matrix[i][k] & 0xffff)
+            if (t->matrix[i][k] & 0xffff) {
+                FallbackMsg("non-integer transform\n");
                 return FALSE;
+            }
         }
     }
 
@@ -454,6 +468,7 @@ TegraEXA2DTransformIsSupported(int32_t dw, int32_t dh,
      * More complex transformations (like scaling, skewing) can't be done
      * on GR2D.
      */
+    FallbackMsg("complex transform\n");
     return FALSE;
 }
 
@@ -518,8 +533,10 @@ Bool TegraEXACheckComposite(int op, PicturePtr pSrcPicture,
         pDstPicture->format != PICT_a8b8g8r8 &&
         pDstPicture->format != PICT_r5g6b5 &&
         pDstPicture->format != PICT_b5g6r5 &&
-        pDstPicture->format != PICT_a8)
+        pDstPicture->format != PICT_a8) {
+        FallbackMsg("unsupported format %u\n", pDstPicture->format);
         return FALSE;
+    }
 
     if (pSrcPicture) {
         if (pSrcPicture->format != PICT_x8r8g8b8 &&
@@ -528,18 +545,25 @@ Bool TegraEXACheckComposite(int op, PicturePtr pSrcPicture,
             pSrcPicture->format != PICT_a8b8g8r8 &&
             pSrcPicture->format != PICT_r5g6b5 &&
             pSrcPicture->format != PICT_b5g6r5 &&
-            pSrcPicture->format != PICT_a8)
+            pSrcPicture->format != PICT_a8) {
+            FallbackMsg("unsupported format %u\n", pSrcPicture->format);
             return FALSE;
+        }
 
         if (pSrcPicture->pDrawable) {
-            if (pSrcPicture->filter >= PictFilterConvolution)
+            if (pSrcPicture->filter >= PictFilterConvolution) {
+                FallbackMsg("unsupported filtering %u\n", pSrcPicture->filter);
                 return FALSE;
+            }
 
             if (!TegraCompositeCheckTexture(pSrcPicture, NULL))
                 return FALSE;
         } else {
-            if (pSrcPicture->pSourcePict->type != SourcePictTypeSolidFill)
+            if (pSrcPicture->pSourcePict->type != SourcePictTypeSolidFill) {
+                FallbackMsg("unsupported fill type %u\n",
+                            pSrcPicture->pSourcePict->type);
                 return FALSE;
+            }
         }
     }
 
@@ -550,21 +574,30 @@ Bool TegraEXACheckComposite(int op, PicturePtr pSrcPicture,
             pMaskPicture->format != PICT_a8b8g8r8 &&
             pMaskPicture->format != PICT_r5g6b5 &&
             pMaskPicture->format != PICT_b5g6r5 &&
-            pMaskPicture->format != PICT_a8)
+            pMaskPicture->format != PICT_a8) {
+            FallbackMsg("unsupported format %u\n", pMaskPicture->format);
             return FALSE;
+        }
 
         if (pMaskPicture->pDrawable) {
-            if (pMaskPicture->transform)
+            if (pMaskPicture->transform) {
+                FallbackMsg("unsupported transform\n");
                 return FALSE;
+            }
 
-            if (pMaskPicture->filter >= PictFilterConvolution)
+            if (pMaskPicture->filter >= PictFilterConvolution) {
+                FallbackMsg("unsupported filtering %u\n", pMaskPicture->filter);
                 return FALSE;
+            }
 
             if (!TegraCompositeCheckTexture(pMaskPicture, NULL))
                 return FALSE;
         } else {
-            if (pMaskPicture->pSourcePict->type != SourcePictTypeSolidFill)
+            if (pMaskPicture->pSourcePict->type != SourcePictTypeSolidFill) {
+                FallbackMsg("unsupported fill type %u\n",
+                            pMaskPicture->pSourcePict->type);
                 return FALSE;
+            }
         }
     }
 
@@ -572,8 +605,10 @@ Bool TegraEXACheckComposite(int op, PicturePtr pSrcPicture,
         return FALSE;
 
     /* TODO: support GR3D transforms */
-    if (pSrcPicture && pSrcPicture->pDrawable && pSrcPicture->transform)
+    if (pSrcPicture && pSrcPicture->pDrawable && pSrcPicture->transform) {
+        FallbackMsg("unsupported transform\n");
         return FALSE;
+    }
 
     return TRUE;
 }
@@ -788,19 +823,25 @@ static Bool TegraEXAPrepareComposite3D(int op,
 
     if (pSrc) {
         priv = exaGetPixmapDriverPrivate(pSrc);
-        if (priv->type <= TEGRA_EXA_PIXMAP_TYPE_FALLBACK)
+        if (priv->type <= TEGRA_EXA_PIXMAP_TYPE_FALLBACK) {
+            FallbackMsg("unaccelerateable pixmap\n");
             return FALSE;
+        }
     }
 
     if (pMask) {
         priv = exaGetPixmapDriverPrivate(pMask);
-        if (priv->type <= TEGRA_EXA_PIXMAP_TYPE_FALLBACK)
+        if (priv->type <= TEGRA_EXA_PIXMAP_TYPE_FALLBACK) {
+            FallbackMsg("unaccelerateable pixmap\n");
             return FALSE;
+        }
     }
 
     priv = exaGetPixmapDriverPrivate(pDst);
-    if (priv->type <= TEGRA_EXA_PIXMAP_TYPE_FALLBACK)
+    if (priv->type <= TEGRA_EXA_PIXMAP_TYPE_FALLBACK) {
+        FallbackMsg("unaccelerateable pixmap\n");
         return FALSE;
+    }
 
     err = tegra_stream_begin(cmds, tegra->gr3d);
     if (err)
@@ -1084,8 +1125,13 @@ Bool TegraEXAPrepareComposite(int op, PicturePtr pSrcPicture,
     if (!tegra->exa_compositing)
         return FALSE;
 
-    return TegraEXAPrepareComposite3D(op, pSrcPicture, pMaskPicture,
-                                      pDstPicture, pSrc, pMask, pDst);
+    if (TegraEXAPrepareComposite3D(op, pSrcPicture, pMaskPicture,
+                                   pDstPicture, pSrc, pMask, pDst))
+        return TRUE;
+
+    FallbackMsg("\n");
+
+    return FALSE;
 }
 
 void TegraEXAComposite(PixmapPtr pDst,
