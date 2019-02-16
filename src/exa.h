@@ -224,6 +224,66 @@ void TegraEXAComposite(PixmapPtr pDst,
 
 void TegraEXADoneComposite(PixmapPtr pDst);
 
+Bool TegraEXACheckComposite2D(int op, PicturePtr pSrcPicture,
+                              PicturePtr pMaskPicture,
+                              PicturePtr pDstPicture);
+
+Bool TegraEXACheckComposite3D(int op, PicturePtr pSrcPicture,
+                              PicturePtr pMaskPicture,
+                              PicturePtr pDstPicture);
+
+Bool TegraEXAPrepareComposite2D(int op,
+                                PicturePtr pSrcPicture,
+                                PicturePtr pMaskPicture,
+                                PicturePtr pDstPicture,
+                                PixmapPtr pSrc,
+                                PixmapPtr pMask,
+                                PixmapPtr pDst);
+
+Bool TegraEXAPrepareComposite3D(int op,
+                                PicturePtr pSrcPicture,
+                                PicturePtr pMaskPicture,
+                                PicturePtr pDstPicture,
+                                PixmapPtr pSrc,
+                                PixmapPtr pMask,
+                                PixmapPtr pDst);
+
+void TegraEXAComposite3D(PixmapPtr pDst,
+                         int srcX, int srcY,
+                         int maskX, int maskY,
+                         int dstX, int dstY,
+                         int width, int height);
+
+void TegraEXADoneComposite3D(PixmapPtr pDst);
+
+static inline Pixel TegraPixelRGB565to888(Pixel pixel)
+{
+    Pixel p = 0;
+
+    p |= 0xff000000;
+    p |=  ((pixel >> 11)   * 255 + 15) / 31;
+    p |=  (((pixel >> 5) & 0x3f) * 255 + 31) / 63;
+    p |=  ((pixel & 0x3f)  * 255 + 15) / 31;
+
+    return p;
+}
+
+static inline Pixel TegraPixelRGB888to565(Pixel pixel)
+{
+    unsigned red, green, blue;
+    Pixel p = 0;
+
+    red   = (pixel & 0x00ff0000) >> 16;
+    green = (pixel & 0x0000ff00) >> 8;
+    blue  = (pixel & 0x000000ff) >> 0;
+
+    p |= ((red >> 3) & 0x1f) << 11;
+    p |= ((green >> 2) & 0x3f) << 5;
+    p |= (blue >> 3) & 0x1f;
+
+    return p;
+}
+
 #endif
 
 /* vim: set et sts=4 sw=4 ts=4: */

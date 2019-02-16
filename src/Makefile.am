@@ -52,6 +52,8 @@ opentegra_drv_la_SOURCES = \
 	exa.c \
 	exa_2d.c \
 	exa_composite.c \
+	exa_composite_2d.c \
+	exa_composite_3d.c \
 	exa_mm.c \
 	exa_mm_pool.c \
 	exa_mm_fridge.c \
