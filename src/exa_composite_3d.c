@@ -753,7 +753,11 @@ void TegraEXADoneComposite3D(PixmapPtr pDst)
             TegraEXAWaitFence(priv->fence_read);
 
         tegra_stream_end(&tegra->cmds);
+#if PROFILE
+        tegra_stream_flush(&tegra->cmds);
+#else
         fence = tegra_stream_submit(&tegra->cmds, false);
+#endif
 
         /*
          * XXX: Glitches may occur due to lack of support for waitchecks

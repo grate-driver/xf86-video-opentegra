@@ -45,6 +45,24 @@
 #define AccelMsg(fmt, args...) do {} while(0)
 #endif
 
+#define PROFILE 0
+
+#define PROFILE_DEF                                                 \
+    static clock_t profile_start;
+
+#define PROFILE_START                                               \
+    if (PROFILE) {                                                  \
+        printf("%s:%d: profile start\n", __func__, __LINE__);       \
+        profile_start = clock();                                    \
+    }
+
+#define PROFILE_STOP                                                \
+    if (PROFILE) {                                                  \
+        printf("%s:%d: profile stop: %f us\n",                      \
+               __func__, __LINE__,                                  \
+               (double)(clock() - profile_start) / CLOCKS_PER_SEC); \
+    }
+
 typedef struct tegra_attrib_bo {
     struct tegra_attrib_bo *next;
     struct drm_tegra_bo *bo;

@@ -23,6 +23,8 @@
 
 #include "driver.h"
 
+PROFILE_DEF
+
 static __maybe_unused char const * op_name(int op)
 {
     switch (op) {
@@ -195,6 +197,8 @@ Bool TegraEXACheckComposite(int op, PicturePtr pSrcPicture,
                             PicturePtr pMaskPicture,
                             PicturePtr pDstPicture)
 {
+    PROFILE_START
+
     if (TegraEXACheckComposite2D(op, pSrcPicture, pMaskPicture, pDstPicture))
         return TRUE;
 
@@ -219,6 +223,9 @@ Bool TegraEXAPrepareComposite(int op, PicturePtr pSrcPicture,
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pDst->drawable.pScreen);
     TegraPtr tegra = TegraPTR(pScrn);
 
+    PROFILE_STOP
+    PROFILE_START
+
     AccelMsg("\n");
 
     /* Use GR2D for simple solid fills as usually it is more optimal. */
@@ -227,6 +234,10 @@ Bool TegraEXAPrepareComposite(int op, PicturePtr pSrcPicture,
         AccelMsg("GR2D: op: %s\n", op_name(op));
         dump_pict("GR2D: src", pSrcPicture, TRUE);
         dump_pict("GR2D: dst", pDstPicture, TRUE);
+
+        PROFILE_STOP
+        PROFILE_START
+
         return TRUE;
     }
 
@@ -239,6 +250,10 @@ Bool TegraEXAPrepareComposite(int op, PicturePtr pSrcPicture,
         dump_pict("GR3D: src", pSrcPicture, TRUE);
         dump_pict("GR3D: mask", pMaskPicture, TRUE);
         dump_pict("GR3D: dst", pDstPicture, TRUE);
+
+        PROFILE_STOP
+        PROFILE_START
+
         return TRUE;
     }
 
@@ -278,13 +293,17 @@ void TegraEXADoneComposite(PixmapPtr pDst)
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pDst->drawable.pScreen);
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
 
+    PROFILE_STOP
+    PROFILE_START
+
     if (tegra->scratch.op2d == TEGRA2D_SOLID)
-        return TegraEXADoneSolid(pDst);
+        TegraEXADoneSolid(pDst);
+    else if (tegra->scratch.op2d == TEGRA2D_COPY)
+        TegraEXADoneCopy(pDst);
+    else
+        TegraEXADoneComposite3D(pDst);
 
-    if (tegra->scratch.op2d == TEGRA2D_COPY)
-        return TegraEXADoneCopy(pDst);
-
-    return TegraEXADoneComposite3D(pDst);
+    PROFILE_STOP
 }
 
 /* vim: set et sts=4 sw=4 ts=4: */

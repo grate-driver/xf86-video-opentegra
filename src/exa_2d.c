@@ -157,7 +157,7 @@ void TegraEXADoneSolid(PixmapPtr pPixmap)
     TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pPixmap);
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pPixmap->drawable.pScreen);
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
-    struct tegra_fence *fence;
+    struct tegra_fence *fence = NULL;
 
     if (tegra->scratch.ops && tegra->cmds.status == TEGRADRM_STREAM_CONSTRUCT) {
         if (priv->fence_write && !priv->fence_write->gr2d)
@@ -167,7 +167,11 @@ void TegraEXADoneSolid(PixmapPtr pPixmap)
             TegraEXAWaitFence(priv->fence_read);
 
         tegra_stream_end(&tegra->cmds);
+#if PROFILE
+        tegra_stream_flush(&tegra->cmds);
+#else
         fence = tegra_stream_submit(&tegra->cmds, true);
+#endif
 
         if (priv->fence_write != fence) {
             tegra_stream_put_fence(priv->fence_write);
@@ -495,7 +499,7 @@ void TegraEXADoneCopy(PixmapPtr pDstPixmap)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pDstPixmap->drawable.pScreen);
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
-    struct tegra_fence *fence;
+    struct tegra_fence *fence = NULL;
     TegraPixmapPtr priv;
 
     if (tegra->scratch.ops && tegra->cmds.status == TEGRADRM_STREAM_CONSTRUCT) {
@@ -518,7 +522,11 @@ void TegraEXADoneCopy(PixmapPtr pDstPixmap)
             TegraEXAWaitFence(priv->fence_read);
 
         tegra_stream_end(&tegra->cmds);
+#if PROFILE
+        tegra_stream_flush(&tegra->cmds);
+#else
         fence = tegra_stream_submit(&tegra->cmds, true);
+#endif
 
         if (priv->fence_write != fence) {
             tegra_stream_put_fence(priv->fence_write);
