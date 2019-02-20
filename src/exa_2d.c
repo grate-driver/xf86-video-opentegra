@@ -89,7 +89,9 @@ Bool TegraEXAPrepareSolid(PixmapPtr pPixmap, int op, Pixel planemask,
     TegraEXAThawPixmap(pPixmap, TRUE);
 
     if (priv->type <= TEGRA_EXA_PIXMAP_TYPE_FALLBACK) {
-        FallbackMsg("unaccelerateable pixmap\n");
+        FallbackMsg("unaccelerateable pixmap %d:%d\n",
+                    pPixmap->drawable.width,
+                    pPixmap->drawable.height);
         return FALSE;
     }
 
@@ -125,6 +127,12 @@ Bool TegraEXAPrepareSolid(PixmapPtr pPixmap, int op, Pixel planemask,
 
     tegra->scratch.ops = 0;
 
+    AccelMsg("pixmap %p %d:%d color %08lx\n",
+             pPixmap,
+             pPixmap->drawable.width,
+             pPixmap->drawable.height,
+             color);
+
     return TRUE;
 }
 
@@ -132,6 +140,8 @@ void TegraEXASolid(PixmapPtr pPixmap, int px1, int py1, int px2, int py2)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pPixmap->drawable.pScreen);
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
+
+    AccelMsg("%dx%d w:h %d:%d\n", px1, py1, px2 - px1, py2 - py1);
 
     tegra_stream_prep(&tegra->cmds, 3);
     tegra_stream_push(&tegra->cmds, HOST1X_OPCODE_MASK(0x38, 0x5));
@@ -168,6 +178,8 @@ void TegraEXADoneSolid(PixmapPtr pPixmap)
     }
 
     TegraEXACoolPixmap(pPixmap, TRUE);
+
+    AccelMsg("\n");
 }
 
 Bool TegraEXAPrepareCopy(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
@@ -191,6 +203,8 @@ Bool TegraEXAPrepareCopyExt(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
     unsigned int bpp;
     int fr_mode;
     int err;
+
+    AccelMsg("\n");
 
     orientation = tegra->scratch.orientation;
 
@@ -235,13 +249,17 @@ Bool TegraEXAPrepareCopyExt(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
 
     priv = exaGetPixmapDriverPrivate(pSrcPixmap);
     if (priv->type <= TEGRA_EXA_PIXMAP_TYPE_FALLBACK) {
-        FallbackMsg("unaccelerateable pixmap\n");
+        FallbackMsg("unaccelerateable src pixmap %d:%d\n",
+                    pSrcPixmap->drawable.width,
+                    pSrcPixmap->drawable.height);
         return FALSE;
     }
 
     priv = exaGetPixmapDriverPrivate(pDstPixmap);
     if (priv->type <= TEGRA_EXA_PIXMAP_TYPE_FALLBACK) {
-        FallbackMsg("unaccelerateable pixmap\n");
+        FallbackMsg("unaccelerateable dst pixmap %d:%d\n",
+                    pDstPixmap->drawable.width,
+                    pDstPixmap->drawable.height);
         return FALSE;
     }
 
@@ -313,6 +331,9 @@ void TegraEXACopyExt(PixmapPtr pDstPixmap, int srcX, int srcY, int dstX,
     unsigned bpp;
     PictVector v;
     BoxRec grid;
+
+    AccelMsg("src %dx%d dst %dx%d w:h %d:%d\n",
+             srcX, srcY, dstX, dstY, width, height);
 
     pSrcPixmap = tegra->scratch.pSrc;
     src_bo     = TegraEXAPixmapBO(pSrcPixmap);
@@ -434,6 +455,9 @@ void TegraEXACopy(PixmapPtr pDstPixmap, int srcX, int srcY, int dstX,
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
     uint32_t controlmain;
 
+    AccelMsg("src %dx%d dst %dx%d w:h %d:%d\n",
+             srcX, srcY, dstX, dstY, width, height);
+
     /*
      * [20:20] source color depth (0: mono, 1: same)
      * [17:16] destination color depth (0: 8 bpp, 1: 16 bpp, 2: 32 bpp)
@@ -515,6 +539,8 @@ void TegraEXADoneCopy(PixmapPtr pDstPixmap)
 
     TegraEXACoolPixmap(tegra->scratch.pSrc, FALSE);
     TegraEXACoolPixmap(pDstPixmap, TRUE);
+
+    AccelMsg("\n");
 }
 
 /* vim: set et sts=4 sw=4 ts=4: */

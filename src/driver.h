@@ -126,6 +126,10 @@
 #  define FMT_CARD32 "lx"
 #endif
 
+#ifndef __maybe_unused
+#define __maybe_unused  __attribute__((unused))
+#endif
+
 #define TEGRA_ARRAY_SIZE(x) (sizeof(x) / sizeof(*x))
 
 #define __TEGRA_ALIGN_MASK(x, y)    ((__typeof__(x))((y)-1))

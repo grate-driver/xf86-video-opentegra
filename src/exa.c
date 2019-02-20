@@ -127,6 +127,11 @@ static Bool __TegraEXAPrepareAccess(PixmapPtr pPix, int idx, void **ptr)
     TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pPix);
     int err;
 
+    FallbackMsg("pPix %p idx %d type %u %d:%d\n",
+                pPix, idx, priv->type,
+                pPix->drawable.width,
+                pPix->drawable.height);
+
     TegraEXAThawPixmap(pPix, FALSE);
 
     if (priv->type == TEGRA_EXA_PIXMAP_TYPE_FALLBACK) {
@@ -190,6 +195,8 @@ static void __TegraEXAFinishAccess(PixmapPtr pPix, int idx)
     }
 
     TegraEXACoolPixmap(pPix, TRUE);
+
+    FallbackMsg("pPix %p idx %d\n", pPix, idx);
 }
 
 static void TegraEXAFinishAccess(PixmapPtr pPix, int idx)
@@ -469,8 +476,11 @@ TegraEXADownloadFromScreen(PixmapPtr pSrc, int x, int y, int w, int h,
     const char *src;
     Bool ret;
 
-    if (!priv->accel)
+    if (!priv->accel) {
+        FallbackMsg("unaccelerateable dst pixmap %d:%d, %dx%d %d:%d\n",
+                    pSrc->drawable.width, pSrc->drawable.height, x, y, w, h);
         return FALSE;
+    }
 
     ret = __TegraEXAPrepareAccess(pSrc, 0, (void**)&src);
     if (!ret)
@@ -480,6 +490,8 @@ TegraEXADownloadFromScreen(PixmapPtr pSrc, int x, int y, int w, int h,
         ret = FALSE;
         goto finish;
     }
+
+    AccelMsg("%dx%d %d:%d\n", x, y, w, h);
 
     cpp        = pSrc->drawable.bitsPerPixel >> 3;
     src_pitch  = exaGetPixmapPitch(pSrc);

@@ -802,6 +802,8 @@ void TegraEXADoneComposite3D(PixmapPtr pDst)
     TegraEXACoolPixmap(tegra->scratch.pSrc, FALSE);
     TegraEXACoolPixmap(tegra->scratch.pMask, FALSE);
     TegraEXACoolPixmap(pDst, TRUE);
+
+    AccelMsg("\n");
 }
 
 /* vim: set et sts=4 sw=4 ts=4: */
