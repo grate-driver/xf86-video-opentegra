@@ -122,7 +122,7 @@ static void TegraEXAWaitMarker(ScreenPtr pScreen, int marker)
         tegra->scratch.marker = NULL;
 }
 
-static Bool __TegraEXAPrepareAccess(PixmapPtr pPix, int idx, void **ptr)
+Bool TegraEXAPrepareCPUAccess(PixmapPtr pPix, int idx, void **ptr)
 {
     TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pPix);
     int err;
@@ -180,10 +180,10 @@ static Bool __TegraEXAPrepareAccess(PixmapPtr pPix, int idx, void **ptr)
 
 static Bool TegraEXAPrepareAccess(PixmapPtr pPix, int idx)
 {
-    return __TegraEXAPrepareAccess(pPix, idx, &pPix->devPrivate.ptr);
+    return TegraEXAPrepareCPUAccess(pPix, idx, &pPix->devPrivate.ptr);
 }
 
-static void __TegraEXAFinishAccess(PixmapPtr pPix, int idx)
+void TegraEXAFinishCPUAccess(PixmapPtr pPix, int idx)
 {
     TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pPix);
     int err;
@@ -201,7 +201,7 @@ static void __TegraEXAFinishAccess(PixmapPtr pPix, int idx)
 
 static void TegraEXAFinishAccess(PixmapPtr pPix, int idx)
 {
-    __TegraEXAFinishAccess(pPix, idx);
+    TegraEXAFinishCPUAccess(pPix, idx);
 }
 
 static Bool TegraEXAPixmapIsOffscreen(PixmapPtr pPix)
@@ -482,7 +482,7 @@ TegraEXADownloadFromScreen(PixmapPtr pSrc, int x, int y, int w, int h,
         return FALSE;
     }
 
-    ret = __TegraEXAPrepareAccess(pSrc, 0, (void**)&src);
+    ret = TegraEXAPrepareCPUAccess(pSrc, EXA_PREPARE_SRC, (void**)&src);
     if (!ret)
         return FALSE;
 
@@ -502,7 +502,7 @@ TegraEXADownloadFromScreen(PixmapPtr pSrc, int x, int y, int w, int h,
                              dst, dst_pitch, line_len);
 
 finish:
-    __TegraEXAFinishAccess(pSrc, 0);
+    TegraEXAFinishCPUAccess(pSrc, EXA_PREPARE_SRC);
 
     return ret;
 }

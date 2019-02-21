@@ -309,6 +309,9 @@ static inline Pixel TegraPixelRGB888to565(Pixel pixel)
     return p;
 }
 
+Bool TegraEXAPrepareCPUAccess(PixmapPtr pPix, int idx, void **ptr);
+void TegraEXAFinishCPUAccess(PixmapPtr pPix, int idx);
+
 #endif
 
 /* vim: set et sts=4 sw=4 ts=4: */

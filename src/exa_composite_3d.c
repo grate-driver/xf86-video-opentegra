@@ -195,6 +195,22 @@ void TegraCompositeReleaseAttribBuffers(TegraEXAScratchPtr scratch)
     }
 }
 
+static Bool TegraCompositeReducedTexture(PicturePtr pPicture)
+{
+    /*
+     * GR3D performance is quite slow for a non-trivial shaders,
+     * hence we want to reduce the number of 3D instructions as
+     * much as possible.
+     */
+    if (pPicture && pPicture->pDrawable && pPicture->repeat) {
+        if (pPicture->pDrawable->width == 1 &&
+            pPicture->pDrawable->height == 1)
+                return TRUE;
+    }
+
+    return FALSE;
+}
+
 static const struct shader_program * TegraCompositeProgram3D(
                 int op, PicturePtr pSrcPicture, PicturePtr pMaskPicture)
 {
@@ -206,6 +222,12 @@ static const struct shader_program * TegraCompositeProgram3D(
         FallbackMsg("unsupported operation %d\n", op);
         return NULL;
     }
+
+    if (mask_tex && TegraCompositeReducedTexture(pMaskPicture))
+        mask_tex = FALSE;
+
+    if (src_tex && TegraCompositeReducedTexture(pSrcPicture))
+        src_tex = FALSE;
 
     return cfg->prog[src_tex][mask_tex];
 }
@@ -257,16 +279,26 @@ static Bool TegraCompositeFormatSwapRedBlue3D(unsigned format)
     }
 }
 
-static Bool TegraCompositeCheckTexture(PicturePtr pic, PixmapPtr pix)
+static Bool TegraCompositeCheckTexture(PicturePtr pic)
 {
     unsigned width, height;
 
-    if (pic) {
+    if (pic && !TegraCompositeReducedTexture(pic)) {
         width = pic->pDrawable->width;
         height = pic->pDrawable->height;
 
         if (width > 2048 || height > 2048) {
             FallbackMsg("too large texture %ux%u\n", width, height);
+            return FALSE;
+        }
+
+        if (pic->transform) {
+            FallbackMsg("unsupported transform\n");
+            return FALSE;
+        }
+
+        if (pic->filter >= PictFilterConvolution) {
+            FallbackMsg("unsupported filtering %u\n", pic->filter);
             return FALSE;
         }
 
@@ -281,14 +313,6 @@ static Bool TegraCompositeCheckTexture(PicturePtr pic, PixmapPtr pix)
                 FallbackMsg("unsupported repeat type %u\n", pic->repeatType);
                 return FALSE;
             }
-        }
-    } else if (pix) {
-        width = pix->drawable.width;
-        height = pix->drawable.height;
-
-        if (width > 2048 || height > 2048) {
-            FallbackMsg("too large texture %ux%u\n", width, height);
-            return FALSE;
         }
     }
 
@@ -417,12 +441,7 @@ Bool TegraEXACheckComposite3D(int op, PicturePtr pSrcPicture,
         }
 
         if (pSrcPicture->pDrawable) {
-            if (pSrcPicture->filter >= PictFilterConvolution) {
-                FallbackMsg("unsupported filtering %u\n", pSrcPicture->filter);
-                return FALSE;
-            }
-
-            if (!TegraCompositeCheckTexture(pSrcPicture, NULL))
+            if (!TegraCompositeCheckTexture(pSrcPicture))
                 return FALSE;
         } else {
             if (pSrcPicture->pSourcePict->type != SourcePictTypeSolidFill) {
@@ -446,17 +465,7 @@ Bool TegraEXACheckComposite3D(int op, PicturePtr pSrcPicture,
         }
 
         if (pMaskPicture->pDrawable) {
-            if (pMaskPicture->transform) {
-                FallbackMsg("unsupported transform\n");
-                return FALSE;
-            }
-
-            if (pMaskPicture->filter >= PictFilterConvolution) {
-                FallbackMsg("unsupported filtering %u\n", pMaskPicture->filter);
-                return FALSE;
-            }
-
-            if (!TegraCompositeCheckTexture(pMaskPicture, NULL))
+            if (!TegraCompositeCheckTexture(pMaskPicture))
                 return FALSE;
         } else {
             if (pMaskPicture->pSourcePict->type != SourcePictTypeSolidFill) {
@@ -467,13 +476,33 @@ Bool TegraEXACheckComposite3D(int op, PicturePtr pSrcPicture,
         }
     }
 
-    /* TODO: support GR3D transforms */
-    if (pSrcPicture && pSrcPicture->pDrawable && pSrcPicture->transform) {
-        FallbackMsg("unsupported transform\n");
-        return FALSE;
+    return TRUE;
+}
+
+static Pixel TegraCompositeGetReducedTextureColor(PixmapPtr pix)
+{
+    Pixel color = 0x00000000;
+    void *ptr;
+
+    if (TegraEXAPrepareCPUAccess(pix, EXA_PREPARE_SRC, &ptr)) {
+        switch (pix->drawable.bitsPerPixel) {
+        case 8:
+            color = *((CARD8*) ptr) << 24;
+            break;
+        case 16:
+            color = *((CARD16*) ptr);
+            break;
+        case 32:
+            color = *((CARD32*) ptr);
+            break;
+        }
+
+        TegraEXAFinishCPUAccess(pix, EXA_PREPARE_SRC);
     }
 
-    return TRUE;
+    AccelMsg("color 0x%08lx\n", color);
+
+    return color;
 }
 
 Bool TegraEXAPrepareComposite3D(int op,
@@ -491,6 +520,8 @@ Bool TegraEXAPrepareComposite3D(int op,
     TegraPixmapPtr priv;
     Bool mask_tex = (pMaskPicture && pMaskPicture->pDrawable);
     Bool src_tex = (pSrcPicture && pSrcPicture->pDrawable);
+    Bool mask_tex_reduced = TRUE;
+    Bool src_tex_reduced = TRUE;
     Bool clamp_src = FALSE;
     Bool clamp_mask = FALSE;
     Bool swap_red_blue;
@@ -499,8 +530,21 @@ Bool TegraEXAPrepareComposite3D(int op,
     Pixel solid;
     int err;
 
-    if (src_tex && pSrcPicture->transform)
-        return FALSE;
+    if (mask_tex && TegraCompositeReducedTexture(pMaskPicture))
+        mask_tex = FALSE;
+    else
+        mask_tex_reduced = FALSE;
+
+    if (src_tex && TegraCompositeReducedTexture(pSrcPicture))
+        src_tex = FALSE;
+    else
+        src_tex_reduced = FALSE;
+
+    if (mask_tex_reduced)
+        AccelMsg("mask texture reduced\n");
+
+    if (src_tex_reduced)
+        AccelMsg("src texture reduced\n");
 
     prog = TegraCompositeProgram3D(op, pSrcPicture, pMaskPicture);
     if (!prog)
@@ -518,7 +562,7 @@ Bool TegraEXAPrepareComposite3D(int op,
     TegraEXAThawPixmap(pMask, TRUE);
     TegraEXAThawPixmap(pDst, TRUE);
 
-    if (pSrc) {
+    if (tegra->scratch.pSrc) {
         priv = exaGetPixmapDriverPrivate(pSrc);
         if (priv->type <= TEGRA_EXA_PIXMAP_TYPE_FALLBACK) {
             FallbackMsg("unaccelerateable pixmap\n");
@@ -526,7 +570,7 @@ Bool TegraEXAPrepareComposite3D(int op,
         }
     }
 
-    if (pMask) {
+    if (tegra->scratch.pMask) {
         priv = exaGetPixmapDriverPrivate(pMask);
         if (priv->type <= TEGRA_EXA_PIXMAP_TYPE_FALLBACK) {
             FallbackMsg("unaccelerateable pixmap\n");
@@ -578,18 +622,25 @@ Bool TegraEXAPrepareComposite3D(int op,
         TegraGR3D_UploadConstFP(cmds, 5, FX10x2(alpha, swap_red_blue));
     } else {
         if (op != PictOpClear && pSrcPicture) {
-            solid = pSrcPicture->pSourcePict->solidFill.color;
+            if (src_tex_reduced)
+                solid = TegraCompositeGetReducedTextureColor(pSrc);
+            else
+                solid = pSrcPicture->pSourcePict->solidFill.color;
 
             if (pSrcPicture->format == PICT_r5g6b5 ||
                 pSrcPicture->format == PICT_b5g6r5)
                 solid = TegraPixelRGB565to888(solid);
+
+            if (TegraCompositeFormatSwapRedBlue3D(pDstPicture->format) !=
+                TegraCompositeFormatSwapRedBlue3D(pSrcPicture->format))
+                solid = TegraSwapRedBlue(solid);
+
+            alpha = TegraCompositeFormatHasAlpha(pSrcPicture->format);
+            if (!alpha)
+                solid |= 0xff000000;
         } else {
             solid = 0x00000000;
         }
-
-        if (TegraCompositeFormatSwapRedBlue3D(pDstPicture->format) !=
-            TegraCompositeFormatSwapRedBlue3D(pSrcPicture->format))
-            solid = TegraSwapRedBlue(solid);
 
         TegraGR3D_UploadConstFP(cmds, 0, FX10x2(BLUE(solid), GREEN(solid)));
         TegraGR3D_UploadConstFP(cmds, 1, FX10x2(RED(solid), ALPHA(solid)));
@@ -608,7 +659,10 @@ Bool TegraEXAPrepareComposite3D(int op,
         TegraGR3D_UploadConstFP(cmds, 7, FX10x2(swap_red_blue, clamp_mask));
     } else {
         if (op != PictOpClear && pMaskPicture) {
-            solid = pMaskPicture->pSourcePict->solidFill.color;
+            if (mask_tex_reduced)
+                solid = TegraCompositeGetReducedTextureColor(pMask);
+            else
+                solid = pMaskPicture->pSourcePict->solidFill.color;
 
             if (pMaskPicture->format == PICT_r5g6b5 ||
                 pMaskPicture->format == PICT_b5g6r5)
@@ -620,6 +674,10 @@ Bool TegraEXAPrepareComposite3D(int op,
             if (TegraCompositeFormatSwapRedBlue3D(pDstPicture->format) !=
                 TegraCompositeFormatSwapRedBlue3D(pMaskPicture->format))
                 solid = TegraSwapRedBlue(solid);
+
+            alpha = TegraCompositeFormatHasAlpha(pMaskPicture->format);
+            if (!alpha)
+                solid |= 0xff000000;
         } else {
             solid = 0xffffffff;
         }
