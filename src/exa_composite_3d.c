@@ -88,7 +88,7 @@
 .prog[PROG_SEL(TEX_EMPTY,   TEX_MIRROR)]    = &prog_blend_ ## OP_NAME ## _solid_src
 
 struct tegra_composit_config {
-    struct shader_program *prog[64];
+    const struct shader_program *prog[64];
 };
 
 static const struct tegra_composit_config composite_cfgs[] = {

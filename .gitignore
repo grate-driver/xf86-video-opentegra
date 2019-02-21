@@ -80,5 +80,8 @@ cscope*
 *.tab.h
 *.tab.c
 *.lex.c
-src/shaders/*.bin.h
+*.bin.h
 gen_shader_bin
+shaders.h
+
+.*

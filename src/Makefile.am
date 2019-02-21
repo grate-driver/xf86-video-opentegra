@@ -36,6 +36,8 @@ opentegra_drv_ladir = @moduledir@/drivers
 # enable fp16 for the 3d attributes
 opentegra_drv_la_CFLAGS = $(AM_CFLAGS) $(DEFINES) -mfp16-format=ieee
 
+opentegra_drv_la_DEPENDENCIES = shaders.h
+
 opentegra_drv_la_SOURCES = \
 	compat-api.h \
 	common_helpers.c \
@@ -63,18 +65,17 @@ opentegra_drv_la_SOURCES = \
 	tegra_stream.c \
 	tegra_stream.h \
 	shaders/prog.h \
-	$(shaders_gen) \
-	tgr_3d.xml.h \
 	shaders.h \
+	tgr_3d.xml.h \
 	gr3d.c \
 	gr3d.h \
 	pool_alloc.c \
 	memcpy_vfp.c
 
-shaders_dir := $(filter %/, $(wildcard $(srcdir)/shaders/*/))
+shaders_dir := $(filter %/, $(wildcard $(srcdir)/shaders/*/*/))
 shaders_gen := $(addsuffix .bin.h, $(shaders_dir:%/=%))
 
-%.bin.h: gen_shader_bin \
+%.bin.h: gen_shader_bin shaders/prog.h \
 			%/vertex.asm \
 			%/linker.asm \
 			%/fragment.asm
@@ -84,6 +85,9 @@ shaders_gen := $(addsuffix .bin.h, $(shaders_dir:%/=%))
 		--fs $*/fragment.asm \
 		--name $(*F) \
 		--out $@
+
+shaders.h: $(shaders_gen) $(srcdir)/gen_shaders_h.sh
+	$(srcdir)/gen_shaders_h.sh $(srcdir)
 
 asm_grammars := $(wildcard $(srcdir)/asm/*.y)
 asm_headers  := $(wildcard $(srcdir)/asm/*.h)
