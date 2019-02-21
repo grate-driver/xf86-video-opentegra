@@ -41,105 +41,136 @@
 
 #define TEGRA_ATTRIB_BUFFER_SIZE        0x1000
 
+#define TEX_SOLID           0
+#define TEX_CLIPPED         1
+#define TEX_PAD             2
+#define TEX_NORMAL          3
+#define TEX_MIRROR          4
+#define TEX_EMPTY           5
+
+#define PROG_SEL(SRC_SEL, MASK_SEL) ((SRC_SEL) | ((MASK_SEL) << 3))
+
+#define PROG_DEF(OP_NAME) \
+.prog[PROG_SEL(TEX_SOLID,   TEX_SOLID)]     = &prog_blend_ ## OP_NAME ## _solid_mask_src, \
+.prog[PROG_SEL(TEX_SOLID,   TEX_EMPTY)]     = &prog_blend_ ## OP_NAME ## _solid_mask_src, \
+.prog[PROG_SEL(TEX_SOLID,   TEX_CLIPPED)]   = &prog_blend_ ## OP_NAME ## _solid_src, \
+.prog[PROG_SEL(TEX_SOLID,   TEX_PAD)]       = &prog_blend_ ## OP_NAME ## _solid_src, \
+.prog[PROG_SEL(TEX_SOLID,   TEX_NORMAL)]    = &prog_blend_ ## OP_NAME ## _solid_src, \
+.prog[PROG_SEL(TEX_SOLID,   TEX_MIRROR)]    = &prog_blend_ ## OP_NAME ## _solid_src, \
+.prog[PROG_SEL(TEX_CLIPPED, TEX_SOLID)]     = &prog_blend_ ## OP_NAME ## _solid_mask, \
+.prog[PROG_SEL(TEX_CLIPPED, TEX_EMPTY)]     = &prog_blend_ ## OP_NAME ## _solid_mask, \
+.prog[PROG_SEL(TEX_CLIPPED, TEX_CLIPPED)]   = &prog_blend_ ## OP_NAME, \
+.prog[PROG_SEL(TEX_CLIPPED, TEX_PAD)]       = &prog_blend_ ## OP_NAME, \
+.prog[PROG_SEL(TEX_CLIPPED, TEX_NORMAL)]    = &prog_blend_ ## OP_NAME, \
+.prog[PROG_SEL(TEX_CLIPPED, TEX_MIRROR)]    = &prog_blend_ ## OP_NAME, \
+.prog[PROG_SEL(TEX_NORMAL,  TEX_SOLID)]     = &prog_blend_ ## OP_NAME ## _solid_mask, \
+.prog[PROG_SEL(TEX_NORMAL,  TEX_EMPTY)]     = &prog_blend_ ## OP_NAME ## _solid_mask, \
+.prog[PROG_SEL(TEX_NORMAL,  TEX_PAD)]       = &prog_blend_ ## OP_NAME, \
+.prog[PROG_SEL(TEX_NORMAL,  TEX_NORMAL)]    = &prog_blend_ ## OP_NAME, \
+.prog[PROG_SEL(TEX_NORMAL,  TEX_MIRROR)]    = &prog_blend_ ## OP_NAME, \
+.prog[PROG_SEL(TEX_PAD,     TEX_SOLID)]     = &prog_blend_ ## OP_NAME ## _solid_mask, \
+.prog[PROG_SEL(TEX_PAD,     TEX_EMPTY)]     = &prog_blend_ ## OP_NAME ## _solid_mask, \
+.prog[PROG_SEL(TEX_PAD,     TEX_CLIPPED)]   = &prog_blend_ ## OP_NAME, \
+.prog[PROG_SEL(TEX_PAD,     TEX_PAD)]       = &prog_blend_ ## OP_NAME, \
+.prog[PROG_SEL(TEX_PAD,     TEX_NORMAL)]    = &prog_blend_ ## OP_NAME, \
+.prog[PROG_SEL(TEX_PAD,     TEX_MIRROR)]    = &prog_blend_ ## OP_NAME, \
+.prog[PROG_SEL(TEX_MIRROR,  TEX_SOLID)]     = &prog_blend_ ## OP_NAME ## _solid_mask, \
+.prog[PROG_SEL(TEX_MIRROR,  TEX_EMPTY)]     = &prog_blend_ ## OP_NAME ## _solid_mask, \
+.prog[PROG_SEL(TEX_MIRROR,  TEX_CLIPPED)]   = &prog_blend_ ## OP_NAME, \
+.prog[PROG_SEL(TEX_MIRROR,  TEX_PAD)]       = &prog_blend_ ## OP_NAME, \
+.prog[PROG_SEL(TEX_MIRROR,  TEX_NORMAL)]    = &prog_blend_ ## OP_NAME, \
+.prog[PROG_SEL(TEX_MIRROR,  TEX_MIRROR)]    = &prog_blend_ ## OP_NAME, \
+.prog[PROG_SEL(TEX_EMPTY,   TEX_SOLID)]     = &prog_blend_ ## OP_NAME ## _solid_mask_src, \
+.prog[PROG_SEL(TEX_EMPTY,   TEX_EMPTY)]     = &prog_blend_ ## OP_NAME ## _solid_mask_src, \
+.prog[PROG_SEL(TEX_EMPTY,   TEX_CLIPPED)]   = &prog_blend_ ## OP_NAME ## _solid_src, \
+.prog[PROG_SEL(TEX_EMPTY,   TEX_PAD)]       = &prog_blend_ ## OP_NAME ## _solid_src, \
+.prog[PROG_SEL(TEX_EMPTY,   TEX_NORMAL)]    = &prog_blend_ ## OP_NAME ## _solid_src, \
+.prog[PROG_SEL(TEX_EMPTY,   TEX_MIRROR)]    = &prog_blend_ ## OP_NAME ## _solid_src
+
 struct tegra_composit_config {
-    /* prog[MASK_TEX_USED][SRC_TEX_USED] */
-    struct shader_program *prog[2][2];
+    struct shader_program *prog[64];
 };
 
-static const struct tegra_composit_config composit_cfgs[] = {
+static const struct tegra_composit_config composite_cfgs[] = {
     [PictOpOver] = {
-        .prog[1][1] = &prog_blend_over,
-        .prog[0][1] = &prog_blend_over_solid_src,
-        .prog[1][0] = &prog_blend_over_solid_mask,
-        .prog[0][0] = &prog_blend_over_solid_mask_src,
+        PROG_DEF(over),
     },
 
     [PictOpOverReverse] = {
-        .prog[1][1] = &prog_blend_over_reverse,
-        .prog[0][1] = &prog_blend_over_reverse_solid_src,
-        .prog[1][0] = &prog_blend_over_reverse_solid_mask,
-        .prog[0][0] = &prog_blend_over_reverse_solid_mask_src,
+        PROG_DEF(over_reverse),
     },
 
     [PictOpAdd] = {
-        .prog[1][1] = &prog_blend_add,
-        .prog[0][1] = &prog_blend_add_solid_src,
-        .prog[1][0] = &prog_blend_add_solid_mask,
-        .prog[0][0] = &prog_blend_add_solid_mask_src,
+        PROG_DEF(add),
     },
 
     [PictOpSrc] = {
-        .prog[1][1] = &prog_blend_src,
-        .prog[0][1] = &prog_blend_src_solid_src,
-        .prog[1][0] = &prog_blend_src_solid_mask,
-        .prog[0][0] = &prog_blend_src_solid_mask_src,
-    },
-
-    [PictOpClear] = {
-        .prog[1][1] = &prog_blend_src_solid_mask_src,
-        .prog[0][1] = &prog_blend_src_solid_mask_src,
-        .prog[1][0] = &prog_blend_src_solid_mask_src,
-        .prog[0][0] = &prog_blend_src_solid_mask_src,
+        PROG_DEF(src),
     },
 
     [PictOpIn] = {
-        .prog[1][1] = &prog_blend_in,
-        .prog[0][1] = &prog_blend_in_solid_src,
-        .prog[1][0] = &prog_blend_in_solid_mask,
-        .prog[0][0] = &prog_blend_in_solid_mask_src,
+        PROG_DEF(in),
     },
 
     [PictOpInReverse] = {
-        .prog[1][1] = &prog_blend_in_reverse,
-        .prog[0][1] = &prog_blend_in_reverse_solid_src,
-        .prog[1][0] = &prog_blend_in_reverse_solid_mask,
-        .prog[0][0] = &prog_blend_in_reverse_solid_mask_src,
+        PROG_DEF(in_reverse),
     },
 
     [PictOpOut] = {
-        .prog[1][1] = &prog_blend_out,
-        .prog[0][1] = &prog_blend_out_solid_src,
-        .prog[1][0] = &prog_blend_out_solid_mask,
-        .prog[0][0] = &prog_blend_out_solid_mask_src,
+        PROG_DEF(out),
     },
 
     [PictOpOutReverse] = {
-        .prog[1][1] = &prog_blend_out_reverse,
-        .prog[0][1] = &prog_blend_out_reverse_solid_src,
-        .prog[1][0] = &prog_blend_out_reverse_solid_mask,
-        .prog[0][0] = &prog_blend_out_reverse_solid_mask_src,
+        PROG_DEF(out_reverse),
     },
 
     [PictOpDst] = {
-        .prog[1][0] = &prog_blend_dst,
-        .prog[0][0] = &prog_blend_dst_solid_mask,
+        .prog[PROG_SEL(TEX_PAD,     TEX_SOLID)]     = &prog_blend_dst,
+        .prog[PROG_SEL(TEX_CLIPPED, TEX_SOLID)]     = &prog_blend_dst,
+
+        .prog[PROG_SEL(TEX_SOLID,   TEX_SOLID)]     = &prog_blend_dst_solid_mask,
+        .prog[PROG_SEL(TEX_SOLID,   TEX_SOLID)]     = &prog_blend_dst_solid_mask,
+
+        .prog[PROG_SEL(TEX_PAD,     TEX_EMPTY)]     = &prog_blend_dst,
+        .prog[PROG_SEL(TEX_CLIPPED, TEX_EMPTY)]     = &prog_blend_dst,
+
+        .prog[PROG_SEL(TEX_EMPTY,   TEX_EMPTY)]     = &prog_blend_dst_solid_mask,
+        .prog[PROG_SEL(TEX_EMPTY,   TEX_EMPTY)]     = &prog_blend_dst_solid_mask,
+
+        .prog[PROG_SEL(TEX_SOLID,   TEX_EMPTY)]     = &prog_blend_dst_solid_mask,
+        .prog[PROG_SEL(TEX_EMPTY,   TEX_SOLID)]     = &prog_blend_dst_solid_mask,
     },
 
     [PictOpAtop] = {
-        .prog[1][1] = &prog_blend_atop,
-        .prog[0][1] = &prog_blend_atop_solid_src,
-        .prog[1][0] = &prog_blend_atop_solid_mask,
-        .prog[0][0] = &prog_blend_atop_solid_mask_src,
+        PROG_DEF(atop),
     },
 
     [PictOpAtopReverse] = {
-        .prog[1][1] = &prog_blend_atop_reverse,
-        .prog[0][1] = &prog_blend_atop_reverse_solid_src,
-        .prog[1][0] = &prog_blend_atop_reverse_solid_mask,
-        .prog[0][0] = &prog_blend_atop_reverse_solid_mask_src,
+        PROG_DEF(atop_reverse),
     },
 
     [PictOpXor] = {
-        .prog[1][1] = &prog_blend_xor,
-        .prog[0][1] = &prog_blend_xor_solid_src,
-        .prog[1][0] = &prog_blend_xor_solid_mask,
-        .prog[0][0] = &prog_blend_xor_solid_mask_src,
+        PROG_DEF(xor),
     },
 
     [PictOpSaturate] = {
-        .prog[1][1] = &prog_blend_saturate,
-        .prog[0][1] = &prog_blend_saturate_solid_src,
-        .prog[1][0] = &prog_blend_saturate_solid_mask,
+        .prog[PROG_SEL(TEX_PAD,     TEX_CLIPPED)]   = &prog_blend_saturate,
+        .prog[PROG_SEL(TEX_PAD,     TEX_PAD)]       = &prog_blend_saturate,
+
+        .prog[PROG_SEL(TEX_CLIPPED, TEX_CLIPPED)]   = &prog_blend_saturate,
+        .prog[PROG_SEL(TEX_CLIPPED, TEX_PAD)]       = &prog_blend_saturate,
+
+        .prog[PROG_SEL(TEX_CLIPPED, TEX_SOLID)]     = &prog_blend_saturate_solid_mask,
+        .prog[PROG_SEL(TEX_PAD,     TEX_SOLID)]     = &prog_blend_saturate_solid_mask,
+
+        .prog[PROG_SEL(TEX_SOLID,   TEX_CLIPPED)]   = &prog_blend_saturate_solid_src,
+        .prog[PROG_SEL(TEX_SOLID,   TEX_PAD)]       = &prog_blend_saturate_solid_src,
+
+        .prog[PROG_SEL(TEX_CLIPPED, TEX_EMPTY)]     = &prog_blend_saturate_solid_mask,
+        .prog[PROG_SEL(TEX_PAD,     TEX_EMPTY)]     = &prog_blend_saturate_solid_mask,
+
+        .prog[PROG_SEL(TEX_EMPTY,   TEX_CLIPPED)]   = &prog_blend_saturate_solid_src,
+        .prog[PROG_SEL(TEX_EMPTY,   TEX_PAD)]       = &prog_blend_saturate_solid_src,
     },
 };
 
@@ -211,46 +242,15 @@ static Bool TegraCompositeReducedTexture(PicturePtr pPicture)
     return FALSE;
 }
 
-static const struct shader_program * TegraCompositeProgram3D(
-                int op, PicturePtr pSrcPicture, PicturePtr pMaskPicture)
+static Bool TegraCompositePow2Texture(PicturePtr pic)
 {
-    const struct tegra_composit_config *cfg = &composit_cfgs[op];
-    Bool mask_tex = (pMaskPicture && pMaskPicture->pDrawable);
-    Bool src_tex = (pSrcPicture && pSrcPicture->pDrawable);
-
-    if (op > PictOpSaturate) {
-        FallbackMsg("unsupported operation %d\n", op);
-        return NULL;
+    if (pic && pic->pDrawable) {
+        if (IS_POW2(pic->pDrawable->width) &&
+            IS_POW2(pic->pDrawable->height))
+            return TRUE;
     }
 
-    if (mask_tex && TegraCompositeReducedTexture(pMaskPicture))
-        mask_tex = FALSE;
-
-    if (src_tex && TegraCompositeReducedTexture(pSrcPicture))
-        src_tex = FALSE;
-
-    return cfg->prog[src_tex][mask_tex];
-}
-
-static unsigned TegraCompositeFormatToGR3D(unsigned format)
-{
-    switch (format) {
-    case PICT_a8:
-        return TGR3D_PIXEL_FORMAT_A8;
-
-    case PICT_r5g6b5:
-    case PICT_b5g6r5:
-        return TGR3D_PIXEL_FORMAT_RGB565;
-
-    case PICT_x8b8g8r8:
-    case PICT_a8b8g8r8:
-    case PICT_x8r8g8b8:
-    case PICT_a8r8g8b8:
-        return TGR3D_PIXEL_FORMAT_RGBA8888;
-
-    default:
-        return 0;
-    }
+    return FALSE;
 }
 
 static Bool TegraCompositeFormatHasAlpha(unsigned format)
@@ -279,11 +279,136 @@ static Bool TegraCompositeFormatSwapRedBlue3D(unsigned format)
     }
 }
 
+static const
+struct shader_program * TegraCompositeProgram3D(int op,
+                                                PicturePtr pSrcPicture,
+                                                PicturePtr pMaskPicture,
+                                                PicturePtr pDstPicture)
+{
+    const struct tegra_composit_config *cfg = &composite_cfgs[op];
+    Bool mask_tex = (pMaskPicture && pMaskPicture->pDrawable);
+    Bool src_tex = (pSrcPicture && pSrcPicture->pDrawable);
+    unsigned mask_sel = pMaskPicture ? TEX_SOLID : TEX_EMPTY;
+    unsigned src_sel = pSrcPicture ? TEX_SOLID : TEX_EMPTY;
+    const struct shader_program *prog;
+
+    if (op > PictOpSaturate)
+        return NULL;
+
+    if (mask_tex && TegraCompositeReducedTexture(pMaskPicture)) {
+        mask_tex = FALSE;
+    } else if (mask_tex) {
+        switch (pMaskPicture->repeatType) {
+        case RepeatNone:
+            mask_sel = TEX_CLIPPED;
+            break;
+        case RepeatPad:
+            mask_sel = TEX_PAD;
+            break;
+        case RepeatNormal:
+            mask_sel = TEX_NORMAL;
+            break;
+        case RepeatReflect:
+            mask_sel = TEX_MIRROR;
+            break;
+        default:
+            FallbackMsg("unsupported repeat type %u\n",
+                        pMaskPicture->repeatType);
+            return NULL;
+        }
+
+        /*
+         * GR3D can handle most of texture wrap-modes while fetching texels
+         * if texture size is power of 2. Clamped-mode is the default texture
+         * wrap-mode, we have shaders for this mode for all of blending
+         * operations.
+         */
+        if (mask_sel != TEX_CLIPPED && TegraCompositePow2Texture(pMaskPicture))
+            mask_sel = TEX_PAD;
+    }
+
+    if (src_tex && TegraCompositeReducedTexture(pSrcPicture)) {
+        src_tex = FALSE;
+    } else if (src_tex) {
+        switch (pSrcPicture->repeatType) {
+        case RepeatNone:
+            src_sel = TEX_CLIPPED;
+            break;
+        case RepeatPad:
+            src_sel = TEX_PAD;
+            break;
+        case RepeatNormal:
+            src_sel = TEX_NORMAL;
+            break;
+        case RepeatReflect:
+            src_sel = TEX_MIRROR;
+            break;
+        default:
+            FallbackMsg("unsupported repeat type %u\n",
+                        pMaskPicture->repeatType);
+            return NULL;
+        }
+
+        if (src_sel != TEX_CLIPPED && TegraCompositePow2Texture(pSrcPicture))
+            src_sel = TEX_PAD;
+    }
+
+
+    prog = cfg->prog[PROG_SEL(src_sel, mask_sel)];
+    if (!prog) {
+        FallbackMsg("no shader for operation %d src_sel %u mask_sel %u\n",
+                    op, src_sel, mask_sel);
+        return NULL;
+    }
+
+    /*
+     * Only padding and clipping are currently supported by the
+     * "generic" shaders for non-pow2 textures.
+     */
+    if (mask_tex && mask_sel != TEX_PAD && mask_sel != TEX_CLIPPED &&
+            !TegraCompositePow2Texture(pMaskPicture)) {
+        FallbackMsg("unsupported repeat type %u\n", pMaskPicture->repeatType);
+        return NULL;
+    }
+
+    if (src_tex && src_sel != TEX_PAD && src_sel != TEX_CLIPPED &&
+            !TegraCompositePow2Texture(pSrcPicture)) {
+        FallbackMsg("unsupported repeat type %u\n", pSrcPicture->repeatType);
+        return NULL;
+    }
+
+    AccelMsg("got shader for operation %d src_sel %u mask_sel %u\n",
+             op, src_sel, mask_sel);
+
+    return prog;
+}
+
+static unsigned TegraCompositeFormatToGR3D(unsigned format)
+{
+    switch (format) {
+    case PICT_a8:
+        return TGR3D_PIXEL_FORMAT_A8;
+
+    case PICT_r5g6b5:
+    case PICT_b5g6r5:
+        return TGR3D_PIXEL_FORMAT_RGB565;
+
+    case PICT_x8b8g8r8:
+    case PICT_a8b8g8r8:
+    case PICT_x8r8g8b8:
+    case PICT_a8r8g8b8:
+        return TGR3D_PIXEL_FORMAT_RGBA8888;
+
+    default:
+        return 0;
+    }
+}
+
 static Bool TegraCompositeCheckTexture(PicturePtr pic)
 {
     unsigned width, height;
 
-    if (pic && !TegraCompositeReducedTexture(pic)) {
+    if (pic && pic->pDrawable && !TegraCompositeReducedTexture(pic)) {
         width = pic->pDrawable->width;
         height = pic->pDrawable->height;
 
@@ -305,12 +430,6 @@ static Bool TegraCompositeCheckTexture(PicturePtr pic)
         if (!IS_POW2(width) || !IS_POW2(height)) {
             if (pic->filter == PictFilterBilinear) {
                 FallbackMsg("bilinear filtering for non-pow2 texture\n");
-                return FALSE;
-            }
-
-            if (pic->repeat && (pic->repeatType == RepeatReflect ||
-                                pic->repeatType == RepeatNormal)) {
-                FallbackMsg("unsupported repeat type %u\n", pic->repeatType);
                 return FALSE;
             }
         }
@@ -414,8 +533,10 @@ Bool TegraEXACheckComposite3D(int op, PicturePtr pSrcPicture,
     if (!tegra->exa_compositing)
         return FALSE;
 
-    if (!TegraCompositeProgram3D(op, pSrcPicture, pMaskPicture))
+    if (op > PictOpSaturate) {
+        FallbackMsg("unsupported operation %d\n", op);
         return FALSE;
+    }
 
     if (pDstPicture->format != PICT_x8r8g8b8 &&
         pDstPicture->format != PICT_a8r8g8b8 &&
@@ -530,6 +651,12 @@ Bool TegraEXAPrepareComposite3D(int op,
     Pixel solid;
     int err;
 
+    if (!TegraCompositeCheckTexture(pMaskPicture))
+            return FALSE;
+
+    if (!TegraCompositeCheckTexture(pSrcPicture))
+            return FALSE;
+
     if (mask_tex && TegraCompositeReducedTexture(pMaskPicture))
         mask_tex = FALSE;
     else
@@ -546,7 +673,7 @@ Bool TegraEXAPrepareComposite3D(int op,
     if (src_tex_reduced)
         AccelMsg("src texture reduced\n");
 
-    prog = TegraCompositeProgram3D(op, pSrcPicture, pMaskPicture);
+    prog = TegraCompositeProgram3D(op, pSrcPicture, pMaskPicture, pDstPicture);
     if (!prog)
         return FALSE;
 
