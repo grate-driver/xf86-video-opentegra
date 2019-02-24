@@ -95,7 +95,9 @@ void TegraGR3D_SetupDrawParams(struct tegra_stream *cmds,
 void TegraGR3D_DrawPrimitives(struct tegra_stream *cmds,
                               unsigned first_index, unsigned count);
 
-void TegraGR3D_Initialize(struct tegra_stream *cmds,
-                          const struct shader_program *prog);
+void TegraGR3D_UploadProgram(struct tegra_stream *cmds,
+                             const struct shader_program *prog);
+
+void TegraGR3D_Initialize(struct tegra_stream *cmds);
 
 #endif

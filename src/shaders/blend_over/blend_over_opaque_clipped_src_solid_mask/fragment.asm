@@ -29,6 +29,8 @@ alu_buffer_size = 1	// number of .rgba regs carried through pipeline
 	[3].l = "mask_color.b";
 	[3].h = "mask_color.a";
 
+	[8].l = "dst_fmt_alpha";
+
 .asm
 
 EXEC
@@ -43,17 +45,28 @@ EXEC
 	// sample tex0 (src)
 	TEX:	tex r0, r1, tex0, r0, r1, r2
 
+	/*
+	 * Emulate xrender clamp-to-border by writing black color and killing
+	 * the pixel if texels coords are outside of [0.0, 1.0].
+	 */
+	ALU:
+		ALU0:	CSEL  kill, r0, #1,  #0
+		ALU1:	MAD   kill, r0, #1, -#1 (gt)
+		ALU2:	CSEL  kill, r1, #1,  #0
+		ALU3:	MAD   kill, r1, #1, -#1 (gt)
+
 	// r0,r1 = (mask.bgra - 1) * -dst.bgra + src.bgra * mask.bgra
 	ALU:
 		ALU0:	MAD  lp.lh, -r2.l, u2.l-1, #0
 		ALU1:	MAD  lp.lh, -r2.h, u2.h-1, #0
 		ALU2:	MAD  lp.lh, -r3.l, u3.l-1, #0
+		ALU3:	MAD  lp.lh, -r3.h, u3.h-1, #0
 
 	ALU:
-		ALU0:	MAD  r0.l, u2.l, r0.l, alu0 (sat)
-		ALU1:	MAD  r0.h, u2.h, r0.h, alu1 (sat)
-		ALU2:	MAD  r1.l, u3.l, r1.l, alu2 (sat)
-		ALU3:	MAD  r1.h, #0, #0, #0
+		ALU0:	MAD  r0.l, u2.l , r0.l, alu0 (sat)
+		ALU1:	MAD  r0.h, u2.h,  r0.h, alu1 (sat)
+		ALU2:	MAD  r1.l, u3.l,  r1.l, alu2 (sat)
+		ALU3:	CSEL r1.h, -u8.l, alu3,  #0
 
 	DW:	store rt1, r0, r1
 ;

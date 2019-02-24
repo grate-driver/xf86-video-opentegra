@@ -23,11 +23,6 @@
 pseq_to_dw_exec_nb = 2	// the number of 'EXEC' block where DW happens
 alu_buffer_size = 1	// number of .rgba regs carried through pipeline
 
-.uniforms
-	[2].l = "mask_color.r";
-	[2].h = "mask_color.g";
-	[3].l = "mask_color.b";
-	[3].h = "mask_color.a";
 .asm
 
 EXEC
@@ -39,6 +34,9 @@ EXEC
 		mul1: bar, sfu, bar1
 		ipl:  t0.fp20, t0.fp20, NOP, NOP
 
+	// sample tex1 (mask)
+	TEX:	tex r0, r1, tex1, r0, r1, r2
+
 	/*
 	 * Emulate xrender clamp-to-border by writing black color and killing
 	 * the pixel if texels coords are outside of [0.0, 1.0].
@@ -48,32 +46,13 @@ EXEC
 		ALU1:	MAD   kill, r0, #1, -#1 (gt)
 		ALU2:	CSEL  kill, r1, #1,  #0
 		ALU3:	MAD   kill, r1, #1, -#1 (gt)
-;
 
-EXEC
-	// sample tex0 (src)
-	TEX:	tex r0, r1, tex0, r0, r1, r2
-
-	// tmp = -src.aaaa * mask.bgra + 1
+	// r0,r1 = (1 - mask.bgra) * dst.bgra + mask.a
 	ALU:
-		ALU0:	MAD  lp.lh, -r1.h, u2.l, #1
-		ALU1:	MAD  lp.lh, -r1.h, u2.h, #1
-		ALU2:	MAD  lp.lh, -r1.h, u3.l, #1
-		ALU3:	MAD  lp.lh, -r1.h, u3.h, #1
-
-	// tmp = tmp * dst.bgra
-	ALU:
-		ALU0:	MAD  lp.lh, alu0, r2.l, #0
-		ALU1:	MAD  lp.lh, alu1, r2.h, #0
-		ALU2:	MAD  lp.lh, alu2, r3.l, #0
-		ALU3:	MAD  lp.lh, alu3, r3.h, #0
-
-	// r0,r1 = src.bgra * mask.bgra + tmp
-	ALU:
-		ALU0:	MAD  r0.l, r0.l, u2.l, alu0 (sat)
-		ALU1:	MAD  r0.h, r0.h, u2.h, alu1 (sat)
-		ALU2:	MAD  r1.l, r1.l, u3.l, alu2 (sat)
-		ALU3:	MAD  r1.h, r1.h, u3.h, alu3 (sat)
+		ALU0:	MAD  r0.l, r1.h-1, -r2.l, #0
+		ALU1:	MAD  r0.h, r1.h-1, -r2.h, #0
+		ALU2:	MAD  r1.l, r1.h-1, -r3.l, #0
+		ALU3:	MAD  r1.h,     #0,    #0, #0
 
 	DW:	store rt1, r0, r1
 ;

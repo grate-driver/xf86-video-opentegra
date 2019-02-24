@@ -472,9 +472,17 @@ void TegraGR3D_DrawPrimitives(struct tegra_stream *cmds,
     tegra_stream_sync(cmds, DRM_TEGRA_SYNCPT_COND_OP_DONE);
 }
 
-static void TegraGR3D_UploadProgram(struct tegra_stream *cmds,
-                                    const struct shader_program *prog)
+void TegraGR3D_UploadProgram(struct tegra_stream *cmds,
+                             const struct shader_program *prog)
 {
+    TegraGR3D_SetupVpAttributesInOutMask(cmds,
+        prog->vs_attrs_in_mask, prog->vs_attrs_out_mask);
+    TegraGR3D_SetupPSEQ_DW_cfg(cmds, prog->fs_pseq_to_dw);
+    TegraGR3D_SetupALUBufferSize(cmds, prog->fs_alu_buf_size);
+    TegraGR3D_Startup_PSEQ_Engine(cmds, prog->fs_pseq_inst_nb);
+    TegraGR3D_SetUsed_TRAM_RowsNum(cmds, prog->used_tram_rows_nb);
+    TegraGR3D_SetupCullFaceAndLinkerInstNum(cmds, prog->linker_inst_nb);
+
     tegra_stream_prep(cmds, 4);
     tegra_stream_push(cmds, HOST1X_OPCODE_IMM(TGR3D_VP_UPLOAD_INST_ID, 0));
     tegra_stream_push(cmds, HOST1X_OPCODE_IMM(TGR3D_FP_UPLOAD_INST_ID_COMMON, 0));
@@ -491,8 +499,7 @@ static void TegraGR3D_UploadProgram(struct tegra_stream *cmds,
                             prog->linker_words_nb, 0);
 }
 
-void TegraGR3D_Initialize(struct tegra_stream *cmds,
-                          const struct shader_program *prog)
+void TegraGR3D_Initialize(struct tegra_stream *cmds)
 {
     TegraGR3D_InitState(cmds);
     TegraGR3D_SetupGuardband(cmds);
@@ -501,12 +508,4 @@ void TegraGR3D_Initialize(struct tegra_stream *cmds,
     TegraGR3D_SetupDepthBuffer(cmds);
     TegraGR3D_SetupStencilTest(cmds);
     TegraGR3D_SetupPolygonOffset(cmds);
-    TegraGR3D_SetupVpAttributesInOutMask(cmds,
-        prog->vs_attrs_in_mask, prog->vs_attrs_out_mask);
-    TegraGR3D_SetupPSEQ_DW_cfg(cmds, prog->fs_pseq_to_dw);
-    TegraGR3D_SetupALUBufferSize(cmds, prog->fs_alu_buf_size);
-    TegraGR3D_Startup_PSEQ_Engine(cmds, prog->fs_pseq_inst_nb);
-    TegraGR3D_SetUsed_TRAM_RowsNum(cmds, prog->used_tram_rows_nb);
-    TegraGR3D_SetupCullFaceAndLinkerInstNum(cmds, prog->linker_inst_nb);
-    TegraGR3D_UploadProgram(cmds, prog);
 }

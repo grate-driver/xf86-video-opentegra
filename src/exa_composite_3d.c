@@ -282,7 +282,9 @@ static Bool TegraCompositeFormatSwapRedBlue3D(unsigned format)
 static Bool TegraCompositeTextureSameByteOrder(PicturePtr picA, PicturePtr picB)
 {
     return (TegraCompositeFormatSwapRedBlue3D(picA->format) ==
-            TegraCompositeFormatSwapRedBlue3D(picB->format));
+            TegraCompositeFormatSwapRedBlue3D(picB->format) ||
+            picA->format == PICT_a8 ||
+            picB->format == PICT_a8);
 }
 
 static Bool TegraCompositeTexturePerComponentAlpha(PicturePtr pic)
@@ -294,7 +296,9 @@ static const
 struct shader_program * TegraCompositeProgram3D(int op,
                                                 PicturePtr pSrcPicture,
                                                 PicturePtr pMaskPicture,
-                                                PicturePtr pDstPicture)
+                                                PicturePtr pDstPicture,
+                                                unsigned *ret_mask_sel,
+                                                unsigned *ret_src_sel)
 {
     const struct tegra_composit_config *cfg = &composite_cfgs[op];
     Bool mask_tex = (pMaskPicture && pMaskPicture->pDrawable);
@@ -364,6 +368,9 @@ struct shader_program * TegraCompositeProgram3D(int op,
             src_sel = TEX_PAD;
     }
 
+    *ret_mask_sel = mask_sel;
+    *ret_src_sel = src_sel;
+
     /*
      * Currently all shaders are handling texture transparency and
      * coordinates warp-modes in the assembly, this adds a lot of
@@ -378,45 +385,40 @@ struct shader_program * TegraCompositeProgram3D(int op,
         if (src_sel == TEX_PAD &&
             (mask_sel == TEX_SOLID || mask_sel == TEX_EMPTY) &&
             TegraCompositeTextureSameByteOrder(pSrcPicture, pDstPicture) &&
-            !TegraCompositeFormatHasAlpha(pSrcPicture->format) &&
-            !TegraCompositeFormatHasAlpha(pDstPicture->format)) {
-                prog = &prog_blend_over_opaque_clamped_src_solid_mask_dst_opaque;
+            !TegraCompositeFormatHasAlpha(pSrcPicture->format)) {
+                prog = &prog_blend_over_opaque_clamped_src_solid_mask;
                 goto custom_shader;
         }
 
         if (src_sel == TEX_NORMAL &&
             (mask_sel == TEX_SOLID || mask_sel == TEX_EMPTY) &&
             TegraCompositeTextureSameByteOrder(pSrcPicture, pDstPicture) &&
-            TegraCompositeFormatHasAlpha(pSrcPicture->format) &&
-            !TegraCompositeFormatHasAlpha(pDstPicture->format)) {
-                prog = &prog_blend_over_alpha_normal_src_solid_mask_dst_opaque;
+            TegraCompositeFormatHasAlpha(pSrcPicture->format)) {
+                prog = &prog_blend_over_alpha_normal_src_solid_mask;
+                goto custom_shader;
+        }
+
+        if (src_sel == TEX_PAD &&
+            (mask_sel == TEX_SOLID || mask_sel == TEX_EMPTY) &&
+            TegraCompositeTextureSameByteOrder(pSrcPicture, pDstPicture) &&
+            TegraCompositeFormatHasAlpha(pSrcPicture->format)) {
+                prog = &prog_blend_over_alpha_clamped_src_solid_mask;
                 goto custom_shader;
         }
 
         if (src_sel == TEX_CLIPPED &&
             (mask_sel == TEX_SOLID || mask_sel == TEX_EMPTY) &&
             TegraCompositeTextureSameByteOrder(pSrcPicture, pDstPicture) &&
-            TegraCompositeFormatHasAlpha(pSrcPicture->format) &&
-            !TegraCompositeFormatHasAlpha(pDstPicture->format)) {
-                prog = &prog_blend_over_alpha_clipped_src_solid_mask_dst_opaque;
+            TegraCompositeFormatHasAlpha(pSrcPicture->format)) {
+                prog = &prog_blend_over_alpha_clipped_src_solid_mask;
                 goto custom_shader;
         }
 
         if (src_sel == TEX_CLIPPED &&
             (mask_sel == TEX_SOLID || mask_sel == TEX_EMPTY) &&
             TegraCompositeTextureSameByteOrder(pSrcPicture, pDstPicture) &&
-            TegraCompositeFormatHasAlpha(pSrcPicture->format) &&
-            TegraCompositeFormatHasAlpha(pDstPicture->format)) {
-                prog = &prog_blend_over_alpha_clipped_src_solid_mask_dst_alpha;
-                goto custom_shader;
-        }
-
-        if (src_sel == TEX_CLIPPED &&
-            (mask_sel == TEX_SOLID || mask_sel == TEX_EMPTY) &&
-            TegraCompositeTextureSameByteOrder(pSrcPicture, pDstPicture) &&
-            !TegraCompositeFormatHasAlpha(pSrcPicture->format) &&
-            !TegraCompositeFormatHasAlpha(pDstPicture->format)) {
-                prog = &prog_blend_over_opaque_clipped_src_solid_mask_dst_opaque;
+            !TegraCompositeFormatHasAlpha(pSrcPicture->format)) {
+                prog = &prog_blend_over_opaque_clipped_src_solid_mask;
                 goto custom_shader;
         }
 
@@ -436,6 +438,13 @@ struct shader_program * TegraCompositeProgram3D(int op,
             TegraCompositeTextureSameByteOrder(pMaskPicture, pDstPicture) &&
             TegraCompositeTexturePerComponentAlpha(pMaskPicture)) {
                 prog = &prog_blend_over_solid_src_clipped_mask;
+                goto custom_shader;
+        }
+
+        if (src_sel == TEX_SOLID && mask_sel == TEX_PAD &&
+            TegraCompositeTextureSameByteOrder(pMaskPicture, pDstPicture) &&
+            TegraCompositeTexturePerComponentAlpha(pMaskPicture)) {
+                prog = &prog_blend_over_solid_src_clamped_mask;
                 goto custom_shader;
         }
     }
@@ -731,6 +740,8 @@ Bool TegraEXAPrepareComposite3D(int op,
     struct tegra_stream *cmds = &tegra->cmds;
     const struct shader_program *prog;
     TegraPixmapPtr priv;
+    unsigned mask_sel;
+    unsigned src_sel;
     Bool mask_tex = (pMaskPicture && pMaskPicture->pDrawable);
     Bool src_tex = (pSrcPicture && pSrcPicture->pDrawable);
     Bool mask_tex_reduced = TRUE;
@@ -765,7 +776,8 @@ Bool TegraEXAPrepareComposite3D(int op,
     if (src_tex_reduced)
         AccelMsg("src texture reduced\n");
 
-    prog = TegraCompositeProgram3D(op, pSrcPicture, pMaskPicture, pDstPicture);
+    prog = TegraCompositeProgram3D(op, pSrcPicture, pMaskPicture, pDstPicture,
+                                   &mask_sel, &src_sel);
     if (!prog)
         return FALSE;
 
@@ -810,7 +822,7 @@ Bool TegraEXAPrepareComposite3D(int op,
     tegra_stream_prep(&tegra->cmds, 1);
     tegra_stream_push_setclass(cmds, HOST1X_CLASS_GR3D);
 
-    TegraGR3D_Initialize(cmds, prog);
+    TegraGR3D_Initialize(cmds);
 
     TegraGR3D_SetupScissor(cmds, 0, 0,
                            pDst->drawable.width,
@@ -861,10 +873,50 @@ Bool TegraEXAPrepareComposite3D(int op,
             solid = 0x00000000;
         }
 
+        /* custom optimization for the transparent mask */
+        if (solid == 0xff000000 &&
+            prog == &prog_blend_over_solid_src_clipped_mask &&
+            !TegraCompositeFormatHasAlpha(pDstPicture->format))
+        {
+            AccelMsg("opaque-src optimization 0\n");
+            prog = &prog_blend_over_solid_black_src_clipped_mask_dst_opaque;
+            goto mask_setup;
+        }
+
+        /* custom optimization for the transparent mask */
+        if (solid == 0xff000000 &&
+            prog == &prog_blend_over_solid_src_clamped_mask &&
+            !TegraCompositeFormatHasAlpha(pDstPicture->format))
+        {
+            AccelMsg("opaque-src optimization 1\n");
+            prog = &prog_blend_over_solid_black_src_clamped_mask_dst_opaque;
+            goto mask_setup;
+        }
+
+        if (solid == 0xff000000 &&
+            prog == &prog_blend_over_solid_src_clamped_mask &&
+            !TegraCompositeFormatHasAlpha(pDstPicture->format))
+        {
+            AccelMsg("opaque-src optimization 1\n");
+            prog = &prog_blend_over_solid_black_src_clamped_mask_dst_opaque;
+            goto mask_setup;
+        }
+
+        if (solid == 0xff000000 &&
+            prog == &prog_blend_over_solid_src && mask_sel == TEX_CLIPPED &&
+            TegraCompositeTextureSameByteOrder(pMaskPicture, pDstPicture) &&
+            !TegraCompositeFormatHasAlpha(pDstPicture->format))
+        {
+            AccelMsg("opaque-src optimization 2\n");
+            prog = &prog_blend_over_solid_black_src_clipped_aaaa_mask_dst_opaque;
+            goto mask_setup;
+        }
+
         TegraGR3D_UploadConstFP(cmds, 0, FX10x2(BLUE(solid), GREEN(solid)));
         TegraGR3D_UploadConstFP(cmds, 1, FX10x2(RED(solid), ALPHA(solid)));
     }
 
+mask_setup:
     if (tegra->scratch.pMask) {
         clamp_mask = !pMaskPicture->repeat;
 
@@ -901,12 +953,35 @@ Bool TegraEXAPrepareComposite3D(int op,
             solid = 0xffffffff;
         }
 
+        /* custom optimization for the transparent mask */
+        if (solid == 0xffffffff &&
+            prog == &prog_blend_over_alpha_normal_src_solid_mask &&
+            !TegraCompositeFormatHasAlpha(pDstPicture->format))
+        {
+            AccelMsg("transparent-mask optimization 0\n");
+            prog = &prog_blend_over_alpha_normal_src_empty_mask_dst_opaque;
+            goto upload_u8;
+        }
+
+        /* custom optimization for the transparent mask */
+        if (solid == 0xffffffff &&
+            prog == &prog_blend_over_alpha_clamped_src_solid_mask &&
+            !TegraCompositeFormatHasAlpha(pDstPicture->format))
+        {
+            AccelMsg("transparent-mask optimization 1\n");
+            prog = &prog_blend_over_alpha_clamped_src_empty_mask_dst_opaque;
+            goto upload_u8;
+        }
+
         TegraGR3D_UploadConstFP(cmds, 2, FX10x2(BLUE(solid), GREEN(solid)));
         TegraGR3D_UploadConstFP(cmds, 3, FX10x2(RED(solid), ALPHA(solid)));
     }
 
+upload_u8:
     TegraGR3D_UploadConstFP(cmds, 8, FX10x2(dst_alpha, clamp_src));
     TegraGR3D_UploadConstVP(cmds, 0, 0.0f, 0.0f, 0.0f, 1.0f);
+
+    TegraGR3D_UploadProgram(cmds, prog);
 
     if (cmds->status != TEGRADRM_STREAM_CONSTRUCT) {
         tegra_stream_cleanup(cmds);

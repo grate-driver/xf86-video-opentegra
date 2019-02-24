@@ -1,6 +1,5 @@
 /*
- * Copyright (c) Dmitry Osipenko
- * Copyright (c) Erik Faye-Lund
+ * Copyright (c) GRATE-DRIVER project 2019
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -21,27 +20,29 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef __TEGRA_GR3D_SHADER_PROG_H
-#define __TEGRA_GR3D_SHADER_PROG_H
+pseq_to_dw_exec_nb = 2	// the number of 'EXEC' block where DW happens
+alu_buffer_size = 1	// number of .rgba regs carried through pipeline
 
-struct shader_program {
-    const uint32_t *vs_prog_words;
-    const unsigned vs_prog_words_nb;
-    const uint16_t vs_attrs_in_mask;
-    const uint16_t vs_attrs_out_mask;
+.asm
 
-    const uint32_t *fs_prog_words;
-    const unsigned fs_prog_words_nb;
-    const unsigned fs_alu_buf_size;
-    const unsigned fs_pseq_to_dw;
-    const unsigned fs_pseq_inst_nb;
+EXEC
+	// fetch dst pixel to r2,r3
+	PSEQ:	0x0081000A
 
-    const uint32_t *linker_words;
-    const unsigned linker_words_nb;
-    const unsigned linker_inst_nb;
-    const unsigned used_tram_rows_nb;
+	MFU:	sfu:  rcp r4
+		mul0: bar, sfu, bar0
+		mul1: bar, sfu, bar1
+		ipl:  t0.fp20, t0.fp20, NOP, NOP
 
-    const char *name;
-};
+	// sample tex1 (mask)
+	TEX:	tex r0, r1, tex1, r0, r1, r2
 
-#endif
+	// r0,r1 = (1 - mask.bgra) * dst.bgra + mask.a
+	ALU:
+		ALU0:	MAD  r0.l, r0.l-1, -r2.l, #0
+		ALU1:	MAD  r0.h, r0.h-1, -r2.h, #0
+		ALU2:	MAD  r1.l, r1.l-1, -r3.l, #0
+		ALU3:	MAD  r1.h,     #0,    #0, #0
+
+	DW:	store rt1, r0, r1
+;
