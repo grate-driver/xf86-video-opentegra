@@ -23,130 +23,88 @@
 
 #include "driver.h"
 
+static const uint32_t state_reset[] = {
+    /* Tegra30 specific stuff */
+    HOST1X_OPCODE_INCR(0x750, 16),
+        0x00000000, 0x00000000, 0x00000000, 0x00000000,
+        0x00000000, 0x00000000, 0x00000000, 0x00000000,
+        0x00000000, 0x00000000, 0x00000000, 0x00000000,
+        0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    HOST1X_OPCODE_INCR(0x907, 5),
+        0x00000000, 0x00000000, 0x00000000, 0x00000000,
+        0x00000000,
+    HOST1X_OPCODE_INCR(0xb00, 2),
+        0x00000000, 0x00000000,
+    HOST1X_OPCODE_IMM(0xb04, 0x00000000),
+    HOST1X_OPCODE_INCR(0xb06, 13),
+        0x00000000, 0x00000000, 0x00000000, 0x00000000,
+        0x00000000, 0x00000000, 0x00000000, 0x00000000,
+        0x00000000, 0x00000000, 0x00000000, 0x00000000,
+        0x00000000,
+    HOST1X_OPCODE_IMM(0xb14, 0x00000000),
+    /* End of Tegra30 specific stuff */
+    HOST1X_OPCODE_INCR(0x00d, 9),
+        0x00000000, 0x00000000, 0x00000000, 0x00000000,
+        0x00000000, 0x00000000, 0x00000000, 0x00000000,
+        0x00000000,
+    HOST1X_OPCODE_IMM(0x124, 0x00000007),
+    HOST1X_OPCODE_IMM(0x125, 0x00000000),
+    HOST1X_OPCODE_IMM(0x126, 0x00000000),
+    HOST1X_OPCODE_INCR(0x200, 5),
+        0x00000011, 0x0000ffff, 0x00ff0000, 0x00000000,
+        0x00000000,
+    HOST1X_OPCODE_IMM(0x209, 0x00000000),
+    HOST1X_OPCODE_IMM(0x20a, 0x00000000),
+    HOST1X_OPCODE_IMM(0x20b, 0x00000003),
+    HOST1X_OPCODE_IMM(0x34e, 0x3f800000),
+    HOST1X_OPCODE_IMM(0x34f, 0x00000000),
+    HOST1X_OPCODE_IMM(0x35b, 0x00000205),
+    HOST1X_OPCODE_IMM(0x363, 0x00000000),
+    HOST1X_OPCODE_IMM(0x364, 0x00000000),
+    HOST1X_OPCODE_IMM(0x412, 0x00000000),
+    HOST1X_OPCODE_IMM(0x413, 0x00000000),
+    HOST1X_OPCODE_INCR(0x521, 31),
+        0x00000000, 0x00000000, 0x00000000, 0x00000000,
+        0x00000000, 0x00000000, 0x00000000, 0x00000000,
+        0x00000000, 0x00000000, 0x00000000, 0x00000000,
+        0x00000000, 0x00000000, 0x00000000, 0x00000000,
+        0x00000000, 0x00000000, 0x00000000, 0x00000000,
+        0x00000000, 0x00000000, 0x00000000, 0x00000000,
+        0x00000000, 0x00000000, 0x00000000, 0x00000000,
+        0x00000000, 0x00000000, 0x00000000,
+    HOST1X_OPCODE_IMM(0xe40, 0x00000000),
+    HOST1X_OPCODE_IMM(0xe41, 0x00000000),
+    HOST1X_OPCODE_IMM(0xe25, 0x00000000),
+    HOST1X_OPCODE_IMM(0xe26, 0x00000000),
+    HOST1X_OPCODE_INCR(0x406, 12),
+        0x00000001, 0x00000000, 0x00000000, 0x00000000,
+        0x1fff1fff, 0x00000000, 0x00000006, 0x00000000,
+        0x00000008, 0x00000048, 0x00000000, 0x00000000,
+    HOST1X_OPCODE_IMM(0x501, 0x00000007),
+    HOST1X_OPCODE_IMM(0x502, 0x00000000),
+    HOST1X_OPCODE_IMM(0x503, 0x00000000),
+    HOST1X_OPCODE_IMM(0x542, 0x00000000),
+    HOST1X_OPCODE_IMM(0x543, 0x00000000),
+    HOST1X_OPCODE_IMM(0x544, 0x00000000),
+    HOST1X_OPCODE_IMM(0x545, 0x00000000),
+    HOST1X_OPCODE_IMM(0x60e, 0x00000000),
+    HOST1X_OPCODE_IMM(0x702, 0x00000000),
+    HOST1X_OPCODE_IMM(0x740, 0x00000035),
+    HOST1X_OPCODE_IMM(0x741, 0x00000000),
+    HOST1X_OPCODE_IMM(0x742, 0x00000000),
+    HOST1X_OPCODE_IMM(0x902, 0x00000000),
+    HOST1X_OPCODE_INCR(TGR3D_FDC_CONTROL, 13),
+        (0x00000e00 | TGR3D_FDC_CONTROL_INVALIDATE),
+        0x00000000, 0x000001ff, 0x000001ff, 0x000001ff,
+        0x00000030, 0x00000020, 0x000001ff, 0x00000100,
+        0x0f0f0f0f, 0x00000000, 0x00000000, 0x00000000,
+};
+
 static void TegraGR3D_InitState(struct tegra_stream *cmds)
 {
-    unsigned  i;
-
-    /* Tegra30 specific stuff */
-
-    tegra_stream_prep(cmds, 17);
-    tegra_stream_push(cmds, HOST1X_OPCODE_INCR(0x750, 16));
-    for (i = 0; i < 16; i++)
-        tegra_stream_push(cmds, 0x00000000);
-
-    tegra_stream_prep(cmds, 6);
-    tegra_stream_push(cmds, HOST1X_OPCODE_INCR(0x907, 5));
-    for (i = 0; i < 5; i++)
-        tegra_stream_push(cmds, 0x00000000);
-
-    tegra_stream_prep(cmds, 3);
-    tegra_stream_push(cmds, HOST1X_OPCODE_INCR(0xb00, 2));
-    tegra_stream_push(cmds, 0x00000003);
-    tegra_stream_push(cmds, 0x00000000);
-
-    tegra_stream_prep(cmds, 1);
-    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0xb04, 0x00000000));
-
-    tegra_stream_prep(cmds, 14);
-    tegra_stream_push(cmds, HOST1X_OPCODE_INCR(0xb06, 13));
-    for (i = 0; i < 13; i++)
-        tegra_stream_push(cmds, 0x00000000);
-
-    tegra_stream_prep(cmds, 1);
-    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0xb14, 0x00000000));
-
-    /* End of Tegra30 specific stuff */
-
-    tegra_stream_prep(cmds, 10);
-    tegra_stream_push(cmds, HOST1X_OPCODE_INCR(0x00d, 9));
-    for (i = 0; i < 9; i++)
-        tegra_stream_push(cmds, 0x00000000);
-
-    tegra_stream_prep(cmds, 3);
-    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0x124, 0x00000007));
-    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0x125, 0x00000000));
-    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0x126, 0x00000000));
-
-    tegra_stream_prep(cmds, 6);
-    tegra_stream_push(cmds, HOST1X_OPCODE_INCR(0x200, 5));
-    tegra_stream_push(cmds, 0x00000011);
-    tegra_stream_push(cmds, 0x0000ffff);
-    tegra_stream_push(cmds, 0x00ff0000);
-    tegra_stream_push(cmds, 0x00000000);
-    tegra_stream_push(cmds, 0x00000000);
-
-    tegra_stream_prep(cmds, 3);
-    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0x209, 0x00000000));
-    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0x20a, 0x00000000));
-    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0x20b, 0x00000003));
-
-    tegra_stream_prep(cmds, 5);
-    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0x34e, 0x3f800000));
-    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0x34f, 0x00000000));
-    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0x35b, 0x00000205));
-    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0x363, 0x00000000));
-    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0x364, 0x00000000));
-
-    tegra_stream_prep(cmds, 2);
-    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0x412, 0x00000000));
-    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0x413, 0x00000000));
-
-    tegra_stream_prep(cmds, 32);
-    tegra_stream_push(cmds, HOST1X_OPCODE_INCR(0x521, 31));
-    for (i = 1; i < 32; i++)
-        tegra_stream_push(cmds, 0x00000000);
-
-    tegra_stream_prep(cmds, 4);
-    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0xe40, 0x00000000));
-    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0xe41, 0x00000000));
-    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0xe25, 0x00000000));
-    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0xe26, 0x00000000));
-
-    tegra_stream_prep(cmds, 13);
-    tegra_stream_push(cmds, HOST1X_OPCODE_INCR(0x406, 12));
-    tegra_stream_push(cmds, 0x00000001);
-    tegra_stream_push(cmds, 0x00000000);
-    tegra_stream_push(cmds, 0x00000000);
-    tegra_stream_push(cmds, 0x00000000);
-    tegra_stream_push(cmds, 0x1fff1fff);
-    tegra_stream_push(cmds, 0x00000000);
-    tegra_stream_push(cmds, 0x00000006);
-    tegra_stream_push(cmds, 0x00000000);
-    tegra_stream_push(cmds, 0x00000008);
-    tegra_stream_push(cmds, 0x00000048);
-    tegra_stream_push(cmds, 0x00000000);
-    tegra_stream_push(cmds, 0x00000000);
-
-    tegra_stream_prep(cmds, 13);
-    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0x501, 0x00000007));
-    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0x502, 0x00000000));
-    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0x503, 0x00000000));
-    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0x542, 0x00000000));
-    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0x543, 0x00000000));
-    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0x544, 0x00000000));
-    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0x545, 0x00000000));
-    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0x60e, 0x00000000));
-    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0x702, 0x00000000));
-    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0x740, 0x00000035));
-    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0x741, 0x00000000));
-    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0x742, 0x00000000));
-    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0x902, 0x00000000));
-
-    tegra_stream_prep(cmds, 14);
-    tegra_stream_push(cmds, HOST1X_OPCODE_INCR(TGR3D_FDC_CONTROL, 13));
-    tegra_stream_push(cmds, 0x00000e00 | TGR3D_FDC_CONTROL_INVALIDATE);
-    tegra_stream_push(cmds, 0x00000000);
-    tegra_stream_push(cmds, 0x000001ff);
-    tegra_stream_push(cmds, 0x000001ff);
-    tegra_stream_push(cmds, 0x000001ff);
-    tegra_stream_push(cmds, 0x00000030);
-    tegra_stream_push(cmds, 0x00000020);
-    tegra_stream_push(cmds, 0x000001ff);
-    tegra_stream_push(cmds, 0x00000100);
-    tegra_stream_push(cmds, 0x0f0f0f0f);
-    tegra_stream_push(cmds, 0x00000000);
-    tegra_stream_push(cmds, 0x00000000);
-    tegra_stream_push(cmds, 0x00000000);
+    tegra_stream_prep(cmds, TEGRA_ARRAY_SIZE(state_reset));
+    tegra_stream_push_words(cmds, state_reset,
+                            TEGRA_ARRAY_SIZE(state_reset), 0);
 }
 
 void TegraGR3D_UploadConstVP(struct tegra_stream *cmds, unsigned index,
@@ -517,25 +475,20 @@ void TegraGR3D_DrawPrimitives(struct tegra_stream *cmds,
 static void TegraGR3D_UploadProgram(struct tegra_stream *cmds,
                                     const struct shader_program *prog)
 {
-    unsigned i;
-
     tegra_stream_prep(cmds, 4);
     tegra_stream_push(cmds, HOST1X_OPCODE_IMM(TGR3D_VP_UPLOAD_INST_ID, 0));
     tegra_stream_push(cmds, HOST1X_OPCODE_IMM(TGR3D_FP_UPLOAD_INST_ID_COMMON, 0));
     tegra_stream_push(cmds, HOST1X_OPCODE_IMM(TGR3D_FP_UPLOAD_MFU_INST_ID, 0));
     tegra_stream_push(cmds, HOST1X_OPCODE_IMM(TGR3D_FP_UPLOAD_ALU_INST_ID, 0));
 
-    tegra_stream_prep(cmds, prog->vs_prog_words_nb);
-    for (i = 0; i < prog->vs_prog_words_nb; i++)
-        tegra_stream_push(cmds, prog->vs_prog_words[i]);
+    tegra_stream_push_words(cmds, prog->vs_prog_words,
+                            prog->vs_prog_words_nb, 0);
 
-    tegra_stream_prep(cmds, prog->fs_prog_words_nb);
-    for (i = 0; i < prog->fs_prog_words_nb; i++)
-        tegra_stream_push(cmds, prog->fs_prog_words[i]);
+    tegra_stream_push_words(cmds, prog->fs_prog_words,
+                            prog->fs_prog_words_nb, 0);
 
-    tegra_stream_prep(cmds, prog->linker_words_nb);
-    for (i = 0; i < prog->linker_words_nb; i++)
-        tegra_stream_push(cmds, prog->linker_words[i]);
+    tegra_stream_push_words(cmds, prog->linker_words,
+                            prog->linker_words_nb, 0);
 }
 
 void TegraGR3D_Initialize(struct tegra_stream *cmds,
