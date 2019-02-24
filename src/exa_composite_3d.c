@@ -279,6 +279,17 @@ static Bool TegraCompositeFormatSwapRedBlue3D(unsigned format)
     }
 }
 
+static Bool TegraCompositeTextureSameByteOrder(PicturePtr picA, PicturePtr picB)
+{
+    return (TegraCompositeFormatSwapRedBlue3D(picA->format) ==
+            TegraCompositeFormatSwapRedBlue3D(picB->format));
+}
+
+static Bool TegraCompositeTexturePerComponentAlpha(PicturePtr pic)
+{
+    return pic->componentAlpha;
+}
+
 static const
 struct shader_program * TegraCompositeProgram3D(int op,
                                                 PicturePtr pSrcPicture,
@@ -353,6 +364,81 @@ struct shader_program * TegraCompositeProgram3D(int op,
             src_sel = TEX_PAD;
     }
 
+    /*
+     * Currently all shaders are handling texture transparency and
+     * coordinates warp-modes in the assembly, this adds a lot of
+     * instructions to the shaders and in result they are quite slow.
+     * Ideally we need a proper compiler to build all variants of the
+     * custom shaders, but we don't have that luxury at the moment.
+     *
+     * As a temporary workaround we prepared custom shaders for a
+     * couple of most popular texture-operation combinations.
+     */
+    if (op == PictOpOver) {
+        if (src_sel == TEX_PAD &&
+            (mask_sel == TEX_SOLID || mask_sel == TEX_EMPTY) &&
+            TegraCompositeTextureSameByteOrder(pSrcPicture, pDstPicture) &&
+            !TegraCompositeFormatHasAlpha(pSrcPicture->format) &&
+            !TegraCompositeFormatHasAlpha(pDstPicture->format)) {
+                prog = &prog_blend_over_opaque_clamped_src_solid_mask_dst_opaque;
+                goto custom_shader;
+        }
+
+        if (src_sel == TEX_NORMAL &&
+            (mask_sel == TEX_SOLID || mask_sel == TEX_EMPTY) &&
+            TegraCompositeTextureSameByteOrder(pSrcPicture, pDstPicture) &&
+            TegraCompositeFormatHasAlpha(pSrcPicture->format) &&
+            !TegraCompositeFormatHasAlpha(pDstPicture->format)) {
+                prog = &prog_blend_over_alpha_normal_src_solid_mask_dst_opaque;
+                goto custom_shader;
+        }
+
+        if (src_sel == TEX_CLIPPED &&
+            (mask_sel == TEX_SOLID || mask_sel == TEX_EMPTY) &&
+            TegraCompositeTextureSameByteOrder(pSrcPicture, pDstPicture) &&
+            TegraCompositeFormatHasAlpha(pSrcPicture->format) &&
+            !TegraCompositeFormatHasAlpha(pDstPicture->format)) {
+                prog = &prog_blend_over_alpha_clipped_src_solid_mask_dst_opaque;
+                goto custom_shader;
+        }
+
+        if (src_sel == TEX_CLIPPED &&
+            (mask_sel == TEX_SOLID || mask_sel == TEX_EMPTY) &&
+            TegraCompositeTextureSameByteOrder(pSrcPicture, pDstPicture) &&
+            TegraCompositeFormatHasAlpha(pSrcPicture->format) &&
+            TegraCompositeFormatHasAlpha(pDstPicture->format)) {
+                prog = &prog_blend_over_alpha_clipped_src_solid_mask_dst_alpha;
+                goto custom_shader;
+        }
+
+        if (src_sel == TEX_CLIPPED &&
+            (mask_sel == TEX_SOLID || mask_sel == TEX_EMPTY) &&
+            TegraCompositeTextureSameByteOrder(pSrcPicture, pDstPicture) &&
+            !TegraCompositeFormatHasAlpha(pSrcPicture->format) &&
+            !TegraCompositeFormatHasAlpha(pDstPicture->format)) {
+                prog = &prog_blend_over_opaque_clipped_src_solid_mask_dst_opaque;
+                goto custom_shader;
+        }
+
+        if (src_sel == TEX_SOLID && mask_sel == TEX_EMPTY &&
+            TegraCompositeFormatHasAlpha(pDstPicture->format)) {
+                prog = &prog_blend_over_solid_src_empty_mask_dst_alpha;
+                goto custom_shader;
+        }
+
+        if (src_sel == TEX_SOLID && mask_sel == TEX_EMPTY &&
+            !TegraCompositeFormatHasAlpha(pDstPicture->format)) {
+                prog = &prog_blend_over_solid_src_empty_mask_dst_opaque;
+                goto custom_shader;
+        }
+
+        if (src_sel == TEX_SOLID && mask_sel == TEX_CLIPPED &&
+            TegraCompositeTextureSameByteOrder(pMaskPicture, pDstPicture) &&
+            TegraCompositeTexturePerComponentAlpha(pMaskPicture)) {
+                prog = &prog_blend_over_solid_src_clipped_mask;
+                goto custom_shader;
+        }
+    }
 
     prog = cfg->prog[PROG_SEL(src_sel, mask_sel)];
     if (!prog) {
@@ -378,6 +464,12 @@ struct shader_program * TegraCompositeProgram3D(int op,
     }
 
     AccelMsg("got shader for operation %d src_sel %u mask_sel %u\n",
+             op, src_sel, mask_sel);
+
+    return prog;
+
+custom_shader:
+    AccelMsg("custom shader for operation %d src_sel %u mask_sel %u\n",
              op, src_sel, mask_sel);
 
     return prog;
