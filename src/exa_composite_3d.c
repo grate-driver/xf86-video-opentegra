@@ -1073,12 +1073,13 @@ void TegraEXADoneComposite3D(PixmapPtr pDst)
         tegra_stream_cleanup(&tegra->cmds);
     }
 
-    /* buffer reallocation could fail, cleanup it now */
+    /* buffer reallocation could fail, clean up it now */
     if (tegra->scratch.attribs_alloc_err) {
-        tegra_stream_wait_fence(fence);
-        TegraCompositeReleaseAttribBuffers(&tegra->scratch);
         tegra->scratch.attribs_alloc_err = FALSE;
+        tegra_stream_wait_fence(fence);
     }
+
+    TegraCompositeReleaseAttribBuffers(&tegra->scratch);
 
     TegraEXACoolPixmap(tegra->scratch.pSrc, FALSE);
     TegraEXACoolPixmap(tegra->scratch.pMask, FALSE);
