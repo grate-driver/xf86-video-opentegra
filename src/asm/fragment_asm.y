@@ -66,6 +66,8 @@ unsigned asm_pseq_to_dw_exec_nb;
 
 int asm_discards_fragment;
 
+int alu_busy[4];
+
 static void reset_fragment_asm_parser_state(void)
 {
 	int i, k;
@@ -832,6 +834,11 @@ ALU_INSTRUCTION: T_ALU ALUX_INSTRUCTIONS
 		asm_alu_sched[asm_fs_instructions_nb].instructions_nb++;
 		asm_alu_sched[asm_fs_instructions_nb].address = address;
 		asm_alu_instructions_nb++;
+
+		alu_busy[0] = 0;
+		alu_busy[1] = 0;
+		alu_busy[2] = 0;
+		alu_busy[3] = 0;
 	}
 	;
 
@@ -850,11 +857,23 @@ ALUX_INSTRUCTION:
 	T_ALUX ALU_OPERATION
 	{
 		asm_alu_instructions[asm_alu_instructions_nb].a[$1] = $2;
+
+		if (alu_busy[$1]) {
+			PARSE_ERROR("duplicated ALU entry");
+		}
+
+		alu_busy[$1] = 1;
 	}
 	|
 	T_ALUX ALU3_IMMEDIATES
 	{
 		uint32_t swap = asm_alu_instructions[asm_alu_instructions_nb].part7;
+
+		if (alu_busy[$1]) {
+			PARSE_ERROR("duplicated ALU entry");
+		}
+
+		alu_busy[$1] = 1;
 
 		if ($1 != 3) {
 			PARSE_ERROR("ALU immediates can override ALU3 only");
