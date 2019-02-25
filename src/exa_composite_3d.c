@@ -1105,7 +1105,7 @@ void TegraEXADoneComposite3D(PixmapPtr pDst)
             TegraEXAWaitFence(priv->fence_read);
 
         tegra_stream_end(&tegra->cmds);
-#if PROFILE
+#if 1
         tegra_stream_flush(&tegra->cmds);
 #else
         fence = tegra_stream_submit(&tegra->cmds, false);
