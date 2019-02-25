@@ -472,14 +472,14 @@ struct shader_program * TegraCompositeProgram3D(int op,
         return NULL;
     }
 
-    AccelMsg("got shader for operation %d src_sel %u mask_sel %u\n",
-             op, src_sel, mask_sel);
+    AccelMsg("got shader for operation %d src_sel %u mask_sel %u %s\n",
+             op, src_sel, mask_sel, prog->name);
 
     return prog;
 
 custom_shader:
-    AccelMsg("custom shader for operation %d src_sel %u mask_sel %u\n",
-             op, src_sel, mask_sel);
+    AccelMsg("custom shader for operation %d src_sel %u mask_sel %u %s\n",
+             op, src_sel, mask_sel, prog->name);
 
     return prog;
 }

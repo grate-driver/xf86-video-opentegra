@@ -295,6 +295,8 @@ int main(int argc, char *argv[])
     fprintf(out, "    .linker_words_nb = TEGRA_ARRAY_SIZE(lnk_%s_words),\n", fp_name);
     fprintf(out, "    .linker_inst_nb = %u,\n", asm_linker_instructions_nb);
     fprintf(out, "    .used_tram_rows_nb = %u,\n", asm_linker_used_tram_rows_nb);
+    fprintf(out, "\n");
+    fprintf(out, "    .name = \"%s\",\n", fp_name);
     fprintf(out, "};\n");
 
     return 0;
