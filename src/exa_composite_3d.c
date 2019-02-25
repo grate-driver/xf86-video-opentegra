@@ -789,8 +789,8 @@ Bool TegraEXAPrepareComposite3D(int op,
     if (err)
         return FALSE;
 
-    TegraEXAThawPixmap(pSrc, TRUE);
-    TegraEXAThawPixmap(pMask, TRUE);
+    TegraEXAThawPixmap(pSrc, !src_tex_reduced);
+    TegraEXAThawPixmap(pMask, !mask_tex_reduced);
     TegraEXAThawPixmap(pDst, TRUE);
 
     if (tegra->scratch.pSrc) {

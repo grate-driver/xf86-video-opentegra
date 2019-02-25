@@ -314,7 +314,7 @@ unsigned TegraPixmapSize(TegraPixmapPtr pixmap)
 {
     PixmapPtr pPixmap = pixmap->pPixmap;
 
-    if (pixmap->accel)
+    if (pixmap->offscreen)
         return TegraEXAPixmapSizeAligned(pPixmap->devKind,
                                          pPixmap->drawable.height,
                                          pPixmap->drawable.bitsPerPixel);
@@ -334,14 +334,21 @@ static Bool TegraEXAAllocatePixmapData(TegraPtr tegra,
                                        unsigned int bpp)
 {
     unsigned int pitch = TegraEXAPitch(width, height, bpp);
-    unsigned int size;
+    unsigned int size = pitch * height;
 
     pixmap->accel = TegraEXAAccelerated(bpp);
 
-    if (pixmap->accel)
+    /*
+     * Optimize allocation for 1x1 drawable as we will simply always
+     * avoid sampling from a such textures.
+     */
+    if (!pixmap->dri && width == 1 && height == 1)
+        return TegraEXAAllocateMem(pixmap, size);
+
+    if (pixmap->accel) {
+        pixmap->offscreen = 1;
         size = TegraEXAPixmapSizeAligned(pitch, height, bpp);
-    else
-        size = pitch * height;
+    }
 
     return (TegraEXAAllocateDRMFromPool(tegra, pixmap, size) ||
             TegraEXAAllocateDRM(tegra, pixmap, size) ||
@@ -410,6 +417,7 @@ static Bool TegraEXAModifyPixmapHeader(PixmapPtr pPixmap, int width,
             scanout = drmmode_get_front_bo(&tegra->drmmode);
             priv->type = TEGRA_EXA_PIXMAP_TYPE_BO;
             priv->bo = drm_tegra_bo_ref(scanout);
+            priv->offscreen = TRUE;
             priv->scanout = TRUE;
             priv->accel = TRUE;
             return TRUE;
@@ -420,6 +428,7 @@ static Bool TegraEXAModifyPixmapHeader(PixmapPtr pPixmap, int width,
             priv->type = TEGRA_EXA_PIXMAP_TYPE_BO;
             priv->bo = drm_tegra_bo_ref(scanout);
             priv->scanout_rotated = TRUE;
+            priv->offscreen = TRUE;
             priv->scanout = TRUE;
             priv->accel = TRUE;
             priv->crtc = 0;
@@ -431,6 +440,7 @@ static Bool TegraEXAModifyPixmapHeader(PixmapPtr pPixmap, int width,
             priv->type = TEGRA_EXA_PIXMAP_TYPE_BO;
             priv->bo = drm_tegra_bo_ref(scanout);
             priv->scanout_rotated = TRUE;
+            priv->offscreen = TRUE;
             priv->scanout = TRUE;
             priv->accel = TRUE;
             priv->crtc = 1;
@@ -476,7 +486,7 @@ TegraEXADownloadFromScreen(PixmapPtr pSrc, int x, int y, int w, int h,
     const char *src;
     Bool ret;
 
-    if (!priv->accel) {
+    if (!priv->accel || !priv->offscreen) {
         FallbackMsg("unaccelerateable dst pixmap %d:%d, %dx%d %d:%d\n",
                     pSrc->drawable.width, pSrc->drawable.height, x, y, w, h);
         return FALSE;

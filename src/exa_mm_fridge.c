@@ -244,7 +244,8 @@ static void TegraEXAResurrectAccelPixmap(TegraPtr tegra, TegraPixmapPtr pixmap)
     TegraEXAPtr exa;
     Bool ret;
 
-    if (!pixmap->accel || pixmap->type != TEGRA_EXA_PIXMAP_TYPE_FALLBACK)
+    if (!pixmap->accel || !pixmap->offscreen ||
+        pixmap->type != TEGRA_EXA_PIXMAP_TYPE_FALLBACK)
         return;
 
     exa = tegra->exa;
@@ -706,7 +707,8 @@ void TegraEXACoolTegraPixmap(TegraPtr tegra, TegraPixmapPtr pix)
     unsigned int current_sec8;
     struct timespec time;
 
-    if (pix->frozen || pix->cold || pix->scanout || pix->dri || !pix->accel)
+    if (pix->frozen || pix->cold || pix->scanout || pix->dri ||
+        !pix->accel || !pix->offscreen)
         return;
 
     if (!tegra->exa_refrigerator)

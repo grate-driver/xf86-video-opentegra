@@ -152,6 +152,7 @@ typedef struct {
     Bool scanout_rotated : 1;   /* pixmap backs rotated frontbuffer BO */
     Bool no_compress : 1;       /* pixmap's data compress poorly */
     Bool accelerated : 1;       /* pixmap was accelerated at least once */
+    Bool offscreen : 1;         /* pixmap's data resides in Tegra's GEM */
     Bool scanout : 1;           /* pixmap backs frontbuffer BO */
     Bool frozen : 1;            /* pixmap's data compressed */
     Bool accel : 1;             /* pixmap acceleratable */
