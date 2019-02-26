@@ -222,6 +222,7 @@ Bool TegraEXAPrepareComposite(int op, PicturePtr pSrcPicture,
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pDst->drawable.pScreen);
     TegraPtr tegra = TegraPTR(pScrn);
+    TegraPixmapPtr priv;
 
     PROFILE_STOP
     PROFILE_START
@@ -255,6 +256,21 @@ Bool TegraEXAPrepareComposite(int op, PicturePtr pSrcPicture,
         PROFILE_START
 
         return TRUE;
+    }
+
+    if (pSrcPicture && pSrcPicture->pDrawable) {
+        priv = exaGetPixmapDriverPrivate(pSrc);
+        priv->picture_format = pSrcPicture->format;
+    }
+
+    if (pMaskPicture && pMaskPicture->pDrawable) {
+        priv = exaGetPixmapDriverPrivate(pMask);
+        priv->picture_format = pMaskPicture->format;
+    }
+
+    if (pDstPicture && pDstPicture->pDrawable) {
+        priv = exaGetPixmapDriverPrivate(pDst);
+        priv->picture_format = pDstPicture->format;
     }
 
 fallback:

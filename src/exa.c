@@ -367,6 +367,15 @@ static void *TegraEXACreatePixmap2(ScreenPtr pScreen, int width, int height,
     if (!pixmap)
         return NULL;
 
+    switch (bitsPerPixel) {
+    case 8:
+        pixmap->picture_format = PICT_a8;
+        break;
+
+    default:
+        break;
+    }
+
     if (usage_hint == TEGRA_DRI_USAGE_HINT)
         pixmap->dri = TRUE;
 
@@ -533,28 +542,13 @@ static int TegraEXACreatePicture(PicturePtr pPicture)
 
     if (pPixmap) {
         TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pPixmap);
-        priv->pPicture = pPicture;
+        priv->picture_format = pPicture->format;
     }
 
     if (exa->CreatePicture)
         return exa->CreatePicture(pPicture);
 
     return Success;
-}
-
-static void TegraEXADestroyPicture(PicturePtr pPicture)
-{
-    PixmapPtr pPixmap = TegraEXAGetDrawablePixmap(pPicture->pDrawable);
-    ScrnInfoPtr pScrn = xf86ScreenToScrn(pPicture->pDrawable->pScreen);
-    TegraEXAPtr exa = TegraPTR(pScrn)->exa;
-
-    if (pPixmap) {
-        TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pPixmap);
-        priv->pPicture = NULL;
-    }
-
-    if (exa->DestroyPicture)
-        exa->DestroyPicture(pPicture);
 }
 
 static void TegraEXABlockHandler(BLOCKHANDLER_ARGS_DECL)
@@ -580,10 +574,7 @@ static void TegraEXAWrapProc(ScreenPtr pScreen)
 
     if (ps) {
         exa->CreatePicture = ps->CreatePicture;
-        exa->DestroyPicture = ps->DestroyPicture;
-
         ps->CreatePicture = TegraEXACreatePicture;
-        ps->DestroyPicture = TegraEXADestroyPicture;
     }
 
     exa->BlockHandler = pScreen->BlockHandler;
@@ -596,10 +587,8 @@ static void TegraEXAUnWrapProc(ScreenPtr pScreen)
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pScreen);
     TegraEXAPtr exa = TegraPTR(pScrn)->exa;
 
-    if (ps) {
+    if (ps)
         ps->CreatePicture = exa->CreatePicture;
-        ps->DestroyPicture = exa->DestroyPicture;
-    }
 
     pScreen->BlockHandler = exa->BlockHandler;
 }

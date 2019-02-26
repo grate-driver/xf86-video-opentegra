@@ -59,44 +59,30 @@ static int TegraEXAToPNGFormat(TegraPtr tegra, TegraPixmapPtr pixmap)
         return -1;
 
 #ifdef HAVE_PNG
-    if (pixmap->pPicture) {
-        switch (pixmap->pPicture->format) {
-        case PICT_a8:
-            return PNG_FORMAT_GRAY;
+    switch (pixmap->picture_format) {
+    case PICT_a8:
+        return PNG_FORMAT_GRAY;
 
-        case PICT_c8:
-            return PNG_FORMAT_GRAY;
+    case PICT_c8:
+        return PNG_FORMAT_GRAY;
 
-        case PICT_r8g8b8:
-            return PNG_FORMAT_BGR;
+    case PICT_r8g8b8:
+        return PNG_FORMAT_BGR;
 
-        case PICT_b8g8r8:
-            return PNG_FORMAT_RGB;
+    case PICT_b8g8r8:
+        return PNG_FORMAT_RGB;
 
-        case PICT_a8r8g8b8:
-            return PNG_FORMAT_BGRA;
+    case PICT_a8r8g8b8:
+        return PNG_FORMAT_BGRA;
 
-        case PICT_a8b8g8r8:
-            return PNG_FORMAT_RGBA;
+    case PICT_a8b8g8r8:
+        return PNG_FORMAT_RGBA;
 
-        case PICT_b8g8r8a8:
-            return PNG_FORMAT_ARGB;
+    case PICT_b8g8r8a8:
+        return PNG_FORMAT_ARGB;
 
-        default:
-            break;
-        }
-    } else {
-        switch (pixmap->pPixmap->drawable.bitsPerPixel) {
-        case 8:
-            return PNG_FORMAT_GRAY;
-
-        case 32:
-            /* XXX: assume display pixel format, is this always correct? */
-            return PNG_FORMAT_BGRA;
-
-        default:
-            break;
-        }
+    default:
+        break;
     }
 #endif
 
@@ -109,47 +95,30 @@ static int TegraEXAToJpegTurboFormat(TegraPtr tegra, TegraPixmapPtr pixmap)
         return -1;
 
 #ifdef HAVE_JPEG
-    if (pixmap->pPicture) {
-        switch (pixmap->pPicture->format) {
-        case PICT_a8:
-            return TJPF_GRAY;
+    switch (pixmap->picture_format) {
+    case PICT_a8:
+        return TJPF_GRAY;
 
-        case PICT_c8:
-            return TJPF_GRAY;
+    case PICT_c8:
+        return TJPF_GRAY;
 
-        case PICT_r8g8b8:
-            return TJPF_BGR;
+    case PICT_r8g8b8:
+        return TJPF_BGR;
 
-        case PICT_b8g8r8:
-            return TJPF_RGB;
+    case PICT_b8g8r8:
+        return TJPF_RGB;
 
-        case PICT_x8r8g8b8:
-            return TJPF_BGRX;
+    case PICT_x8r8g8b8:
+        return TJPF_BGRX;
 
-        case PICT_x8b8g8r8:
-            return TJPF_RGBX;
+    case PICT_x8b8g8r8:
+        return TJPF_RGBX;
 
-        case PICT_b8g8r8x8:
-            return TJPF_XRGB;
+    case PICT_b8g8r8x8:
+        return TJPF_XRGB;
 
-        default:
-            break;
-        }
-    } else {
-        switch (pixmap->pPixmap->drawable.bitsPerPixel) {
-        case 8:
-            return TJPF_GRAY;
-
-        case 32:
-            /* XXX: assume display pixel format, is this always correct? */
-            if (pixmap->pPixmap->drawable.depth == 24)
-                return TJPF_BGRX;
-
-            break;
-
-        default:
-            break;
-        }
+    default:
+        break;
     }
 #endif
 

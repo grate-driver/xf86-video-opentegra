@@ -128,7 +128,6 @@ typedef struct _TegraEXARec{
     time_t last_freezing_time;
     unsigned release_count;
     CreatePictureProcPtr CreatePicture;
-    DestroyPictureProcPtr DestroyPicture;
     ScreenBlockHandlerProcPtr BlockHandler;
 #ifdef HAVE_JPEG
     tjhandle jpegCompressor;
@@ -187,12 +186,12 @@ typedef struct {
             void *compressed_data;
             unsigned compressed_size;
             unsigned compression_type;
-            unsigned picture_format;
         };
     };
 
     PixmapPtr pPixmap;
-    PicturePtr pPicture;
+
+    unsigned picture_format;
 } TegraPixmapRec, *TegraPixmapPtr;
 
 unsigned int TegraEXAPitch(unsigned int width, unsigned int height,
