@@ -174,26 +174,37 @@ static Bool TegraCompositeFormatSwapRedBlue2D(unsigned format)
     }
 }
 
+static Bool TegraCompositeFormatHasAlpha(unsigned format)
+{
+    switch (format) {
+    case PICT_a8:
+    case PICT_a8b8g8r8:
+    case PICT_a8r8g8b8:
+        return TRUE;
+
+    default:
+        return FALSE;
+    }
+}
+
 static Bool TegraEXAPrepareSolid2D(int op,
                                    PicturePtr pSrcPicture,
                                    PicturePtr pMaskPicture,
                                    PicturePtr pDstPicture,
                                    PixmapPtr pDst)
 {
-    Pixel solid, mask;
+    Pixel solid;
+    Bool alpha;
 
     if (pSrcPicture && pSrcPicture->pDrawable)
         return FALSE;
 
-    if (pMaskPicture && pMaskPicture->pDrawable)
+    if (pMaskPicture)
         return FALSE;
 
     if (op == PictOpSrc) {
         solid = pSrcPicture ? pSrcPicture->pSourcePict->solidFill.color :
                               0x00000000;
-
-        mask = pMaskPicture ? pMaskPicture->pSourcePict->solidFill.color :
-                              0xffffffff;
 
         if (pSrcPicture) {
             if (pSrcPicture->format == PICT_r5g6b5 ||
@@ -205,17 +216,13 @@ static Bool TegraEXAPrepareSolid2D(int op,
                 solid = TegraSwapRedBlue(solid);
         }
 
-        if (pMaskPicture) {
-            if (pMaskPicture->format == PICT_r5g6b5 ||
-                pMaskPicture->format == PICT_b5g6r5)
-                mask = TegraPixelRGB565to888(mask);
+        alpha = TegraCompositeFormatHasAlpha(pSrcPicture->format);
+        if (!alpha)
+            solid |= 0xff000000;
 
-            if (TegraCompositeFormatSwapRedBlue2D(pDstPicture->format) !=
-                TegraCompositeFormatSwapRedBlue2D(pMaskPicture->format))
-                mask = TegraSwapRedBlue(mask);
-        }
-
-        solid &= mask;
+        alpha = TegraCompositeFormatHasAlpha(pDstPicture->format);
+        if (!alpha)
+            solid &= 0x00ffffff;
 
         if (pDstPicture->format == PICT_r5g6b5 ||
             pDstPicture->format == PICT_b5g6r5)
