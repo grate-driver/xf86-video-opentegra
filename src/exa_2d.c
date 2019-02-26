@@ -89,9 +89,27 @@ Bool TegraEXAPrepareSolid(PixmapPtr pPixmap, int op, Pixel planemask,
     TegraEXAThawPixmap(pPixmap, TRUE);
 
     if (priv->type <= TEGRA_EXA_PIXMAP_TYPE_FALLBACK) {
+        if (pPixmap->drawable.width == 1 &&
+            pPixmap->drawable.height == 1) {
+                void *ptr = priv->fallback;
+
+                switch (pPixmap->drawable.bitsPerPixel) {
+                case 8:
+                    *((CARD8*) ptr) = color;
+                    return TRUE;
+                case 16:
+                    *((CARD16*) ptr) = color;
+                    return TRUE;
+                case 32:
+                    *((CARD32*) ptr) = color;
+                    return TRUE;
+                }
+        }
+
         FallbackMsg("unaccelerateable pixmap %d:%d\n",
                     pPixmap->drawable.width,
                     pPixmap->drawable.height);
+
         return FALSE;
     }
 
@@ -142,6 +160,10 @@ void TegraEXASolid(PixmapPtr pPixmap, int px1, int py1, int px2, int py2)
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
 
     AccelMsg("%dx%d w:h %d:%d\n", px1, py1, px2 - px1, py2 - py1);
+
+    if (pPixmap->drawable.width == 1 &&
+        pPixmap->drawable.height == 1)
+            return;
 
     tegra_stream_prep(&tegra->cmds, 3);
     tegra_stream_push(&tegra->cmds, HOST1X_OPCODE_MASK(0x38, 0x5));
