@@ -159,7 +159,7 @@ typedef struct {
     Bool cold : 1;              /* pixmap scheduled for compression */
     Bool dri : 1;               /* pixmap's BO was exported */
 
-    unsigned crtc : 2;          /* pixmap's CRTC ID (for display rotation) */
+    unsigned crtc : 1;          /* pixmap's CRTC ID (for display rotation) */
 
     unsigned type : 2;
 
