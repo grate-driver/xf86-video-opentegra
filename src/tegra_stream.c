@@ -310,25 +310,6 @@ int tegra_stream_push_reloc(struct tegra_stream *stream,
 }
 
 /*
- * tegra_stream_push(stream, word)
- *
- * Push a single word to given stream.
- */
-
-int tegra_stream_push(struct tegra_stream *stream, uint32_t word)
-{
-    if (!(stream && stream->status == TEGRADRM_STREAM_CONSTRUCT)) {
-        ErrorMsg("Stream status isn't CONSTRUCT\n");
-        return -1;
-    }
-
-    *stream->buffer.pushbuf->ptr++ = word;
-    stream->op_done_synced = false;
-
-    return 0;
-}
-
-/*
  * tegra_stream_push_setclass(stream, class_id)
  *
  * Push "set class" opcode to the stream. Do nothing if the class is already
