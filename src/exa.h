@@ -29,7 +29,12 @@
 
 #define TEGRA_DRI_USAGE_HINT ('D' << 16 | 'R' << 8 | 'I')
 
-#define TEGRA_EXA_OFFSET_ALIGN          256
+/*
+ * The maximum alignment required by hardware seems is 64 bytes,
+ * but we are also using VFP for copying write-combined data and
+ * it requires a 128 bytes alignment.
+ */
+#define TEGRA_EXA_OFFSET_ALIGN          128
 
 #if 0
 #define FallbackMsg(fmt, args...)                                           \
