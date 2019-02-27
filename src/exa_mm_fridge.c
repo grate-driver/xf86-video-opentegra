@@ -677,7 +677,8 @@ void TegraEXACoolTegraPixmap(TegraPtr tegra, TegraPixmapPtr pix)
     struct timespec time;
 
     if (pix->frozen || pix->cold || pix->scanout || pix->dri ||
-        !pix->accel || !pix->offscreen)
+        !pix->accel || !pix->offscreen ||
+        pix->type == TEGRA_EXA_PIXMAP_TYPE_NONE)
         return;
 
     if (!tegra->exa_refrigerator)
@@ -710,6 +711,31 @@ void TegraEXACoolPixmap(PixmapPtr pPixmap, Bool write)
             if (write)
                 priv->no_compress = FALSE;
         }
+    }
+}
+
+static void
+TegraEXAAllocatePixmapDataNoFail(TegraPtr tegra, TegraPixmapPtr pixmap,
+                                 Bool accel)
+{
+    unsigned int size = TegraPixmapSize(pixmap);
+    Bool retry = FALSE;
+
+    while (1) {
+        if (retry)
+            usleep(100000);
+
+        if (!accel) {
+            if (TegraEXAAllocateMem(pixmap, size))
+                return;
+        } else {
+            if (TegraEXAAllocateDRMFromPool(tegra, pixmap, size) ||
+                TegraEXAAllocateDRM(tegra, pixmap, size) ||
+                TegraEXAAllocateMem(pixmap, size))
+                return;
+        }
+
+        retry = TRUE;
     }
 }
 
@@ -746,5 +772,8 @@ void TegraEXAThawPixmap(PixmapPtr pPixmap, Bool accel)
 
         if (accel)
             TegraEXAResurrectAccelPixmap(tegra, priv);
+
+        if (priv->type == TEGRA_EXA_PIXMAP_TYPE_NONE)
+            TegraEXAAllocatePixmapDataNoFail(tegra, priv, accel);
     }
 }

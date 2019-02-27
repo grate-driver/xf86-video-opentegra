@@ -342,13 +342,21 @@ static Bool TegraEXAAllocatePixmapData(TegraPtr tegra,
      * Optimize allocation for 1x1 drawable as we will simply always
      * avoid sampling from a such textures.
      */
-    if (!pixmap->dri && width == 1 && height == 1)
+    if ((!pixmap->dri && width == 1 && height == 1) || !pixmap->accel)
         return TegraEXAAllocateMem(pixmap, size);
 
     if (pixmap->accel) {
         pixmap->offscreen = 1;
         size = TegraEXAPixmapSizeAligned(pitch, height, bpp);
     }
+
+    /*
+     * Allocation is deferred to TegraEXAThawPixmap() invocation
+     * because there is no point to allocate BO if pixmap won't
+     * be ever used for accelerated drawing.
+     */
+    if (!pixmap->dri)
+        return TRUE;
 
     return (TegraEXAAllocateDRMFromPool(tegra, pixmap, size) ||
             TegraEXAAllocateDRM(tegra, pixmap, size) ||
