@@ -338,6 +338,10 @@ static Bool TegraEXAAllocatePixmapData(TegraPtr tegra,
 
     pixmap->accel = TegraEXAAccelerated(bpp);
 
+    /* DRI allocation must be accelerateable, otherwise what's the point? */
+    if (pixmap->dri && !pixmap->accel)
+        return FALSE;
+
     /*
      * Optimize allocation for 1x1 drawable as we will simply always
      * avoid sampling from a such textures.
