@@ -36,7 +36,7 @@ opentegra_drv_ladir = @moduledir@/drivers
 # enable fp16 for the 3d attributes
 opentegra_drv_la_CFLAGS = $(AM_CFLAGS) $(DEFINES) -mfp16-format=ieee
 
-opentegra_drv_la_DEPENDENCIES = shaders.h
+opentegra_drv_la_DEPENDENCIES = shaders.h exa_composite_3d_state_tracker.c
 
 opentegra_drv_la_SOURCES = \
 	compat-api.h \

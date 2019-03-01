@@ -67,20 +67,6 @@ unsigned int TegraEXAPitch(unsigned int width, unsigned int height,
     return TEGRA_PITCH_ALIGN(width, bpp, alignment);
 }
 
-void TegraEXAWaitFence(struct tegra_fence *fence)
-{
-    if (tegra_stream_wait_fence(fence) && !fence->gr2d) {
-        /*
-         * XXX: A bit more optimal would be to release buffers
-         *      right after submitting the job, but then BO reservation
-         *      support by kernel driver is required. For now we will
-         *      release buffers when it is known to be safe, i.e. after
-         *      fencing which should happen often enough.
-         */
-        TegraCompositeReleaseAttribBuffers(fence->opaque);
-    }
-}
-
 static int TegraEXAMarkSync(ScreenPtr pScreen)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pScreen);
@@ -701,6 +687,10 @@ Bool TegraEXAScreenInit(ScreenPtr pScreen)
 
     TegraEXAWrapProc(pScreen);
 
+    TegraGR3DStateReset(&priv->gr3d_state);
+
+    priv->scratch.drm = tegra->drm;
+
     return TRUE;
 
 release_mm:
@@ -727,6 +717,7 @@ void TegraEXAScreenExit(ScreenPtr pScreen)
 
     if (priv) {
         exaDriverFini(pScreen);
+        TegraGR3DStateReset(&priv->gr3d_state);
         TegraEXAUnWrapProc(pScreen);
         free(priv->driver);
 
@@ -734,7 +725,6 @@ void TegraEXAScreenExit(ScreenPtr pScreen)
         tegra_stream_destroy(&priv->cmds);
         drm_tegra_channel_close(priv->gr2d);
         drm_tegra_channel_close(priv->gr3d);
-        TegraCompositeReleaseAttribBuffers(&priv->scratch);
         free(priv);
 
         tegra->exa = NULL;

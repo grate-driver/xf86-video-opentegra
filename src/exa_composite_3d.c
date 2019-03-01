@@ -25,6 +25,10 @@
 #include "exa_mm.h"
 #include "shaders.h"
 
+#define ErrorMsg(fmt, args...)                                              \
+    xf86DrvMsg(-1, X_ERROR, "%s:%d/%s(): " fmt, __FILE__,                   \
+               __LINE__, __func__, ##args)
+
 #define BLUE(c)     (((c) & 0xff)         / 255.0f)
 #define GREEN(c)    ((((c) >> 8)  & 0xff) / 255.0f)
 #define RED(c)      ((((c) >> 16) & 0xff) / 255.0f)
@@ -32,14 +36,14 @@
 
 #define TegraPushVtxAttr(x, y, push)                                        \
     if (push) {                                                             \
-        tegra->scratch.attribs->map[tegra->scratch.attrib_itr++] = x;       \
-        tegra->scratch.attribs->map[tegra->scratch.attrib_itr++] = y;       \
+        tegra->scratch.attribs.map[tegra->scratch.attrib_itr++] = x;        \
+        tegra->scratch.attribs.map[tegra->scratch.attrib_itr++] = y;        \
     }
 
 #define TegraSwapRedBlue(v)                                                 \
     ((v & 0xff00ff00) | (v & 0x00ff0000) >> 16 | (v & 0x000000ff) << 16)
 
-#define TEGRA_ATTRIB_BUFFER_SIZE        0x1000
+#define TEGRA_ATTRIB_BUFFER_SIZE        0x4000
 
 #define TEX_SOLID           0
 #define TEX_CLIPPED         1
@@ -87,11 +91,11 @@
 .prog[PROG_SEL(TEX_EMPTY,   TEX_NORMAL)]    = &prog_blend_ ## OP_NAME ## _solid_src, \
 .prog[PROG_SEL(TEX_EMPTY,   TEX_MIRROR)]    = &prog_blend_ ## OP_NAME ## _solid_src
 
-struct tegra_composit_config {
+struct tegra_composite_config {
     const struct shader_program *prog[64];
 };
 
-static const struct tegra_composit_config composite_cfgs[] = {
+static const struct tegra_composite_config composite_cfgs[] = {
     [PictOpOver] = {
         PROG_DEF(over),
     },
@@ -174,57 +178,7 @@ static const struct tegra_composit_config composite_cfgs[] = {
     },
 };
 
-static int TegraCompositeAllocateAttribBuffer(struct drm_tegra *drm,
-                                              TegraEXAPtr tegra)
-{
-    struct tegra_attrib_bo *old = tegra->scratch.attribs;
-    struct tegra_attrib_bo *new;
-    int err;
-
-    tegra->scratch.attribs_alloc_err = TRUE;
-
-    new = calloc(1, sizeof(*new));
-    if (!new)
-        return -1;
-
-    err = drm_tegra_bo_new(&new->bo, drm, 0, TEGRA_ATTRIB_BUFFER_SIZE);
-    if (err) {
-        free(new);
-        return err;
-    }
-
-    err = drm_tegra_bo_map(new->bo, (void**)&new->map);
-    if (err) {
-        drm_tegra_bo_unref(new->bo);
-        free(new);
-        return err;
-    }
-
-    tegra->scratch.attribs_alloc_err = FALSE;
-    tegra->scratch.attrib_itr = 0;
-    tegra->scratch.attribs = new;
-    new->next = old;
-
-    return 0;
-}
-
-void TegraCompositeReleaseAttribBuffers(TegraEXAScratchPtr scratch)
-{
-    if (scratch->attribs) {
-        struct tegra_attrib_bo *attribs_bo = scratch->attribs;
-        struct tegra_attrib_bo *next;
-
-        while (attribs_bo) {
-            next = attribs_bo->next;
-            drm_tegra_bo_unref(attribs_bo->bo);
-            free(attribs_bo);
-            attribs_bo = next;
-        }
-
-        scratch->attribs = NULL;
-        scratch->attrib_itr = 0;
-    }
-}
+#include "exa_composite_3d_state_tracker.c"
 
 static Bool TegraCompositeReducedTexture(PicturePtr pPicture)
 {
@@ -242,11 +196,11 @@ static Bool TegraCompositeReducedTexture(PicturePtr pPicture)
     return FALSE;
 }
 
-static Bool TegraCompositePow2Texture(PicturePtr pic)
+static Bool TegraCompositePow2Texture(PixmapPtr pix)
 {
-    if (pic && pic->pDrawable) {
-        if (IS_POW2(pic->pDrawable->width) &&
-            IS_POW2(pic->pDrawable->height))
+    if (pix) {
+        if (IS_POW2(pix->drawable.width) &&
+            IS_POW2(pix->drawable.height))
             return TRUE;
     }
 
@@ -265,222 +219,63 @@ static Bool TegraCompositeFormatHasAlpha(unsigned format)
     }
 }
 
-static Bool TegraCompositeFormatSwapRedBlue3D(unsigned format)
-{
-    switch (format) {
-    case PICT_x8b8g8r8:
-    case PICT_a8b8g8r8:
-    case PICT_r5g6b5:
-        return TRUE;
-
-    default:
-        return FALSE;
-    }
-}
-
-static Bool TegraCompositeTextureSameByteOrder(PicturePtr picA, PicturePtr picB)
-{
-    return (TegraCompositeFormatSwapRedBlue3D(picA->format) ==
-            TegraCompositeFormatSwapRedBlue3D(picB->format) ||
-            picA->format == PICT_a8 ||
-            picB->format == PICT_a8);
-}
-
 static Bool TegraCompositeTexturePerComponentAlpha(PicturePtr pic)
 {
     return pic->componentAlpha;
 }
 
-static const
-struct shader_program * TegraCompositeProgram3D(int op,
-                                                PicturePtr pSrcPicture,
-                                                PicturePtr pMaskPicture,
-                                                PicturePtr pDstPicture,
-                                                unsigned *ret_mask_sel,
-                                                unsigned *ret_src_sel)
+static Bool TegraCompositeProgram3DPreCheck(TegraGR3DDrawStatePtr draw_state)
 {
-    const struct tegra_composit_config *cfg = &composite_cfgs[op];
-    Bool mask_tex = (pMaskPicture && pMaskPicture->pDrawable);
-    Bool src_tex = (pSrcPicture && pSrcPicture->pDrawable);
-    unsigned mask_sel = pMaskPicture ? TEX_SOLID : TEX_EMPTY;
-    unsigned src_sel = pSrcPicture ? TEX_SOLID : TEX_EMPTY;
+    const struct tegra_composite_config *cfg = &composite_cfgs[draw_state->op];
     const struct shader_program *prog;
 
-    if (op > PictOpSaturate)
-        return NULL;
+    if (draw_state->op > TEGRA_ARRAY_SIZE(composite_cfgs))
+        return FALSE;
 
-    if (mask_tex && TegraCompositeReducedTexture(pMaskPicture)) {
-        mask_tex = FALSE;
-    } else if (mask_tex) {
-        switch (pMaskPicture->repeatType) {
-        case RepeatNone:
-            mask_sel = TEX_CLIPPED;
-            break;
-        case RepeatPad:
-            mask_sel = TEX_PAD;
-            break;
-        case RepeatNormal:
-            mask_sel = TEX_NORMAL;
-            break;
-        case RepeatReflect:
-            mask_sel = TEX_MIRROR;
-            break;
-        default:
-            FallbackMsg("unsupported repeat type %u\n",
-                        pMaskPicture->repeatType);
-            return NULL;
-        }
-
-        /*
-         * GR3D can handle most of texture wrap-modes while fetching texels
-         * if texture size is power of 2. Clamped-mode is the default texture
-         * wrap-mode, we have shaders for this mode for all of blending
-         * operations.
-         */
-        if (mask_sel != TEX_CLIPPED && TegraCompositePow2Texture(pMaskPicture))
-            mask_sel = TEX_PAD;
-    }
-
-    if (src_tex && TegraCompositeReducedTexture(pSrcPicture)) {
-        src_tex = FALSE;
-    } else if (src_tex) {
-        switch (pSrcPicture->repeatType) {
-        case RepeatNone:
-            src_sel = TEX_CLIPPED;
-            break;
-        case RepeatPad:
-            src_sel = TEX_PAD;
-            break;
-        case RepeatNormal:
-            src_sel = TEX_NORMAL;
-            break;
-        case RepeatReflect:
-            src_sel = TEX_MIRROR;
-            break;
-        default:
-            FallbackMsg("unsupported repeat type %u\n",
-                        pMaskPicture->repeatType);
-            return NULL;
-        }
-
-        if (src_sel != TEX_CLIPPED && TegraCompositePow2Texture(pSrcPicture))
-            src_sel = TEX_PAD;
-    }
-
-    *ret_mask_sel = mask_sel;
-    *ret_src_sel = src_sel;
-
-    /*
-     * Currently all shaders are handling texture transparency and
-     * coordinates warp-modes in the assembly, this adds a lot of
-     * instructions to the shaders and in result they are quite slow.
-     * Ideally we need a proper compiler to build all variants of the
-     * custom shaders, but we don't have that luxury at the moment.
-     *
-     * As a temporary workaround we prepared custom shaders for a
-     * couple of most popular texture-operation combinations.
-     */
-    if (op == PictOpOver) {
-        if (src_sel == TEX_PAD &&
-            (mask_sel == TEX_SOLID || mask_sel == TEX_EMPTY) &&
-            TegraCompositeTextureSameByteOrder(pSrcPicture, pDstPicture) &&
-            !TegraCompositeFormatHasAlpha(pSrcPicture->format)) {
-                prog = &prog_blend_over_opaque_clamped_src_solid_mask;
-                goto custom_shader;
-        }
-
-        if (src_sel == TEX_NORMAL &&
-            (mask_sel == TEX_SOLID || mask_sel == TEX_EMPTY) &&
-            TegraCompositeTextureSameByteOrder(pSrcPicture, pDstPicture) &&
-            TegraCompositeFormatHasAlpha(pSrcPicture->format)) {
-                prog = &prog_blend_over_alpha_normal_src_solid_mask;
-                goto custom_shader;
-        }
-
-        if (src_sel == TEX_PAD &&
-            (mask_sel == TEX_SOLID || mask_sel == TEX_EMPTY) &&
-            TegraCompositeTextureSameByteOrder(pSrcPicture, pDstPicture) &&
-            TegraCompositeFormatHasAlpha(pSrcPicture->format)) {
-                prog = &prog_blend_over_alpha_clamped_src_solid_mask;
-                goto custom_shader;
-        }
-
-        if (src_sel == TEX_CLIPPED &&
-            (mask_sel == TEX_SOLID || mask_sel == TEX_EMPTY) &&
-            TegraCompositeTextureSameByteOrder(pSrcPicture, pDstPicture) &&
-            TegraCompositeFormatHasAlpha(pSrcPicture->format)) {
-                prog = &prog_blend_over_alpha_clipped_src_solid_mask;
-                goto custom_shader;
-        }
-
-        if (src_sel == TEX_CLIPPED &&
-            (mask_sel == TEX_SOLID || mask_sel == TEX_EMPTY) &&
-            TegraCompositeTextureSameByteOrder(pSrcPicture, pDstPicture) &&
-            !TegraCompositeFormatHasAlpha(pSrcPicture->format)) {
-                prog = &prog_blend_over_opaque_clipped_src_solid_mask;
-                goto custom_shader;
-        }
-
-        if (src_sel == TEX_SOLID && mask_sel == TEX_EMPTY &&
-            TegraCompositeFormatHasAlpha(pDstPicture->format)) {
-                prog = &prog_blend_over_solid_src_empty_mask_dst_alpha;
-                goto custom_shader;
-        }
-
-        if (src_sel == TEX_SOLID && mask_sel == TEX_EMPTY &&
-            !TegraCompositeFormatHasAlpha(pDstPicture->format)) {
-                prog = &prog_blend_over_solid_src_empty_mask_dst_opaque;
-                goto custom_shader;
-        }
-
-        if (src_sel == TEX_SOLID && mask_sel == TEX_CLIPPED &&
-            TegraCompositeTextureSameByteOrder(pMaskPicture, pDstPicture) &&
-            TegraCompositeTexturePerComponentAlpha(pMaskPicture)) {
-                prog = &prog_blend_over_solid_src_clipped_mask;
-                goto custom_shader;
-        }
-
-        if (src_sel == TEX_SOLID && mask_sel == TEX_PAD &&
-            TegraCompositeTextureSameByteOrder(pMaskPicture, pDstPicture) &&
-            TegraCompositeTexturePerComponentAlpha(pMaskPicture)) {
-                prog = &prog_blend_over_solid_src_clamped_mask;
-                goto custom_shader;
-        }
-    }
-
-    prog = cfg->prog[PROG_SEL(src_sel, mask_sel)];
+    prog = cfg->prog[PROG_SEL(draw_state->src.tex_sel,
+                              draw_state->mask.tex_sel)];
     if (!prog) {
         FallbackMsg("no shader for operation %d src_sel %u mask_sel %u\n",
-                    op, src_sel, mask_sel);
-        return NULL;
+                    draw_state->op,
+                    draw_state->src.tex_sel,
+                    draw_state->mask.tex_sel);
+        return FALSE;
     }
+
+    AccelMsg("got shader for operation %d src_sel %u mask_sel %u %s\n",
+             draw_state->op, draw_state->src.tex_sel, draw_state->mask.tex_sel,
+             prog->name);
+
+    /* we have special shaders for this case */
+    if (draw_state->op == PictOpOver &&
+        draw_state->src.tex_sel == TEX_NORMAL && draw_state->src.alpha &&
+            (draw_state->mask.tex_sel == TEX_SOLID ||
+             draw_state->mask.tex_sel == TEX_EMPTY))
+        return TRUE;
 
     /*
      * Only padding and clipping are currently supported by the
      * "generic" shaders for non-pow2 textures.
      */
-    if (mask_tex && mask_sel != TEX_PAD && mask_sel != TEX_CLIPPED &&
-            !TegraCompositePow2Texture(pMaskPicture)) {
-        FallbackMsg("unsupported repeat type %u\n", pMaskPicture->repeatType);
-        return NULL;
+    if (draw_state->mask.pPix &&
+        draw_state->mask.tex_sel != TEX_PAD &&
+        draw_state->mask.tex_sel != TEX_CLIPPED &&
+            !TegraCompositePow2Texture(draw_state->mask.pPix)) {
+        FallbackMsg("unsupported repeat type mask_sel %u\n",
+                    draw_state->mask.tex_sel);
+        return FALSE;
     }
 
-    if (src_tex && src_sel != TEX_PAD && src_sel != TEX_CLIPPED &&
-            !TegraCompositePow2Texture(pSrcPicture)) {
-        FallbackMsg("unsupported repeat type %u\n", pSrcPicture->repeatType);
-        return NULL;
+    if (draw_state->src.pPix &&
+        draw_state->src.tex_sel != TEX_PAD &&
+        draw_state->src.tex_sel != TEX_CLIPPED &&
+            !TegraCompositePow2Texture(draw_state->src.pPix)) {
+        FallbackMsg("unsupported repeat type src_sel %u\n",
+                    draw_state->src.tex_sel);
+        return FALSE;
     }
 
-    AccelMsg("got shader for operation %d src_sel %u mask_sel %u %s\n",
-             op, src_sel, mask_sel, prog->name);
-
-    return prog;
-
-custom_shader:
-    AccelMsg("custom shader for operation %d src_sel %u mask_sel %u %s\n",
-             op, src_sel, mask_sel, prog->name);
-
-    return prog;
+    return TRUE;
 }
 
 static unsigned TegraCompositeFormatToGR3D(unsigned format)
@@ -535,89 +330,11 @@ static Bool TegraCompositeCheckTexture(PicturePtr pic)
     return TRUE;
 }
 
-static void TegraCompositeSetupTexture(struct tegra_stream *cmds,
-                                       unsigned index,
-                                       PicturePtr pic,
-                                       PixmapPtr pix)
-{
-    Bool wrap_mirrored_repeat = FALSE;
-    Bool wrap_clamp_to_edge = TRUE;
-    Bool bilinear = FALSE;
-
-    if (pic->repeat) {
-        wrap_mirrored_repeat = (pic->repeatType == RepeatReflect);
-        wrap_clamp_to_edge = (pic->repeatType == RepeatPad);
-    }
-
-    if (pic->filter == PictFilterBilinear)
-        bilinear = TRUE;
-
-    TegraGR3D_SetupTextureDesc(cmds, index,
-                               TegraEXAPixmapBO(pix),
-                               TegraEXAPixmapOffset(pix),
-                               pix->drawable.width,
-                               pix->drawable.height,
-                               TegraCompositeFormatToGR3D(pic->format),
-                               bilinear, false, bilinear,
-                               wrap_clamp_to_edge,
-                               wrap_mirrored_repeat);
-}
-
-static void TegraCompositeSetupAttributes(TegraEXAPtr tegra)
-{
-    struct tegra_exa_scratch *scratch = &tegra->scratch;
-    struct tegra_stream *cmds = &tegra->cmds;
-    unsigned attrs_num = 1 + !!scratch->pSrc + !!scratch->pMask;
-    unsigned attribs_offset = scratch->attrib_itr * 2;
-
-    TegraGR3D_SetupAttribute(cmds, 0, scratch->attribs->bo,
-                             attribs_offset, TGR3D_ATTRIB_TYPE_FLOAT16,
-                             2, 4 * attrs_num);
-
-    if (scratch->pSrc) {
-        attribs_offset += 4;
-
-        TegraGR3D_SetupAttribute(cmds, 1, scratch->attribs->bo,
-                                 attribs_offset, TGR3D_ATTRIB_TYPE_FLOAT16,
-                                 2, 4 * attrs_num);
-    }
-
-    if (scratch->pMask) {
-        attribs_offset += 4;
-
-        TegraGR3D_SetupAttribute(cmds, 2, scratch->attribs->bo,
-                                 attribs_offset, TGR3D_ATTRIB_TYPE_FLOAT16,
-                                 2, 4 * attrs_num);
-    }
-}
-
 static Bool TegraCompositeAttribBufferIsFull(TegraEXAScratchPtr scratch)
 {
     unsigned attrs_num = 1 + !!scratch->pSrc + !!scratch->pMask;
 
     return (scratch->attrib_itr * 2 + attrs_num * 24 > TEGRA_ATTRIB_BUFFER_SIZE);
-}
-
-static void TegraEXACompositeDraw(TegraEXAPtr tegra)
-{
-    struct tegra_exa_scratch *scratch = &tegra->scratch;
-    struct tegra_stream *cmds = &tegra->cmds;
-
-    if (scratch->vtx_cnt) {
-        TegraGR3D_SetupDrawParams(cmds, TGR3D_PRIMITIVE_TYPE_TRIANGLES,
-                                  TGR3D_INDEX_MODE_NONE, 0);
-        TegraGR3D_DrawPrimitives(cmds, 0, scratch->vtx_cnt);
-
-        scratch->vtx_cnt = 0;
-        scratch->ops++;
-    }
-}
-
-static void TegraCompositeFlush(struct drm_tegra *drm, TegraEXAPtr tegra)
-{
-    TegraEXACompositeDraw(tegra);
-    TegraCompositeAllocateAttribBuffer(drm, tegra);
-    TegraCompositeSetupAttributes(tegra);
 }
 
 Bool TegraEXACheckComposite3D(int op, PicturePtr pSrcPicture,
@@ -723,23 +440,16 @@ Bool TegraEXAPrepareComposite3D(int op,
                                 PixmapPtr pDst)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pDst->drawable.pScreen);
-    TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
-    struct tegra_stream *cmds = &tegra->cmds;
-    const struct shader_program *prog;
-    TegraPixmapPtr priv;
-    unsigned mask_sel;
-    unsigned src_sel;
     Bool mask_tex = (pMaskPicture && pMaskPicture->pDrawable);
     Bool src_tex = (pSrcPicture && pSrcPicture->pDrawable);
+    TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
+    TegraGR3DDrawState draw_state = { 0 };
     Bool mask_tex_reduced = TRUE;
     Bool src_tex_reduced = TRUE;
-    Bool clamp_src = FALSE;
-    Bool clamp_mask = FALSE;
-    Bool swap_red_blue;
-    Bool dst_alpha;
-    Bool alpha;
+    unsigned mask_sel;
+    unsigned src_sel;
     Pixel solid;
-    int err;
+    Bool alpha;
 
     if (!TegraCompositeCheckTexture(pMaskPicture))
             return FALSE;
@@ -747,235 +457,158 @@ Bool TegraEXAPrepareComposite3D(int op,
     if (!TegraCompositeCheckTexture(pSrcPicture))
             return FALSE;
 
-    if (mask_tex && TegraCompositeReducedTexture(pMaskPicture))
-        mask_tex = FALSE;
-    else
-        mask_tex_reduced = FALSE;
-
     if (src_tex && TegraCompositeReducedTexture(pSrcPicture))
         src_tex = FALSE;
     else
         src_tex_reduced = FALSE;
 
-    if (mask_tex_reduced)
-        AccelMsg("mask texture reduced\n");
-
     if (src_tex_reduced)
         AccelMsg("src texture reduced\n");
 
-    prog = TegraCompositeProgram3D(op, pSrcPicture, pMaskPicture, pDstPicture,
-                                   &mask_sel, &src_sel);
-    if (!prog)
-        return FALSE;
+    if (mask_tex && TegraCompositeReducedTexture(pMaskPicture))
+        mask_tex = FALSE;
+    else
+        mask_tex_reduced = FALSE;
+
+    if (mask_tex_reduced)
+        AccelMsg("mask texture reduced\n");
 
     tegra->scratch.pMask = (op != PictOpClear && mask_tex) ? pMask : NULL;
     tegra->scratch.pSrc = (op != PictOpClear && src_tex) ? pSrc : NULL;
     tegra->scratch.ops = 0;
 
-    err = TegraCompositeAllocateAttribBuffer(TegraPTR(pScrn)->drm, tegra);
-    if (err)
-        return FALSE;
+    if (pSrcPicture) {
+        if (tegra->scratch.pSrc) {
+            switch (pSrcPicture->repeatType) {
+            case RepeatNone:
+                src_sel = TEX_CLIPPED;
+                break;
+            case RepeatPad:
+                src_sel = TEX_PAD;
+                break;
+            case RepeatNormal:
+                src_sel = TEX_NORMAL;
+                break;
+            case RepeatReflect:
+                src_sel = TEX_MIRROR;
+                break;
+            default:
+                FallbackMsg("unsupported repeat type %u\n",
+                            pSrcPicture->repeatType);
+                return FALSE;
+            }
 
-    TegraEXAThawPixmap(pSrc, !src_tex_reduced);
-    TegraEXAThawPixmap(pMask, !mask_tex_reduced);
-    TegraEXAThawPixmap(pDst, TRUE);
-
-    if (tegra->scratch.pSrc) {
-        priv = exaGetPixmapDriverPrivate(pSrc);
-        if (priv->type <= TEGRA_EXA_PIXMAP_TYPE_FALLBACK) {
-            FallbackMsg("unaccelerateable pixmap\n");
-            return FALSE;
-        }
-    }
-
-    if (tegra->scratch.pMask) {
-        priv = exaGetPixmapDriverPrivate(pMask);
-        if (priv->type <= TEGRA_EXA_PIXMAP_TYPE_FALLBACK) {
-            FallbackMsg("unaccelerateable pixmap\n");
-            return FALSE;
-        }
-    }
-
-    priv = exaGetPixmapDriverPrivate(pDst);
-    if (priv->type <= TEGRA_EXA_PIXMAP_TYPE_FALLBACK) {
-        FallbackMsg("unaccelerateable pixmap\n");
-        return FALSE;
-    }
-
-    err = tegra_stream_begin(cmds, tegra->gr3d);
-    if (err)
-        return FALSE;
-
-    tegra_stream_prep(&tegra->cmds, 1);
-    tegra_stream_push_setclass(cmds, HOST1X_CLASS_GR3D);
-
-    TegraGR3D_Initialize(cmds);
-
-    TegraGR3D_SetupScissor(cmds, 0, 0,
-                           pDst->drawable.width,
-                           pDst->drawable.height);
-    TegraGR3D_SetupViewportBiasScale(cmds, 0.0f, 0.0f, 0.5f,
-                                     pDst->drawable.width,
-                                     pDst->drawable.height, 0.5f);
-    TegraGR3D_SetupRenderTarget(cmds, 1,
-                                TegraEXAPixmapBO(pDst),
-                                TegraEXAPixmapOffset(pDst),
-                                TegraCompositeFormatToGR3D(pDstPicture->format),
-                                exaGetPixmapPitch(pDst));
-    TegraGR3D_EnableRenderTargets(cmds, 1 << 1);
-
-    TegraCompositeSetupAttributes(tegra);
-
-    dst_alpha = TegraCompositeFormatHasAlpha(pDstPicture->format);
-
-    if (tegra->scratch.pSrc) {
-        clamp_src = !pSrcPicture->repeat;
-
-        TegraCompositeSetupTexture(cmds, 0, pSrcPicture, pSrc);
-
-        swap_red_blue = TegraCompositeFormatSwapRedBlue3D(pDstPicture->format) !=
-                        TegraCompositeFormatSwapRedBlue3D(pSrcPicture->format);
-
-        alpha = TegraCompositeFormatHasAlpha(pSrcPicture->format);
-        TegraGR3D_UploadConstFP(cmds, 5, FX10x2(alpha, swap_red_blue));
-    } else {
-        if (op != PictOpClear && pSrcPicture) {
-            if (src_tex_reduced)
-                solid = TegraCompositeGetReducedTextureColor(pSrc);
-            else
-                solid = pSrcPicture->pSourcePict->solidFill.color;
-
-            if (pSrcPicture->format == PICT_r5g6b5 ||
-                pSrcPicture->format == PICT_b5g6r5)
-                solid = TegraPixelRGB565to888(solid);
-
-            if (TegraCompositeFormatSwapRedBlue3D(pDstPicture->format) !=
-                TegraCompositeFormatSwapRedBlue3D(pSrcPicture->format))
-                solid = TegraSwapRedBlue(solid);
-
-            alpha = TegraCompositeFormatHasAlpha(pSrcPicture->format);
-            if (!alpha)
-                solid |= 0xff000000;
+            draw_state.src.pow2             = TegraCompositePow2Texture(pSrc);
+            draw_state.src.format           = TegraCompositeFormatToGR3D(pSrcPicture->format);
+            draw_state.src.alpha            = TegraCompositeFormatHasAlpha(pSrcPicture->format);
+            draw_state.src.bilinear         = (pSrcPicture->filter == PictFilterBilinear);
+            draw_state.src.tex_sel          = src_sel;
+            draw_state.src.pPix             = pSrc;
         } else {
-            solid = 0x00000000;
+            if (op != PictOpClear && pSrcPicture) {
+                if (src_tex_reduced)
+                    solid = TegraCompositeGetReducedTextureColor(pSrc);
+                else
+                    solid = pSrcPicture->pSourcePict->solidFill.color;
+
+                if (pSrcPicture->format == PICT_r5g6b5)
+                    solid = TegraPixelRGB565to888(solid);
+
+                alpha = TegraCompositeFormatHasAlpha(pSrcPicture->format);
+                if (!alpha)
+                    solid |= 0xff000000;
+
+                src_sel = TEX_SOLID;
+            } else {
+                solid = 0x00000000;
+            }
+
+            if (solid == 0x00000000)
+                src_sel = TEX_EMPTY;
+
+            AccelMsg("src solid 0x%08lx\n", solid);
+
+            draw_state.src.tex_sel = src_sel;
+            draw_state.src.solid = solid;
         }
-
-        /* custom optimization for the transparent mask */
-        if (solid == 0xff000000 &&
-            prog == &prog_blend_over_solid_src_clipped_mask &&
-            !TegraCompositeFormatHasAlpha(pDstPicture->format))
-        {
-            AccelMsg("opaque-src optimization 0\n");
-            prog = &prog_blend_over_solid_black_src_clipped_mask_dst_opaque;
-            goto mask_setup;
-        }
-
-        /* custom optimization for the transparent mask */
-        if (solid == 0xff000000 &&
-            prog == &prog_blend_over_solid_src_clamped_mask &&
-            !TegraCompositeFormatHasAlpha(pDstPicture->format))
-        {
-            AccelMsg("opaque-src optimization 1\n");
-            prog = &prog_blend_over_solid_black_src_clamped_mask_dst_opaque;
-            goto mask_setup;
-        }
-
-        if (solid == 0xff000000 &&
-            prog == &prog_blend_over_solid_src_clamped_mask &&
-            !TegraCompositeFormatHasAlpha(pDstPicture->format))
-        {
-            AccelMsg("opaque-src optimization 1\n");
-            prog = &prog_blend_over_solid_black_src_clamped_mask_dst_opaque;
-            goto mask_setup;
-        }
-
-        if (solid == 0xff000000 &&
-            prog == &prog_blend_over_solid_src && mask_sel == TEX_CLIPPED &&
-            TegraCompositeTextureSameByteOrder(pMaskPicture, pDstPicture) &&
-            !TegraCompositeFormatHasAlpha(pDstPicture->format))
-        {
-            AccelMsg("opaque-src optimization 2\n");
-            prog = &prog_blend_over_solid_black_src_clipped_aaaa_mask_dst_opaque;
-            goto mask_setup;
-        }
-
-        TegraGR3D_UploadConstFP(cmds, 0, FX10x2(BLUE(solid), GREEN(solid)));
-        TegraGR3D_UploadConstFP(cmds, 1, FX10x2(RED(solid), ALPHA(solid)));
-    }
-
-mask_setup:
-    if (tegra->scratch.pMask) {
-        clamp_mask = !pMaskPicture->repeat;
-
-        TegraCompositeSetupTexture(cmds, 1, pMaskPicture, pMask);
-
-        swap_red_blue = TegraCompositeFormatSwapRedBlue3D(pDstPicture->format) !=
-                        TegraCompositeFormatSwapRedBlue3D(pMaskPicture->format);
-
-        alpha = TegraCompositeFormatHasAlpha(pMaskPicture->format);
-        TegraGR3D_UploadConstFP(cmds, 6, FX10x2(pMaskPicture->componentAlpha, alpha));
-        TegraGR3D_UploadConstFP(cmds, 7, FX10x2(swap_red_blue, clamp_mask));
     } else {
-        if (op != PictOpClear && pMaskPicture) {
-            if (mask_tex_reduced)
-                solid = TegraCompositeGetReducedTextureColor(pMask);
-            else
-                solid = pMaskPicture->pSourcePict->solidFill.color;
+        draw_state.src.tex_sel = TEX_EMPTY;
+        draw_state.src.solid = 0x00000000;
+    }
 
-            if (pMaskPicture->format == PICT_r5g6b5 ||
-                pMaskPicture->format == PICT_b5g6r5)
-                solid = TegraPixelRGB565to888(solid);
+    if (pMaskPicture) {
+        if (tegra->scratch.pMask) {
+            switch (pMaskPicture->repeatType) {
+            case RepeatNone:
+                mask_sel = TEX_CLIPPED;
+                break;
+            case RepeatPad:
+                mask_sel = TEX_PAD;
+                break;
+            case RepeatNormal:
+                mask_sel = TEX_NORMAL;
+                break;
+            case RepeatReflect:
+                mask_sel = TEX_MIRROR;
+                break;
+            default:
+                FallbackMsg("unsupported repeat type %u\n",
+                            pMaskPicture->repeatType);
+                return FALSE;
+            }
 
-            if (!pMaskPicture->componentAlpha)
-                solid |= solid >> 24 | solid >> 16 | solid >> 8;
-
-            if (TegraCompositeFormatSwapRedBlue3D(pDstPicture->format) !=
-                TegraCompositeFormatSwapRedBlue3D(pMaskPicture->format))
-                solid = TegraSwapRedBlue(solid);
-
-            alpha = TegraCompositeFormatHasAlpha(pMaskPicture->format);
-            if (!alpha)
-                solid |= 0xff000000;
+            draw_state.mask.pow2            = TegraCompositePow2Texture(pMask);
+            draw_state.mask.format          = TegraCompositeFormatToGR3D(pMaskPicture->format);
+            draw_state.mask.alpha           = TegraCompositeFormatHasAlpha(pMaskPicture->format);
+            draw_state.mask.component_alpha = TegraCompositeTexturePerComponentAlpha(pMaskPicture);
+            draw_state.mask.bilinear        = (pMaskPicture->filter == PictFilterBilinear);
+            draw_state.mask.tex_sel         = mask_sel;
+            draw_state.mask.pPix            = pMask;
         } else {
-            solid = 0xffffffff;
-        }
+            if (op != PictOpClear && pMaskPicture) {
+                if (mask_tex_reduced)
+                    solid = TegraCompositeGetReducedTextureColor(pMask);
+                else
+                    solid = pMaskPicture->pSourcePict->solidFill.color;
 
-        /* custom optimization for the transparent mask */
-        if (solid == 0xffffffff &&
-            prog == &prog_blend_over_alpha_normal_src_solid_mask &&
-            !TegraCompositeFormatHasAlpha(pDstPicture->format))
-        {
-            AccelMsg("transparent-mask optimization 0\n");
-            prog = &prog_blend_over_alpha_normal_src_empty_mask_dst_opaque;
-            goto upload_u8;
-        }
+                if (pMaskPicture->format == PICT_r5g6b5)
+                    solid = TegraPixelRGB565to888(solid);
 
-        /* custom optimization for the transparent mask */
-        if (solid == 0xffffffff &&
-            prog == &prog_blend_over_alpha_clamped_src_solid_mask &&
-            !TegraCompositeFormatHasAlpha(pDstPicture->format))
-        {
-            AccelMsg("transparent-mask optimization 1\n");
-            prog = &prog_blend_over_alpha_clamped_src_empty_mask_dst_opaque;
-            goto upload_u8;
-        }
+                if (!pMaskPicture->componentAlpha)
+                    solid |= solid >> 24 | solid >> 16 | solid >> 8;
 
-        TegraGR3D_UploadConstFP(cmds, 2, FX10x2(BLUE(solid), GREEN(solid)));
-        TegraGR3D_UploadConstFP(cmds, 3, FX10x2(RED(solid), ALPHA(solid)));
+                alpha = TegraCompositeFormatHasAlpha(pMaskPicture->format);
+                if (!alpha)
+                    solid |= 0xff000000;
+
+                mask_sel = TEX_SOLID;
+            } else {
+                solid = 0xffffffff;
+            }
+
+            if (solid == 0xffffffff)
+                mask_sel = TEX_EMPTY;
+
+            AccelMsg("mask solid 0x%08lx\n", solid);
+
+            draw_state.mask.tex_sel = mask_sel;
+            draw_state.mask.solid = solid;
+        }
+    } else {
+        draw_state.mask.tex_sel = TEX_EMPTY;
+        draw_state.mask.solid = 0xffffffff;
     }
 
-upload_u8:
-    TegraGR3D_UploadConstFP(cmds, 8, FX10x2(dst_alpha, clamp_src));
-    TegraGR3D_UploadConstVP(cmds, 0, 0.0f, 0.0f, 0.0f, 1.0f);
+    draw_state.dst.format = TegraCompositeFormatToGR3D(pDstPicture->format);
+    draw_state.dst.alpha  = TegraCompositeFormatHasAlpha(pDstPicture->format);
+    draw_state.dst.pPix   = pDst;
 
-    TegraGR3D_UploadProgram(cmds, prog);
+    draw_state.op = op;
 
-    if (cmds->status != TEGRADRM_STREAM_CONSTRUCT) {
-        tegra_stream_cleanup(cmds);
+    if (!TegraCompositeProgram3DPreCheck(&draw_state))
         return FALSE;
-    }
 
-    return TRUE;
+    return TegraGR3DStateAppend(&tegra->gr3d_state, tegra, &draw_state);
 }
 
 void TegraEXAComposite3D(PixmapPtr pDst,
@@ -986,29 +619,33 @@ void TegraEXAComposite3D(PixmapPtr pDst,
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pDst->drawable.pScreen);
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
+    TegraGR3DStatePtr state = &tegra->gr3d_state;
+    TegraGR3DDrawStatePtr draw_state = &state->new;
     float dst_left, dst_right, dst_top, dst_bottom;
     float src_left, src_right, src_top, src_bottom;
     float mask_left, mask_right, mask_top, mask_bottom;
     bool push_mask = !!tegra->scratch.pMask;
     bool push_src = !!tegra->scratch.pSrc;
 
-    /* do not proceed if previous reallocation failed */
-    if (tegra->scratch.attribs_alloc_err)
+    /* if attributes buffer is full, do nothing for now (TODO better job) */
+    if (TegraCompositeAttribBufferIsFull(&tegra->scratch)) {
+        ErrorMsg("FIXME: attributes buffer is full\n");
         return;
-
-    /* if attributes buffer is full, "flush" it and allocate new buffer */
-    if (TegraCompositeAttribBufferIsFull(&tegra->scratch))
-        TegraCompositeFlush(TegraPTR(pScrn)->drm, tegra);
-
-    /* do not proceed if current reallocation failed */
-    if (tegra->scratch.attribs_alloc_err)
-        return;
+    }
 
     if (push_src) {
         src_left   = (float) srcX   / tegra->scratch.pSrc->drawable.width;
         src_right  = (float) width  / tegra->scratch.pSrc->drawable.width + src_left;
         src_bottom = (float) srcY   / tegra->scratch.pSrc->drawable.height;
         src_top    = (float) height / tegra->scratch.pSrc->drawable.height + src_bottom;
+
+        if ((src_left < 0.0f || src_right > 1.0f) &&
+            tegra->scratch.pSrc->drawable.width > 1)
+                draw_state->src.coords_wrap = TRUE;
+
+        if ((src_bottom < 0.0f || src_top > 1.0f) &&
+            tegra->scratch.pSrc->drawable.height > 1)
+                draw_state->src.coords_wrap = TRUE;
     }
 
     if (push_mask) {
@@ -1016,6 +653,14 @@ void TegraEXAComposite3D(PixmapPtr pDst,
         mask_right  = (float) width  / tegra->scratch.pMask->drawable.width + mask_left;
         mask_bottom = (float) maskY  / tegra->scratch.pMask->drawable.height;
         mask_top    = (float) height / tegra->scratch.pMask->drawable.height + mask_bottom;
+
+        if ((mask_left < 0.0f || mask_right > 1.0f) &&
+            tegra->scratch.pMask->drawable.width > 1)
+                draw_state->mask.coords_wrap = TRUE;
+
+        if ((mask_bottom < 0.0f || mask_top > 1.0f) &&
+            tegra->scratch.pMask->drawable.height > 1)
+                draw_state->mask.coords_wrap = TRUE;
     }
 
     dst_left   = (float) (dstX   * 2) / pDst->drawable.width  - 1.0f;
@@ -1050,6 +695,7 @@ void TegraEXAComposite3D(PixmapPtr pDst,
     TegraPushVtxAttr(mask_left, mask_bottom, push_mask);
 
     tegra->scratch.vtx_cnt += 6;
+    tegra->scratch.ops++;
 }
 
 void TegraEXADoneComposite3D(PixmapPtr pDst)
@@ -1058,8 +704,6 @@ void TegraEXADoneComposite3D(PixmapPtr pDst)
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
     struct tegra_fence *fence = NULL;
     TegraPixmapPtr priv;
-
-    TegraEXACompositeDraw(tegra);
 
     if (tegra->scratch.ops && tegra->cmds.status == TEGRADRM_STREAM_CONSTRUCT) {
         if (tegra->scratch.pSrc) {
@@ -1091,12 +735,7 @@ void TegraEXADoneComposite3D(PixmapPtr pDst)
         if (priv->fence_read && priv->fence_read->gr2d)
             TegraEXAWaitFence(priv->fence_read);
 
-        tegra_stream_end(&tegra->cmds);
-#if 1
-        tegra_stream_flush(&tegra->cmds);
-#else
-        fence = tegra_stream_submit(&tegra->cmds, false);
-#endif
+        fence = TegraGR3DStateSubmit(&tegra->gr3d_state);
 
         /*
          * XXX: Glitches may occur due to lack of support for waitchecks
@@ -1132,16 +771,8 @@ void TegraEXADoneComposite3D(PixmapPtr pDst)
             }
         }
     } else {
-        tegra_stream_cleanup(&tegra->cmds);
+        TegraGR3DStateReset(&tegra->gr3d_state);
     }
-
-    /* buffer reallocation could fail, clean up it now */
-    if (tegra->scratch.attribs_alloc_err) {
-        tegra->scratch.attribs_alloc_err = FALSE;
-        tegra_stream_wait_fence(fence);
-    }
-
-    TegraCompositeReleaseAttribBuffers(&tegra->scratch);
 
     TegraEXACoolPixmap(tegra->scratch.pSrc, FALSE);
     TegraEXACoolPixmap(tegra->scratch.pMask, FALSE);

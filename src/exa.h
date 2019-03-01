@@ -68,8 +68,39 @@
                (double)(clock() - profile_start) / CLOCKS_PER_SEC); \
     }
 
+struct tegra_pixmap;
+
+typedef struct gr3d_tex_state {
+    PixmapPtr pPix;
+    Pixel solid;
+    unsigned format : 5;
+    unsigned tex_sel : 3;
+    Bool component_alpha : 1;
+    Bool coords_wrap : 1;
+    Bool bilinear : 1;
+    Bool alpha : 1;
+    Bool pow2 : 1;
+} TegraGR3DStateTex, *TegraGR3DStateTexPtr;
+
+typedef struct gr3d_draw_state {
+    TegraGR3DStateTex src;
+    TegraGR3DStateTex mask;
+    TegraGR3DStateTex dst;
+    int op;
+} TegraGR3DDrawState, *TegraGR3DDrawStatePtr;
+
+typedef struct gr3d_state {
+    struct tegra_exa_scratch *scratch;
+    struct tegra_stream *cmds;
+    TegraGR3DDrawState new;
+    TegraGR3DDrawState cur;
+    Bool inited : 1;
+    Bool clean : 1;
+} TegraGR3DState, *TegraGR3DStatePtr;
+
+void TegraGR3DStateReset(TegraGR3DStatePtr state);
+
 typedef struct tegra_attrib_bo {
-    struct tegra_attrib_bo *next;
     struct drm_tegra_bo *bo;
     __fp16 *map;
 } TegraEXAAttribBo;
@@ -95,9 +126,8 @@ typedef struct tegra_exa_scratch {
     enum Tegra2DOrientation orientation;
     enum Tegra2DCompositeOp op2d;
     struct tegra_fence *marker;
-    TegraEXAAttribBo *attribs;
+    TegraEXAAttribBo attribs;
     PictTransform transform;
-    Bool attribs_alloc_err;
     struct drm_tegra *drm;
     unsigned attrib_itr;
     unsigned vtx_cnt;
@@ -139,6 +169,8 @@ typedef struct _TegraEXARec{
     tjhandle jpegDecompressor;
 #endif
 
+    TegraGR3DState gr3d_state;
+
     ExaDriverPtr driver;
 } *TegraEXAPtr;
 
@@ -152,7 +184,7 @@ typedef struct _TegraEXARec{
 #define TEGRA_EXA_COMPRESSION_JPEG          3
 #define TEGRA_EXA_COMPRESSION_PNG           4
 
-typedef struct {
+typedef struct tegra_pixmap {
     Bool scanout_rotated : 1;   /* pixmap backs rotated frontbuffer BO */
     Bool no_compress : 1;       /* pixmap's data compress poorly */
     Bool accelerated : 1;       /* pixmap was accelerated at least once */
@@ -202,7 +234,10 @@ typedef struct {
 unsigned int TegraEXAPitch(unsigned int width, unsigned int height,
                            unsigned int bpp);
 
-void TegraEXAWaitFence(struct tegra_fence *fence);
+static inline void TegraEXAWaitFence(struct tegra_fence *fence)
+{
+    tegra_stream_wait_fence(fence);
+}
 
 unsigned TegraPixmapSize(TegraPixmapPtr pixmap);
 
@@ -232,8 +267,6 @@ void TegraEXACopyExt(PixmapPtr pDstPixmap, int srcX, int srcY, int dstX,
                      int dstY, int width, int height);
 
 void TegraEXADoneCopy(PixmapPtr pDstPixmap);
-
-void TegraCompositeReleaseAttribBuffers(TegraEXAScratchPtr scratch);
 
 Bool TegraEXACheckComposite(int op, PicturePtr pSrcPicture,
                             PicturePtr pMaskPicture,
