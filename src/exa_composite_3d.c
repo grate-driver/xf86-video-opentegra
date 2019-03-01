@@ -257,7 +257,6 @@ static Bool TegraCompositeFormatHasAlpha(unsigned format)
 {
     switch (format) {
     case PICT_a8:
-    case PICT_a8b8g8r8:
     case PICT_a8r8g8b8:
         return TRUE;
 
@@ -491,11 +490,8 @@ static unsigned TegraCompositeFormatToGR3D(unsigned format)
         return TGR3D_PIXEL_FORMAT_A8;
 
     case PICT_r5g6b5:
-    case PICT_b5g6r5:
         return TGR3D_PIXEL_FORMAT_RGB565;
 
-    case PICT_x8b8g8r8:
-    case PICT_a8b8g8r8:
     case PICT_x8r8g8b8:
     case PICT_a8r8g8b8:
         return TGR3D_PIXEL_FORMAT_RGBA8888;
@@ -641,10 +637,7 @@ Bool TegraEXACheckComposite3D(int op, PicturePtr pSrcPicture,
 
     if (pDstPicture->format != PICT_x8r8g8b8 &&
         pDstPicture->format != PICT_a8r8g8b8 &&
-        pDstPicture->format != PICT_x8b8g8r8 &&
-        pDstPicture->format != PICT_a8b8g8r8 &&
         pDstPicture->format != PICT_r5g6b5 &&
-        pDstPicture->format != PICT_b5g6r5 &&
         pDstPicture->format != PICT_a8) {
         FallbackMsg("unsupported format %u\n", pDstPicture->format);
         return FALSE;
@@ -653,10 +646,7 @@ Bool TegraEXACheckComposite3D(int op, PicturePtr pSrcPicture,
     if (pSrcPicture) {
         if (pSrcPicture->format != PICT_x8r8g8b8 &&
             pSrcPicture->format != PICT_a8r8g8b8 &&
-            pSrcPicture->format != PICT_x8b8g8r8 &&
-            pSrcPicture->format != PICT_a8b8g8r8 &&
             pSrcPicture->format != PICT_r5g6b5 &&
-            pSrcPicture->format != PICT_b5g6r5 &&
             pSrcPicture->format != PICT_a8) {
             FallbackMsg("unsupported format %u\n", pSrcPicture->format);
             return FALSE;
@@ -677,10 +667,7 @@ Bool TegraEXACheckComposite3D(int op, PicturePtr pSrcPicture,
     if (pMaskPicture) {
         if (pMaskPicture->format != PICT_x8r8g8b8 &&
             pMaskPicture->format != PICT_a8r8g8b8 &&
-            pMaskPicture->format != PICT_x8b8g8r8 &&
-            pMaskPicture->format != PICT_a8b8g8r8 &&
             pMaskPicture->format != PICT_r5g6b5 &&
-            pMaskPicture->format != PICT_b5g6r5 &&
             pMaskPicture->format != PICT_a8) {
             FallbackMsg("unsupported format %u\n", pMaskPicture->format);
             return FALSE;
