@@ -284,9 +284,6 @@ static unsigned TegraCompositeFormatToGR3D(unsigned format)
     case PICT_a8:
         return TGR3D_PIXEL_FORMAT_A8;
 
-    case PICT_r5g6b5:
-        return TGR3D_PIXEL_FORMAT_RGB565;
-
     case PICT_x8r8g8b8:
     case PICT_a8r8g8b8:
         return TGR3D_PIXEL_FORMAT_RGBA8888;
@@ -354,7 +351,6 @@ Bool TegraEXACheckComposite3D(int op, PicturePtr pSrcPicture,
 
     if (pDstPicture->format != PICT_x8r8g8b8 &&
         pDstPicture->format != PICT_a8r8g8b8 &&
-        pDstPicture->format != PICT_r5g6b5 &&
         pDstPicture->format != PICT_a8) {
         FallbackMsg("unsupported format %u\n", pDstPicture->format);
         return FALSE;
@@ -363,7 +359,6 @@ Bool TegraEXACheckComposite3D(int op, PicturePtr pSrcPicture,
     if (pSrcPicture) {
         if (pSrcPicture->format != PICT_x8r8g8b8 &&
             pSrcPicture->format != PICT_a8r8g8b8 &&
-            pSrcPicture->format != PICT_r5g6b5 &&
             pSrcPicture->format != PICT_a8) {
             FallbackMsg("unsupported format %u\n", pSrcPicture->format);
             return FALSE;
@@ -384,7 +379,6 @@ Bool TegraEXACheckComposite3D(int op, PicturePtr pSrcPicture,
     if (pMaskPicture) {
         if (pMaskPicture->format != PICT_x8r8g8b8 &&
             pMaskPicture->format != PICT_a8r8g8b8 &&
-            pMaskPicture->format != PICT_r5g6b5 &&
             pMaskPicture->format != PICT_a8) {
             FallbackMsg("unsupported format %u\n", pMaskPicture->format);
             return FALSE;
@@ -511,9 +505,6 @@ Bool TegraEXAPrepareComposite3D(int op,
                 else
                     solid = pSrcPicture->pSourcePict->solidFill.color;
 
-                if (pSrcPicture->format == PICT_r5g6b5)
-                    solid = TegraPixelRGB565to888(solid);
-
                 alpha = TegraCompositeFormatHasAlpha(pSrcPicture->format);
                 if (!alpha)
                     solid |= 0xff000000;
@@ -570,9 +561,6 @@ Bool TegraEXAPrepareComposite3D(int op,
                     solid = TegraCompositeGetReducedTextureColor(pMask);
                 else
                     solid = pMaskPicture->pSourcePict->solidFill.color;
-
-                if (pMaskPicture->format == PICT_r5g6b5)
-                    solid = TegraPixelRGB565to888(solid);
 
                 if (!pMaskPicture->componentAlpha)
                     solid |= solid >> 24 | solid >> 16 | solid >> 8;

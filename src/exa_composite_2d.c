@@ -161,19 +161,6 @@ Bool TegraEXACheckComposite2D(int op, PicturePtr pSrcPicture,
     return TRUE;
 }
 
-static Bool TegraCompositeFormatSwapRedBlue2D(unsigned format)
-{
-    switch (format) {
-    case PICT_x8b8g8r8:
-    case PICT_a8b8g8r8:
-    case PICT_b5g6r5:
-        return TRUE;
-
-    default:
-        return FALSE;
-    }
-}
-
 static Bool TegraCompositeFormatHasAlpha(unsigned format)
 {
     switch (format) {
@@ -207,13 +194,8 @@ static Bool TegraEXAPrepareSolid2D(int op,
                               0x00000000;
 
         if (pSrcPicture) {
-            if (pSrcPicture->format == PICT_r5g6b5 ||
-                pSrcPicture->format == PICT_b5g6r5)
-                solid = TegraPixelRGB565to888(solid);
-
-            if (TegraCompositeFormatSwapRedBlue2D(pDstPicture->format) !=
-                TegraCompositeFormatSwapRedBlue2D(pSrcPicture->format))
-                solid = TegraSwapRedBlue(solid);
+            if (pSrcPicture->format != pDstPicture->format)
+                return FALSE;
         }
 
         alpha = TegraCompositeFormatHasAlpha(pSrcPicture->format);
@@ -223,10 +205,6 @@ static Bool TegraEXAPrepareSolid2D(int op,
         alpha = TegraCompositeFormatHasAlpha(pDstPicture->format);
         if (!alpha)
             solid &= 0x00ffffff;
-
-        if (pDstPicture->format == PICT_r5g6b5 ||
-            pDstPicture->format == PICT_b5g6r5)
-            solid = TegraPixelRGB888to565(solid);
 
         if (!TegraEXAPrepareSolid(pDst, GXcopy, FB_ALLONES, solid))
             return FALSE;
