@@ -114,10 +114,12 @@ gen_shader_bin: gen_shader_bin.c $(asm_gen_c) $(asm_headers)
 BUILT_SOURCES = \
 	$(asm_gen_c) \
 	$(asm_gen_h) \
-	$(shaders_gen)
+	$(shaders_gen) \
+	shaders.h
 
 CLEANFILES = \
 	$(asm_gen_c) \
 	$(asm_gen_h) \
 	$(shaders_gen) \
-	$(builddir)/gen_shader_bin
+	$(builddir)/gen_shader_bin \
+	shaders.h
