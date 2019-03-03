@@ -34,6 +34,8 @@ alu_buffer_size = 1	// number of .rgba regs carried through pipeline
 	[3].l = "mask_color.b";
 	[3].h = "mask_color.a";
 
+	[8].l = "dst_fmt_alpha";
+
 .asm
 
 EXEC
@@ -42,7 +44,7 @@ EXEC
 		ALU0:	MAD  r0.l, u0.l, u2.l, #0
 		ALU1:	MAD  r0.h, u0.h, u2.h, #0
 		ALU2:	MAD  r1.l, u1.l, u3.l, #0
-		ALU3:	MAD  r1.h, u1.h, u3.h, #0
+		ALU3:	MAD  r1.h, u1.h, u3.h, u8.l-1 (sat)
 
 	DW:	store rt1, r0, r1
 ;

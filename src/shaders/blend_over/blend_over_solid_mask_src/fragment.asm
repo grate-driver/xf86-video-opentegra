@@ -20,7 +20,7 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-pseq_to_dw_exec_nb = 2	// the number of 'EXEC' block where DW happens
+pseq_to_dw_exec_nb = 1	// the number of 'EXEC' block where DW happens
 alu_buffer_size = 1	// number of .rgba regs carried through pipeline
 
 .uniforms
@@ -45,14 +45,14 @@ EXEC
 		ALU0:	MAD  lp.lh, -u1.h, u2.l, #1
 		ALU1:	MAD  lp.lh, -u1.h, u2.h, #1
 		ALU2:	MAD  lp.lh, -u1.h, u3.l, #1
-		ALU3:	MAD  lp.lh, -u1.h, u3.h, #1
+		ALU3:	MAD  lp.lh, -u1.h, u3.h, u8.l
 
 	// tmp = tmp * dst.bgra
 	ALU:
 		ALU0:	MAD  lp.lh, alu0, r2.l, #0
 		ALU1:	MAD  lp.lh, alu1, r2.h, #0
 		ALU2:	MAD  lp.lh, alu2, r3.l, #0
-		ALU3:	MAD  lp.lh, alu3, r3.h, #0
+		ALU3:	MAD  lp.lh, alu3, r3.h, u8.l-1
 
 	// r2,r3 = src.bgra * mask.bgra + tmp
 	ALU:
@@ -60,25 +60,6 @@ EXEC
 		ALU1:	MAD  r0.h, u0.h, u2.h, alu1 (sat)
 		ALU2:	MAD  r1.l, u1.l, u3.l, alu2 (sat)
 		ALU3:	MAD  r1.h, u1.h, u3.h, alu3 (sat)
-;
-
-EXEC
-	ALU:
-		ALU0:	MAD  lp.lh, r0.l, #1, -r2.l
-		ALU1:	MAD  lp.lh, r0.h, #1, -r2.h
-		ALU2:	MAD  lp.lh, r1.l, #1, -r3.l
-		ALU3:	MAD  lp.lh, r1.h, #1, -r3.h
-
-	ALU:
-		ALU0:	MAD  lp.lh, abs(alu0), #1, #0 (this)
-		ALU1:	MAD  lp.lh, abs(alu1), #1, #0 (other)
-		ALU2:	MAD  lp.lh, abs(alu2), #1, #0 (other)
-		ALU3:	MAD  lp.lh, abs(alu3), u8.l, #0
-
-	// kill the pixel if dst is unchanged
-	ALU:
-		ALU0:	CSEL kill, -alu0, #0, #1
-		ALU1:	CSEL r1.h, -u8.l, r1.h, #0
 
 	DW:	store rt1, r0, r1
 ;
