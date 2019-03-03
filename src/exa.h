@@ -75,11 +75,11 @@ typedef struct gr3d_tex_state {
     Pixel solid;
     unsigned format : 5;
     unsigned tex_sel : 3;
-    Bool component_alpha : 1;
-    Bool coords_wrap : 1;
-    Bool bilinear : 1;
-    Bool alpha : 1;
-    Bool pow2 : 1;
+    bool component_alpha : 1;
+    bool coords_wrap : 1;
+    bool bilinear : 1;
+    bool alpha : 1;
+    bool pow2 : 1;
 } TegraGR3DStateTex, *TegraGR3DStateTexPtr;
 
 typedef struct gr3d_draw_state {
@@ -94,8 +94,8 @@ typedef struct gr3d_state {
     struct tegra_stream *cmds;
     TegraGR3DDrawState new;
     TegraGR3DDrawState cur;
-    Bool inited : 1;
-    Bool clean : 1;
+    bool inited : 1;
+    bool clean : 1;
 } TegraGR3DState, *TegraGR3DStatePtr;
 
 void TegraGR3DStateReset(TegraGR3DStatePtr state);
@@ -185,15 +185,15 @@ typedef struct _TegraEXARec{
 #define TEGRA_EXA_COMPRESSION_PNG           4
 
 typedef struct tegra_pixmap {
-    Bool scanout_rotated : 1;   /* pixmap backs rotated frontbuffer BO */
-    Bool no_compress : 1;       /* pixmap's data compress poorly */
-    Bool accelerated : 1;       /* pixmap was accelerated at least once */
-    Bool offscreen : 1;         /* pixmap's data resides in Tegra's GEM */
-    Bool scanout : 1;           /* pixmap backs frontbuffer BO */
-    Bool frozen : 1;            /* pixmap's data compressed */
-    Bool accel : 1;             /* pixmap acceleratable */
-    Bool cold : 1;              /* pixmap scheduled for compression */
-    Bool dri : 1;               /* pixmap's BO was exported */
+    bool scanout_rotated : 1;   /* pixmap backs rotated frontbuffer BO */
+    bool no_compress : 1;       /* pixmap's data compress poorly */
+    bool accelerated : 1;       /* pixmap was accelerated at least once */
+    bool offscreen : 1;         /* pixmap's data resides in Tegra's GEM */
+    bool scanout : 1;           /* pixmap backs frontbuffer BO */
+    bool frozen : 1;            /* pixmap's data compressed */
+    bool accel : 1;             /* pixmap acceleratable */
+    bool cold : 1;              /* pixmap scheduled for compression */
+    bool dri : 1;               /* pixmap's BO was exported */
 
     unsigned crtc : 1;          /* pixmap's CRTC ID (for display rotation) */
 
