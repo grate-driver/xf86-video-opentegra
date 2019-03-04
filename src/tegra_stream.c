@@ -482,15 +482,3 @@ int tegra_stream_sync(struct tegra_stream *stream,
 
     return 0;
 }
-
-int tegra_stream_pushf(struct tegra_stream *stream, float f)
-{
-    union {
-        uint32_t u;
-        float f;
-    } value;
-
-    value.f = f;
-
-    return tegra_stream_push(stream, value.u);
-}

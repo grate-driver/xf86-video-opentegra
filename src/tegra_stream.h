@@ -94,7 +94,6 @@ int tegra_stream_push_words(struct tegra_stream *stream, const void *addr,
 int tegra_stream_prep(struct tegra_stream *stream, uint32_t words);
 int tegra_stream_sync(struct tegra_stream *stream,
                       enum drm_tegra_syncpt_cond cond);
-int tegra_stream_pushf(struct tegra_stream *stream, float f);
 
 static inline int
 tegra_stream_push(struct tegra_stream *stream, uint32_t word)
@@ -107,5 +106,19 @@ tegra_stream_push(struct tegra_stream *stream, uint32_t word)
 
     return 0;
 }
+
+static inline int
+tegra_stream_pushf(struct tegra_stream *stream, float f)
+{
+    union {
+        uint32_t u;
+        float f;
+    } value;
+
+    value.f = f;
+
+    return tegra_stream_push(stream, value.u);
+}
+
 
 #endif
