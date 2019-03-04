@@ -213,7 +213,7 @@ static Bool TegraCompositeProgram3DPreCheck(TegraGR3DDrawStatePtr draw_state)
     const struct tegra_composite_config *cfg = &composite_cfgs[draw_state->op];
     const struct shader_program *prog;
 
-    if (draw_state->op > TEGRA_ARRAY_SIZE(composite_cfgs))
+    if (draw_state->op >= TEGRA_ARRAY_SIZE(composite_cfgs))
         return FALSE;
 
     prog = cfg->prog[PROG_SEL(draw_state->src.tex_sel,

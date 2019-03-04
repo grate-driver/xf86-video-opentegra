@@ -80,7 +80,7 @@ TegraGR3DStateSelectProgram(TegraGR3DStatePtr state)
     unsigned src_sel = state->new.src.tex_sel;
     const struct shader_program *prog;
 
-    if (state->new.op > TEGRA_ARRAY_SIZE(composite_cfgs))
+    if (state->new.op >= TEGRA_ARRAY_SIZE(composite_cfgs))
         return NULL;
 
     /* pow2 texture can use more optimized shaders */
