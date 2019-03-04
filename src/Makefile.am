@@ -122,4 +122,5 @@ CLEANFILES = \
 	$(asm_gen_h) \
 	$(shaders_gen) \
 	$(builddir)/gen_shader_bin \
+	$(shell find $(srcdir)/shaders/ -type f -name '*.bin.h') \
 	shaders.h
