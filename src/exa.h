@@ -98,8 +98,6 @@ typedef struct gr3d_state {
     bool clean : 1;
 } TegraGR3DState, *TegraGR3DStatePtr;
 
-void TegraGR3DStateReset(TegraGR3DStatePtr state);
-
 typedef struct tegra_attrib_bo {
     struct drm_tegra_bo *bo;
     __fp16 *map;
@@ -239,85 +237,7 @@ static inline void TegraEXAWaitFence(struct tegra_fence *fence)
     tegra_stream_wait_fence(fence);
 }
 
-unsigned TegraPixmapSize(TegraPixmapPtr pixmap);
-
 unsigned TegraEXAHeightHwAligned(unsigned int height, unsigned int bpp);
-
-unsigned long TegraEXAPixmapOffset(PixmapPtr pix);
-
-struct drm_tegra_bo * TegraEXAPixmapBO(PixmapPtr pix);
-
-Bool TegraEXAPrepareSolid(PixmapPtr pPixmap, int op, Pixel planemask,
-                          Pixel color);
-
-void TegraEXASolid(PixmapPtr pPixmap, int px1, int py1, int px2, int py2);
-
-void TegraEXADoneSolid(PixmapPtr pPixmap);
-
-Bool TegraEXAPrepareCopyExt(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
-                            int op, Pixel planemask);
-
-Bool TegraEXAPrepareCopy(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
-                         int dx, int dy, int op, Pixel planemask);
-
-void TegraEXACopy(PixmapPtr pDstPixmap, int srcX, int srcY, int dstX,
-                  int dstY, int width, int height);
-
-void TegraEXACopyExt(PixmapPtr pDstPixmap, int srcX, int srcY, int dstX,
-                     int dstY, int width, int height);
-
-void TegraEXADoneCopy(PixmapPtr pDstPixmap);
-
-Bool TegraEXACheckComposite(int op, PicturePtr pSrcPicture,
-                            PicturePtr pMaskPicture,
-                            PicturePtr pDstPicture);
-
-Bool TegraEXAPrepareComposite(int op, PicturePtr pSrcPicture,
-                              PicturePtr pMaskPicture,
-                              PicturePtr pDstPicture,
-                              PixmapPtr pSrc,
-                              PixmapPtr pMask,
-                              PixmapPtr pDst);
-
-void TegraEXAComposite(PixmapPtr pDst,
-                       int srcX, int srcY,
-                       int maskX, int maskY,
-                       int dstX, int dstY,
-                       int width, int height);
-
-void TegraEXADoneComposite(PixmapPtr pDst);
-
-Bool TegraEXACheckComposite2D(int op, PicturePtr pSrcPicture,
-                              PicturePtr pMaskPicture,
-                              PicturePtr pDstPicture);
-
-Bool TegraEXACheckComposite3D(int op, PicturePtr pSrcPicture,
-                              PicturePtr pMaskPicture,
-                              PicturePtr pDstPicture);
-
-Bool TegraEXAPrepareComposite2D(int op,
-                                PicturePtr pSrcPicture,
-                                PicturePtr pMaskPicture,
-                                PicturePtr pDstPicture,
-                                PixmapPtr pSrc,
-                                PixmapPtr pMask,
-                                PixmapPtr pDst);
-
-Bool TegraEXAPrepareComposite3D(int op,
-                                PicturePtr pSrcPicture,
-                                PicturePtr pMaskPicture,
-                                PicturePtr pDstPicture,
-                                PixmapPtr pSrc,
-                                PixmapPtr pMask,
-                                PixmapPtr pDst);
-
-void TegraEXAComposite3D(PixmapPtr pDst,
-                         int srcX, int srcY,
-                         int maskX, int maskY,
-                         int dstX, int dstY,
-                         int width, int height);
-
-void TegraEXADoneComposite3D(PixmapPtr pDst);
 
 static inline Pixel TegraPixelRGB565to888(Pixel pixel)
 {
@@ -347,8 +267,17 @@ static inline Pixel TegraPixelRGB888to565(Pixel pixel)
     return p;
 }
 
-Bool TegraEXAPrepareCPUAccess(PixmapPtr pPix, int idx, void **ptr);
-void TegraEXAFinishCPUAccess(PixmapPtr pPix, int idx);
+static inline Bool TegraCompositeFormatHasAlpha(unsigned format)
+{
+    switch (format) {
+    case PICT_a8:
+    case PICT_a8r8g8b8:
+        return TRUE;
+
+    default:
+        return FALSE;
+    }
+}
 
 #endif
 

@@ -36,7 +36,18 @@ opentegra_drv_ladir = @moduledir@/drivers
 # enable fp16 for the 3d attributes
 opentegra_drv_la_CFLAGS = $(AM_CFLAGS) $(DEFINES) -mfp16-format=ieee
 
-opentegra_drv_la_DEPENDENCIES = shaders.h exa_composite_3d_state_tracker.c
+opentegra_drv_la_DEPENDENCIES = \
+	shaders.h \
+	exa_mm.c \
+	exa_mm_pool.c \
+	exa_mm_fridge.c \
+	exa_2d.c \
+	exa_composite.c \
+	exa_composite_2d.c \
+	exa_composite_3d.c \
+	exa_composite_3d_state_tracker.c \
+	pool_alloc.c \
+	gr3d.c
 
 opentegra_drv_la_SOURCES = \
 	compat-api.h \
@@ -52,13 +63,6 @@ opentegra_drv_la_SOURCES = \
 	xv.c \
 	xv.h \
 	exa.c \
-	exa_2d.c \
-	exa_composite.c \
-	exa_composite_2d.c \
-	exa_composite_3d.c \
-	exa_mm.c \
-	exa_mm_pool.c \
-	exa_mm_fridge.c \
 	exa.h \
 	vblank.c \
 	vblank.h \
@@ -67,9 +71,7 @@ opentegra_drv_la_SOURCES = \
 	shaders/prog.h \
 	shaders.h \
 	tgr_3d.xml.h \
-	gr3d.c \
 	gr3d.h \
-	pool_alloc.c \
 	memcpy_vfp.c
 
 shaders_dir := $(filter %/, $(wildcard $(srcdir)/shaders/*/*/))

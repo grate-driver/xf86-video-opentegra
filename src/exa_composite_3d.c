@@ -25,10 +25,6 @@
 #include "exa_mm.h"
 #include "shaders.h"
 
-#define ErrorMsg(fmt, args...)                                              \
-    xf86DrvMsg(-1, X_ERROR, "%s:%d/%s(): " fmt, __FILE__,                   \
-               __LINE__, __func__, ##args)
-
 #define BLUE(c)     (((c) & 0xff)         / 255.0f)
 #define GREEN(c)    ((((c) >> 8)  & 0xff) / 255.0f)
 #define RED(c)      ((((c) >> 16) & 0xff) / 255.0f)
@@ -207,18 +203,6 @@ static Bool TegraCompositePow2Texture(PixmapPtr pix)
     return FALSE;
 }
 
-static Bool TegraCompositeFormatHasAlpha(unsigned format)
-{
-    switch (format) {
-    case PICT_a8:
-    case PICT_a8r8g8b8:
-        return TRUE;
-
-    default:
-        return FALSE;
-    }
-}
-
 static Bool TegraCompositeTexturePerComponentAlpha(PicturePtr pic)
 {
     return pic->componentAlpha;
@@ -334,9 +318,9 @@ static Bool TegraCompositeAttribBufferIsFull(TegraEXAScratchPtr scratch)
     return (scratch->attrib_itr * 2 + attrs_num * 24 > TEGRA_ATTRIB_BUFFER_SIZE);
 }
 
-Bool TegraEXACheckComposite3D(int op, PicturePtr pSrcPicture,
-                              PicturePtr pMaskPicture,
-                              PicturePtr pDstPicture)
+static Bool TegraEXACheckComposite3D(int op, PicturePtr pSrcPicture,
+                                     PicturePtr pMaskPicture,
+                                     PicturePtr pDstPicture)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pDstPicture->pDrawable->pScreen);
     TegraPtr tegra = TegraPTR(pScrn);
@@ -425,13 +409,13 @@ static Pixel TegraCompositeGetReducedTextureColor(PixmapPtr pix)
     return color;
 }
 
-Bool TegraEXAPrepareComposite3D(int op,
-                                PicturePtr pSrcPicture,
-                                PicturePtr pMaskPicture,
-                                PicturePtr pDstPicture,
-                                PixmapPtr pSrc,
-                                PixmapPtr pMask,
-                                PixmapPtr pDst)
+static Bool TegraEXAPrepareComposite3D(int op,
+                                       PicturePtr pSrcPicture,
+                                       PicturePtr pMaskPicture,
+                                       PicturePtr pDstPicture,
+                                       PixmapPtr pSrc,
+                                       PixmapPtr pMask,
+                                       PixmapPtr pDst)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pDst->drawable.pScreen);
     Bool mask_tex = (pMaskPicture && pMaskPicture->pDrawable);
@@ -599,11 +583,11 @@ Bool TegraEXAPrepareComposite3D(int op,
     return TegraGR3DStateAppend(&tegra->gr3d_state, tegra, &draw_state);
 }
 
-void TegraEXAComposite3D(PixmapPtr pDst,
-                         int srcX, int srcY,
-                         int maskX, int maskY,
-                         int dstX, int dstY,
-                         int width, int height)
+static void TegraEXAComposite3D(PixmapPtr pDst,
+                                int srcX, int srcY,
+                                int maskX, int maskY,
+                                int dstX, int dstY,
+                                int width, int height)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pDst->drawable.pScreen);
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
@@ -686,7 +670,7 @@ void TegraEXAComposite3D(PixmapPtr pDst,
     tegra->scratch.ops++;
 }
 
-void TegraEXADoneComposite3D(PixmapPtr pDst)
+static void TegraEXADoneComposite3D(PixmapPtr pDst)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pDst->drawable.pScreen);
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;

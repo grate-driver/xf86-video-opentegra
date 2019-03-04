@@ -105,9 +105,9 @@ TegraEXA2DTransformIsSupported(int32_t dw, int32_t dh,
     return FALSE;
 }
 
-Bool TegraEXACheckComposite2D(int op, PicturePtr pSrcPicture,
-                              PicturePtr pMaskPicture,
-                              PicturePtr pDstPicture)
+static Bool TegraEXACheckComposite2D(int op, PicturePtr pSrcPicture,
+                                     PicturePtr pMaskPicture,
+                                     PicturePtr pDstPicture)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pDstPicture->pDrawable->pScreen);
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
@@ -159,19 +159,6 @@ Bool TegraEXACheckComposite2D(int op, PicturePtr pSrcPicture,
     }
 
     return TRUE;
-}
-
-static Bool TegraCompositeFormatHasAlpha(unsigned format)
-{
-    switch (format) {
-    case PICT_a8:
-    case PICT_a8b8g8r8:
-    case PICT_a8r8g8b8:
-        return TRUE;
-
-    default:
-        return FALSE;
-    }
 }
 
 static Bool TegraEXAPrepareSolid2D(int op,
@@ -269,13 +256,13 @@ static Bool TegraEXAPrepareCopy2DRotate(int op,
     return TegraEXAPrepareCopyExt(pSrc, pDst, GXcopy, FB_ALLONES);
 }
 
-Bool TegraEXAPrepareComposite2D(int op,
-                                PicturePtr pSrcPicture,
-                                PicturePtr pMaskPicture,
-                                PicturePtr pDstPicture,
-                                PixmapPtr pSrc,
-                                PixmapPtr pMask,
-                                PixmapPtr pDst)
+static Bool TegraEXAPrepareComposite2D(int op,
+                                       PicturePtr pSrcPicture,
+                                       PicturePtr pMaskPicture,
+                                       PicturePtr pDstPicture,
+                                       PixmapPtr pSrc,
+                                       PixmapPtr pMask,
+                                       PixmapPtr pDst)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pDst->drawable.pScreen);
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;

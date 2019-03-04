@@ -24,10 +24,6 @@
 #include "driver.h"
 #include "exa_mm.h"
 
-#define ErrorMsg(fmt, args...)                                              \
-    xf86DrvMsg(-1, X_ERROR, "%s:%d/%s(): " fmt, __FILE__,                   \
-               __LINE__, __func__, ##args)
-
 #define TEGRA_EXA_FREEZE_ALLOWANCE_DELTA    1
 #define TEGRA_EXA_FREEZE_BOUNCE_DELTA       3
 #define TEGRA_EXA_FREEZE_DELTA              2
@@ -603,7 +599,7 @@ fail_unmap:
     return -1;
 }
 
-void TegraEXAFreezePixmaps(TegraPtr tegra, time_t time_sec)
+static void TegraEXAFreezePixmaps(TegraPtr tegra, time_t time_sec)
 {
     TegraEXAPtr exa = tegra->exa;
     TegraPixmapPtr pix, tmp;
@@ -670,7 +666,7 @@ out:
     }
 }
 
-void TegraEXACoolTegraPixmap(TegraPtr tegra, TegraPixmapPtr pix)
+static void TegraEXACoolTegraPixmap(TegraPtr tegra, TegraPixmapPtr pix)
 {
     TegraEXAPtr exa = tegra->exa;
     unsigned int current_sec8;
@@ -694,7 +690,7 @@ void TegraEXACoolTegraPixmap(TegraPtr tegra, TegraPixmapPtr pix)
     exa->cooling_size += TegraPixmapSize(pix);
 }
 
-void TegraEXACoolPixmap(PixmapPtr pPixmap, Bool write)
+static void TegraEXACoolPixmap(PixmapPtr pPixmap, Bool write)
 {
     ScrnInfoPtr pScrn;
     TegraPixmapPtr priv;
@@ -739,7 +735,7 @@ TegraEXAAllocatePixmapDataNoFail(TegraPtr tegra, TegraPixmapPtr pixmap,
     }
 }
 
-void TegraEXAThawPixmap(PixmapPtr pPixmap, Bool accel)
+static void TegraEXAThawPixmap(PixmapPtr pPixmap, Bool accel)
 {
     ScrnInfoPtr pScrn;
     TegraPixmapPtr priv;

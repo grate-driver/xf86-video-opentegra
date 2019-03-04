@@ -21,24 +21,29 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-void TegraEXADestroyPool(TegraPixmapPoolPtr pool);
+#ifndef __TEGRA_EXA_MM_H
+#define __TEGRA_EXA_MM_H
 
-void TegraEXAPoolFree(struct mem_pool_entry *pool_entry);
+static void TegraEXADestroyPool(TegraPixmapPoolPtr pool);
 
-Bool TegraEXAAllocateDRMFromPool(TegraPtr tegra,
-                                 TegraPixmapPtr pixmap,
-                                 unsigned int size);
+static void TegraEXAPoolFree(struct mem_pool_entry *pool_entry);
 
-Bool TegraEXAAllocateDRM(TegraPtr tegra,
-                         TegraPixmapPtr pixmap,
-                         unsigned int size);
+static Bool TegraEXAAllocateDRMFromPool(TegraPtr tegra,
+                                        TegraPixmapPtr pixmap,
+                                        unsigned int size);
 
-Bool TegraEXAAllocateMem(TegraPixmapPtr pixmap, unsigned int size);
+static Bool TegraEXAAllocateDRM(TegraPtr tegra,
+                                TegraPixmapPtr pixmap,
+                                unsigned int size);
 
-int TegraEXAInitMM(TegraPtr tegra, TegraEXAPtr exa);
-void TegraEXAReleaseMM(TegraPtr tegra, TegraEXAPtr exa);
+static Bool TegraEXAAllocateMem(TegraPixmapPtr pixmap, unsigned int size);
 
-void TegraEXACoolTegraPixmap(TegraPtr tegra, TegraPixmapPtr pix);
-void TegraEXACoolPixmap(PixmapPtr pPixmap, Bool write);
-void TegraEXAThawPixmap(PixmapPtr pPixmap, Bool accel);
-void TegraEXAFreezePixmaps(TegraPtr tegra, time_t time_sec);
+static int TegraEXAInitMM(TegraPtr tegra, TegraEXAPtr exa);
+static void TegraEXAReleaseMM(TegraPtr tegra, TegraEXAPtr exa);
+
+static void TegraEXACoolTegraPixmap(TegraPtr tegra, TegraPixmapPtr pix);
+static void TegraEXACoolPixmap(PixmapPtr pPixmap, Bool write);
+static void TegraEXAThawPixmap(PixmapPtr pPixmap, Bool accel);
+static void TegraEXAFreezePixmaps(TegraPtr tegra, time_t time_sec);
+
+#endif

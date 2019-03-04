@@ -24,10 +24,6 @@
 #include "driver.h"
 #include "exa_mm.h"
 
-#define ErrorMsg(fmt, args...)                                              \
-    xf86DrvMsg(-1, X_ERROR, "%s:%d/%s(): " fmt, __FILE__,                   \
-               __LINE__, __func__, ##args)
-
 static const uint8_t rop3[] = {
     0x00, /* GXclear */
     0x88, /* GXand */
@@ -59,8 +55,8 @@ static uint32_t sb_offset(PixmapPtr pix, unsigned xpos, unsigned ypos)
     return TegraEXAPixmapOffset(pix) + offset;
 }
 
-Bool TegraEXAPrepareSolid(PixmapPtr pPixmap, int op, Pixel planemask,
-                          Pixel color)
+static Bool TegraEXAPrepareSolid(PixmapPtr pPixmap, int op, Pixel planemask,
+                                 Pixel color)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pPixmap->drawable.pScreen);
     TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pPixmap);
@@ -154,7 +150,7 @@ Bool TegraEXAPrepareSolid(PixmapPtr pPixmap, int op, Pixel planemask,
     return TRUE;
 }
 
-void TegraEXASolid(PixmapPtr pPixmap, int px1, int py1, int px2, int py2)
+static void TegraEXASolid(PixmapPtr pPixmap, int px1, int py1, int px2, int py2)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pPixmap->drawable.pScreen);
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
@@ -174,7 +170,7 @@ void TegraEXASolid(PixmapPtr pPixmap, int px1, int py1, int px2, int py2)
     tegra->scratch.ops++;
 }
 
-void TegraEXADoneSolid(PixmapPtr pPixmap)
+static void TegraEXADoneSolid(PixmapPtr pPixmap)
 {
     TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pPixmap);
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pPixmap->drawable.pScreen);
@@ -208,19 +204,8 @@ void TegraEXADoneSolid(PixmapPtr pPixmap)
     AccelMsg("\n");
 }
 
-Bool TegraEXAPrepareCopy(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
-                         int dx, int dy, int op, Pixel planemask)
-{
-    ScrnInfoPtr pScrn = xf86ScreenToScrn(pDstPixmap->drawable.pScreen);
-    TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
-
-    tegra->scratch.orientation = TEGRA2D_IDENTITY;
-
-    return TegraEXAPrepareCopyExt(pSrcPixmap, pDstPixmap, op, planemask);
-}
-
-Bool TegraEXAPrepareCopyExt(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
-                            int op, Pixel planemask)
+static Bool TegraEXAPrepareCopyExt(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
+                                   int op, Pixel planemask)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pDstPixmap->drawable.pScreen);
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
@@ -343,8 +328,19 @@ Bool TegraEXAPrepareCopyExt(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
     return TRUE;
 }
 
-void TegraEXACopyExt(PixmapPtr pDstPixmap, int srcX, int srcY, int dstX,
-                     int dstY, int width, int height)
+static Bool TegraEXAPrepareCopy(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
+                                int dx, int dy, int op, Pixel planemask)
+{
+    ScrnInfoPtr pScrn = xf86ScreenToScrn(pDstPixmap->drawable.pScreen);
+    TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
+
+    tegra->scratch.orientation = TEGRA2D_IDENTITY;
+
+    return TegraEXAPrepareCopyExt(pSrcPixmap, pDstPixmap, op, planemask);
+}
+
+static void TegraEXACopyExt(PixmapPtr pDstPixmap, int srcX, int srcY, int dstX,
+                            int dstY, int width, int height)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pDstPixmap->drawable.pScreen);
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
@@ -474,8 +470,8 @@ void TegraEXACopyExt(PixmapPtr pDstPixmap, int srcX, int srcY, int dstX,
     tegra->scratch.ops++;
 }
 
-void TegraEXACopy(PixmapPtr pDstPixmap, int srcX, int srcY, int dstX,
-                  int dstY, int width, int height)
+static void TegraEXACopy(PixmapPtr pDstPixmap, int srcX, int srcY, int dstX,
+                         int dstY, int width, int height)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pDstPixmap->drawable.pScreen);
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
@@ -517,7 +513,7 @@ void TegraEXACopy(PixmapPtr pDstPixmap, int srcX, int srcY, int dstX,
     tegra->scratch.ops++;
 }
 
-void TegraEXADoneCopy(PixmapPtr pDstPixmap)
+static void TegraEXADoneCopy(PixmapPtr pDstPixmap)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pDstPixmap->drawable.pScreen);
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;

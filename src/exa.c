@@ -23,15 +23,28 @@
  */
 
 #include "driver.h"
-#include "exa_mm.h"
 
 #define ErrorMsg(fmt, args...)                                              \
     xf86DrvMsg(-1, X_ERROR, "%s:%d/%s(): " fmt, __FILE__,                   \
                __LINE__, __func__, ##args)
 
+static unsigned TegraPixmapSize(TegraPixmapPtr pixmap);
+static unsigned long TegraEXAPixmapOffset(PixmapPtr pix);
+static struct drm_tegra_bo * TegraEXAPixmapBO(PixmapPtr pix);
+static Bool TegraEXAPrepareCPUAccess(PixmapPtr pPix, int idx, void **ptr);
+static void TegraEXAFinishCPUAccess(PixmapPtr pPix, int idx);
+
+#include "exa_mm.c"
+#include "exa_mm_pool.c"
+#include "exa_mm_fridge.c"
+#include "exa_2d.c"
+#include "exa_composite_2d.c"
+#include "exa_composite_3d.c"
+#include "exa_composite.c"
+
 #define TEGRA_MALLOC_TRIM_THRESHOLD     256
 
-unsigned long TegraEXAPixmapOffset(PixmapPtr pix)
+static unsigned long TegraEXAPixmapOffset(PixmapPtr pix)
 {
     TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pix);
     unsigned long offset = 0;
@@ -42,7 +55,7 @@ unsigned long TegraEXAPixmapOffset(PixmapPtr pix)
     return offset;
 }
 
-struct drm_tegra_bo * TegraEXAPixmapBO(PixmapPtr pix)
+static struct drm_tegra_bo * TegraEXAPixmapBO(PixmapPtr pix)
 {
     TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pix);
 
@@ -296,7 +309,7 @@ static unsigned TegraEXAPixmapSizeAligned(unsigned pitch, unsigned height,
     return TEGRA_ALIGN(size, TEGRA_EXA_OFFSET_ALIGN);
 }
 
-unsigned TegraPixmapSize(TegraPixmapPtr pixmap)
+static unsigned TegraPixmapSize(TegraPixmapPtr pixmap)
 {
     PixmapPtr pPixmap = pixmap->pPixmap;
 

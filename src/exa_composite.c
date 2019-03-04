@@ -193,9 +193,9 @@ static void dump_pict(const char *prefix, PicturePtr pict, Bool accel)
                     pict_filter(pict));
 }
 
-Bool TegraEXACheckComposite(int op, PicturePtr pSrcPicture,
-                            PicturePtr pMaskPicture,
-                            PicturePtr pDstPicture)
+static Bool TegraEXACheckComposite(int op, PicturePtr pSrcPicture,
+                                   PicturePtr pMaskPicture,
+                                   PicturePtr pDstPicture)
 {
     PROFILE_START
 
@@ -213,12 +213,12 @@ Bool TegraEXACheckComposite(int op, PicturePtr pSrcPicture,
     return FALSE;
 }
 
-Bool TegraEXAPrepareComposite(int op, PicturePtr pSrcPicture,
-                              PicturePtr pMaskPicture,
-                              PicturePtr pDstPicture,
-                              PixmapPtr pSrc,
-                              PixmapPtr pMask,
-                              PixmapPtr pDst)
+static Bool TegraEXAPrepareComposite(int op, PicturePtr pSrcPicture,
+                                     PicturePtr pMaskPicture,
+                                     PicturePtr pDstPicture,
+                                     PixmapPtr pSrc,
+                                     PixmapPtr pMask,
+                                     PixmapPtr pDst)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pDst->drawable.pScreen);
     TegraPtr tegra = TegraPTR(pScrn);
@@ -282,11 +282,11 @@ fallback:
     return FALSE;
 }
 
-void TegraEXAComposite(PixmapPtr pDst,
-                       int srcX, int srcY,
-                       int maskX, int maskY,
-                       int dstX, int dstY,
-                       int width, int height)
+static void TegraEXAComposite(PixmapPtr pDst,
+                              int srcX, int srcY,
+                              int maskX, int maskY,
+                              int dstX, int dstY,
+                              int width, int height)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pDst->drawable.pScreen);
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
@@ -304,7 +304,7 @@ void TegraEXAComposite(PixmapPtr pDst,
                                width, height);
 }
 
-void TegraEXADoneComposite(PixmapPtr pDst)
+static void TegraEXADoneComposite(PixmapPtr pDst)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pDst->drawable.pScreen);
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;

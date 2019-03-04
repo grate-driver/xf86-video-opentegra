@@ -20,6 +20,8 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
+#include "gr3d.c"
+
 static Bool TegraAllocateAttribBuffer(TegraGR3DStatePtr state)
 {
     struct tegra_exa_scratch *scratch = state->scratch;
@@ -58,7 +60,7 @@ static void TegraReleaseAttribBuffers(TegraGR3DStatePtr state)
     scratch->vtx_cnt = 0;
 }
 
-void TegraGR3DStateReset(TegraGR3DStatePtr state)
+static void TegraGR3DStateReset(TegraGR3DStatePtr state)
 {
     if (state->cmds)
         tegra_stream_cleanup(state->cmds);
