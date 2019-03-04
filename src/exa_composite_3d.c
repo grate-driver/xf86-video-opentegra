@@ -41,12 +41,12 @@
 
 #define TEGRA_ATTRIB_BUFFER_SIZE        0x4000
 
-#define TEX_SOLID           0
-#define TEX_CLIPPED         1
-#define TEX_PAD             2
-#define TEX_NORMAL          3
-#define TEX_MIRROR          4
-#define TEX_EMPTY           5
+#define TEX_EMPTY           0
+#define TEX_SOLID           1
+#define TEX_CLIPPED         2
+#define TEX_PAD             3
+#define TEX_NORMAL          4
+#define TEX_MIRROR          5
 
 #define PROG_SEL(SRC_SEL, MASK_SEL) ((SRC_SEL) | ((MASK_SEL) << 3))
 
@@ -89,39 +89,57 @@
 
 struct tegra_composite_config {
     const struct shader_program *prog[64];
+    bool discards_clipped_area : 1; /* clipped area is either discarded or
+                                       filled with black solid */
 };
 
 static const struct tegra_composite_config composite_cfgs[] = {
     [PictOpOver] = {
         PROG_DEF(over),
+
+        .discards_clipped_area = true,
     },
 
     [PictOpOverReverse] = {
         PROG_DEF(over_reverse),
+
+        .discards_clipped_area = true,
     },
 
     [PictOpAdd] = {
         PROG_DEF(add),
+
+        .discards_clipped_area = true,
     },
 
     [PictOpSrc] = {
         PROG_DEF(src),
+
+        .discards_clipped_area = false,
     },
 
     [PictOpIn] = {
         PROG_DEF(in),
+
+        .discards_clipped_area = false,
     },
 
     [PictOpInReverse] = {
         PROG_DEF(in_reverse),
+
+        .discards_clipped_area = false,
     },
 
     [PictOpOut] = {
         PROG_DEF(out),
+
+        .discards_clipped_area = false,
     },
 
     [PictOpOutReverse] = {
         PROG_DEF(out_reverse),
+
+        .discards_clipped_area = true,
     },
 
     [PictOpDst] = {
@@ -139,18 +157,26 @@ static const struct tegra_composite_config composite_cfgs[] = {
 
         .prog[PROG_SEL(TEX_SOLID,   TEX_EMPTY)]     = &prog_blend_dst_solid_mask,
         .prog[PROG_SEL(TEX_EMPTY,   TEX_SOLID)]     = &prog_blend_dst_solid_mask,
+
+        .discards_clipped_area = false,
     },
 
     [PictOpAtop] = {
         PROG_DEF(atop),
+
+        .discards_clipped_area = true,
     },
 
     [PictOpAtopReverse] = {
         PROG_DEF(atop_reverse),
+
+        .discards_clipped_area = false,
     },
 
     [PictOpXor] = {
         PROG_DEF(xor),
+
+        .discards_clipped_area = true,
     },
 
     [PictOpSaturate] = {
@@ -171,6 +197,8 @@ static const struct tegra_composite_config composite_cfgs[] = {
 
         .prog[PROG_SEL(TEX_EMPTY,   TEX_CLIPPED)]   = &prog_blend_saturate_solid_src,
         .prog[PROG_SEL(TEX_EMPTY,   TEX_PAD)]       = &prog_blend_saturate_solid_src,
+
+        .discards_clipped_area = true,
     },
 };
 
@@ -226,9 +254,18 @@ static Bool TegraCompositeProgram3DPreCheck(TegraGR3DDrawStatePtr draw_state)
         return FALSE;
     }
 
-    AccelMsg("got shader for operation %d src_sel %u mask_sel %u %s\n",
+    /*
+     * About half of shaders discard pixels outside of clipping area,
+     * doing the clipping within shader is sub-optimal because every
+     * ALU quadruple and pixel's re-circulation cycle kills more performance.
+     * Hence we will simply clip in software when possible
+     */
+    if (cfg->discards_clipped_area)
+        draw_state->discards_clip = cfg->discards_clipped_area;
+
+    AccelMsg("got shader for operation %d src_sel %u mask_sel %u discards_clip %u %s\n",
              draw_state->op, draw_state->src.tex_sel, draw_state->mask.tex_sel,
-             prog->name);
+             draw_state->discards_clip, prog->name);
 
     /* we have special shaders for this case */
     if (draw_state->op == PictOpOver &&
@@ -594,10 +631,12 @@ static void TegraEXAComposite3D(PixmapPtr pDst,
     TegraGR3DStatePtr state = &tegra->gr3d_state;
     TegraGR3DDrawStatePtr draw_state = &state->new;
     float dst_left, dst_right, dst_top, dst_bottom;
-    float src_left, src_right, src_top, src_bottom;
-    float mask_left, mask_right, mask_top, mask_bottom;
+    float src_left = 0, src_right = 0, src_top = 0, src_bottom = 0;
+    float mask_left = 0, mask_right = 0, mask_top = 0, mask_bottom = 0;
     bool push_mask = !!tegra->scratch.pMask;
     bool push_src = !!tegra->scratch.pSrc;
+    int swidth = 0, sheight = 0;
+    int mwidth = 0, mheight = 0;
 
     /* if attributes buffer is full, do nothing for now (TODO better job) */
     if (TegraCompositeAttribBufferIsFull(&tegra->scratch)) {
@@ -606,33 +645,115 @@ static void TegraEXAComposite3D(PixmapPtr pDst,
     }
 
     if (push_src) {
-        src_left   = (float) srcX   / tegra->scratch.pSrc->drawable.width;
-        src_right  = (float) width  / tegra->scratch.pSrc->drawable.width + src_left;
-        src_bottom = (float) srcY   / tegra->scratch.pSrc->drawable.height;
-        src_top    = (float) height / tegra->scratch.pSrc->drawable.height + src_bottom;
-
-        if ((src_left < 0.0f || src_right > 1.0f) &&
-            tegra->scratch.pSrc->drawable.width > 1)
-                draw_state->src.coords_wrap = TRUE;
-
-        if ((src_bottom < 0.0f || src_top > 1.0f) &&
-            tegra->scratch.pSrc->drawable.height > 1)
-                draw_state->src.coords_wrap = TRUE;
+        swidth = tegra->scratch.pSrc->drawable.width;
+        sheight = tegra->scratch.pSrc->drawable.height;
     }
 
     if (push_mask) {
-        mask_left   = (float) maskX  / tegra->scratch.pMask->drawable.width;
-        mask_right  = (float) width  / tegra->scratch.pMask->drawable.width + mask_left;
-        mask_bottom = (float) maskY  / tegra->scratch.pMask->drawable.height;
-        mask_top    = (float) height / tegra->scratch.pMask->drawable.height + mask_bottom;
+        mwidth = tegra->scratch.pMask->drawable.width;
+        mheight = tegra->scratch.pMask->drawable.height;
+    }
 
-        if ((mask_left < 0.0f || mask_right > 1.0f) &&
-            tegra->scratch.pMask->drawable.width > 1)
-                draw_state->mask.coords_wrap = TRUE;
+    /* EXA doesn't discard transparent areas for us */
+    if (draw_state->discards_clip) {
+        if (push_src && draw_state->src.tex_sel == TEX_CLIPPED) {
+            if (srcX < 0) {
+                dstX += -srcX;
+                maskX += -srcX;
+                width += srcX;
+                srcX = 0;
+            }
 
-        if ((mask_bottom < 0.0f || mask_top > 1.0f) &&
-            tegra->scratch.pMask->drawable.height > 1)
-                draw_state->mask.coords_wrap = TRUE;
+            if (srcY < 0) {
+                dstY += -srcY;
+                maskY += -srcY;
+                height += srcY;
+                srcY = 0;
+            }
+
+            if (srcX + width > swidth)
+                width = swidth - srcX;
+
+            if (srcY + height > sheight)
+                height = sheight - srcY;
+
+            /* check for degenerate, shouldn't happen in practice */
+            if ((push_src && srcX >= swidth) ||
+                (push_src && srcY >= sheight))
+            {
+                goto degenerate;
+            }
+        }
+
+        if (push_mask && draw_state->mask.tex_sel == TEX_CLIPPED) {
+            if (maskX < 0) {
+                dstX += -maskX;
+                srcX += -maskX;
+                width += maskX;
+                maskX = 0;
+            }
+
+            if (maskY < 0) {
+                dstY += -maskY;
+                srcY += -maskY;
+                height += maskY;
+                maskY = 0;
+            }
+
+            if (maskX + width > mwidth)
+                width = mwidth - maskX;
+
+            if (maskY + height > mheight)
+                height = mheight - maskY;
+
+            /* check for degenerate, shouldn't happen in practice */
+            if ((push_mask && maskX >= mwidth) ||
+                (push_mask && maskY >= mheight))
+            {
+                goto degenerate;
+            }
+
+            if (push_src && draw_state->src.tex_sel == TEX_CLIPPED) {
+                if (srcX + width > swidth)
+                    width = swidth - srcX;
+
+                if (srcY + height > sheight)
+                    height = sheight - srcY;
+
+                /* check for degenerate, shouldn't happen in practice */
+                if ((push_src && srcX >= swidth) ||
+                    (push_src && srcY >= sheight))
+                {
+                    goto degenerate;
+                }
+            }
+        }
+    }
+
+    if (push_src) {
+        src_left   = (float) srcX   / swidth;
+        src_right  = (float) width  / swidth + src_left;
+        src_bottom = (float) srcY   / sheight;
+        src_top    = (float) height / sheight + src_bottom;
+
+        if ((src_left < 0.0f || src_right > 1.0f) && swidth > 1)
+            draw_state->src.coords_wrap = TRUE;
+
+        if ((src_bottom < 0.0f || src_top > 1.0f) && sheight > 1)
+            draw_state->src.coords_wrap = TRUE;
+    }
+
+    if (push_mask) {
+        mask_left   = (float) maskX  / mwidth;
+        mask_right  = (float) width  / mwidth + mask_left;
+        mask_bottom = (float) maskY  / mheight;
+        mask_top    = (float) height / mheight + mask_bottom;
+
+        if ((mask_left < 0.0f || mask_right > 1.0f) && mwidth > 1)
+            draw_state->mask.coords_wrap = TRUE;
+
+        if ((mask_bottom < 0.0f || mask_top > 1.0f) && mheight > 1)
+            draw_state->mask.coords_wrap = TRUE;
     }
 
     dst_left   = (float) (dstX   * 2) / pDst->drawable.width  - 1.0f;
@@ -668,6 +789,12 @@ static void TegraEXAComposite3D(PixmapPtr pDst,
 
     tegra->scratch.vtx_cnt += 6;
     tegra->scratch.ops++;
+
+    return;
+
+degenerate:
+    AccelMsg("src %dx%d mask %dx%d w:h %d:%d area degenerated\n",
+             srcX, srcY, maskX, maskY, width, height);
 }
 
 static void TegraEXADoneComposite3D(PixmapPtr pDst)

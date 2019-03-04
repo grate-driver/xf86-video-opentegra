@@ -76,12 +76,24 @@ static const struct shader_program *
 TegraGR3DStateSelectProgram(TegraGR3DStatePtr state)
 {
     const struct tegra_composite_config *cfg = &composite_cfgs[state->new.op];
-    unsigned mask_sel = state->new.mask.tex_sel;
-    unsigned src_sel = state->new.src.tex_sel;
     const struct shader_program *prog;
+    unsigned mask_sel;
+    unsigned src_sel;
 
     if (state->new.op >= TEGRA_ARRAY_SIZE(composite_cfgs))
         return NULL;
+
+    /* optimize wrap-mode if possible */
+    if (!state->new.src.coords_wrap && state->new.src.pPix)
+        state->new.src.tex_sel = TEX_PAD;
+
+    src_sel = state->new.src.tex_sel;
+
+    /* optimize wrap-mode if possible */
+    if (!state->new.mask.coords_wrap && state->new.mask.pPix)
+        state->new.mask.tex_sel = TEX_PAD;
+
+    mask_sel = state->new.mask.tex_sel;
 
     /* pow2 texture can use more optimized shaders */
     if (state->new.src.pow2 &&
@@ -219,14 +231,6 @@ static void TegraGR3DStateFinalize(TegraGR3DStatePtr state)
 
     if (state->clean)
         return;
-
-    /* optimize wrap-mode if possible */
-    if (!state->new.src.coords_wrap && state->new.src.pPix)
-        state->new.src.tex_sel = TEX_PAD;
-
-    /* optimize wrap-mode if possible */
-    if (!state->new.mask.coords_wrap && state->new.mask.pPix)
-        state->new.mask.tex_sel = TEX_PAD;
 
     prog = TegraGR3DStateSelectProgram(state);
     if (!prog) {

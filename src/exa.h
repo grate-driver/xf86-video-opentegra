@@ -86,6 +86,7 @@ typedef struct gr3d_draw_state {
     TegraGR3DStateTex src;
     TegraGR3DStateTex mask;
     TegraGR3DStateTex dst;
+    bool discards_clip : 1;
     int op;
 } TegraGR3DDrawState, *TegraGR3DDrawStatePtr;
 
