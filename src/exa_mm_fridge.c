@@ -715,6 +715,8 @@ TegraEXAAllocatePixmapDataNoFail(TegraPtr tegra, TegraPixmapPtr pixmap,
                                  Bool accel)
 {
     unsigned int size = TegraPixmapSize(pixmap);
+    PixmapPtr pix = pixmap->pPixmap;
+    void *ptr;
 
     while (1) {
         if (!accel) {
@@ -724,7 +726,15 @@ TegraEXAAllocatePixmapDataNoFail(TegraPtr tegra, TegraPixmapPtr pixmap,
             if (TegraEXAAllocateDRMFromPool(tegra, pixmap, size) ||
                 TegraEXAAllocateDRM(tegra, pixmap, size) ||
                 TegraEXAAllocateMem(pixmap, size))
+            {
+                if (TegraEXAPrepareCPUAccess(pix, EXA_PREPARE_DEST, &ptr)) {
+                    /* always zero-fill allocated data for consistency */
+                    memset(ptr, 0, size);
+
+                    TegraEXAFinishCPUAccess(pix, EXA_PREPARE_DEST);
+                }
                 return;
+            }
         }
 
         usleep(100000);
