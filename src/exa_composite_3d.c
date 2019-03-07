@@ -530,6 +530,10 @@ static Bool TegraEXAPrepareComposite3D(int op,
                 if (!alpha)
                     solid |= 0xff000000;
 
+                if (op == PictOpAdd  &&
+                    !TegraCompositeFormatHasAlpha(pDstPicture->format))
+                        solid &= 0x00ffffff;
+
                 src_sel = TEX_SOLID;
             } else {
                 solid = 0x00000000;
@@ -589,6 +593,10 @@ static Bool TegraEXAPrepareComposite3D(int op,
                 alpha = TegraCompositeFormatHasAlpha(pMaskPicture->format);
                 if (!alpha)
                     solid |= 0xff000000;
+
+                if (op == PictOpAdd &&
+                    !TegraCompositeFormatHasAlpha(pDstPicture->format))
+                        solid &= 0x00ffffff;
 
                 mask_sel = TEX_SOLID;
             } else {

@@ -20,7 +20,7 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-pseq_to_dw_exec_nb = 11	// the number of 'EXEC' block where DW happens
+pseq_to_dw_exec_nb = 4	// the number of 'EXEC' block where DW happens
 alu_buffer_size = 2	// number of .rgba regs carried through pipeline
 
 .uniforms
@@ -30,89 +30,35 @@ alu_buffer_size = 2	// number of .rgba regs carried through pipeline
 	[3].h = "mask_color.a";
 
 	[5].l = "src_fmt_alpha";
-	[5].h = "src_swap_bgr";
 
 	[8].l = "dst_fmt_alpha";
-	[8].h = "src_clamp_to_border";
 
 .asm
 
 // First batch
 EXEC
+	// fetch dst pixel to r2,r3
+	PSEQ:	0x0081000A
+
 	MFU:	sfu:  rcp r4
 		mul0: bar, sfu, bar0
 		mul1: bar, sfu, bar1
 		ipl:  t0.fp20, t0.fp20, NOP, NOP
 
-	// Emulate clamp-to-border for src
-	ALU:
-		ALU0:	MAD  lp.lh, r0, #1, -#1
-		ALU1:	MAD  lp.lh, r1, #1, -#1
-
-	ALU:
-		ALU0:	CSEL lp.lh,   r0, u8.h, #0 (this)
-		ALU1:	CSEL lp.lh, alu0, #0, u8.h (other)
-		ALU2:	CSEL lp.lh,   r1, u8.h, #0 (other)
-		ALU3:	CSEL lp.lh, alu1, #0, u8.h
-
-	ALU:
-		ALU0:	CSEL kill, alu0, #1, #0
-;
-
-EXEC
-;
-
-// Second batch
-EXEC
 	// sample tex0 (src)
 	TEX:	tex r0, r1, tex0, r0, r1, r2
 
 	// src.a = src_fmt_alpha ? src.a : 1.0
 	ALU:
-		ALU0:	CSEL r7.h, -u5.l, r1.h, #1
-		ALU1:	MAD  r6.h, r0.h, #1, #0
-
-		// swap src ABGR to ARGB if needed
-		ALU2:	CSEL r6.l, -u5.h, r1.l, r0.l
-		ALU3:	CSEL r7.l, -u5.h, r0.l, r1.l
-;
-
-EXEC
-;
-
-// Third batch
-EXEC
-	ALU:
-		ALU0:	MAD  lp.lh, r6.l, u2.l, #0
-		ALU1:	MAD  lp.lh, r6.h, u2.h, #0
-		ALU2:	MAD  lp.lh, r7.l, u3.l, #0
-		ALU3:	MAD  lp.lh, r7.h, u3.h, r7.h
-
-	ALU:
-		ALU0:	MAD  lp.lh, alu0, #1, #0 (this)
-		ALU1:	MAD  lp.lh, alu1, #1, #0 (other)
-		ALU2:	MAD  lp.lh, alu2, #1, #0 (other)
-		ALU3:	MAD  lp.lh, alu3, #1, #0
-
-	// kill the pixel if src.bgra * mask.bgra == 0 && src.a == 0
-	ALU:
-		ALU0:	CSEL kill, -alu0, #0, #1
-;
-
-EXEC
-;
-
-// Fourth batch
-EXEC
-	// fetch dst pixel to r2,r3
-	PSEQ:	0x0081000A
+		ALU0:	CSEL  r3.h, -u8.l, r3.h, #1
+		ALU3:	CSEL lp.lh, -u5.l, r1.h, #1
 
 	// tmp = -src.aaaa * mask.bgra + 1
 	ALU:
-		ALU0:	MAD  lp.lh, -r7.h, u2.l, #1
-		ALU1:	MAD  lp.lh, -r7.h, u2.h, #1
-		ALU2:	MAD  lp.lh, -r7.h, u3.l, #1
-		ALU3:	MAD  lp.lh, -r7.h, u3.h, #1
+		ALU0:	MAD  lp.lh, -alu3, u2.l, #1
+		ALU1:	MAD  lp.lh, -alu3, u2.h, #1
+		ALU2:	MAD  lp.lh, -alu3, u3.l, #1
+		ALU3:	MAD  lp.lh, -alu3, u3.h, u8.l (sat)
 
 	// r0,r1 = (1 - src.aaaa * mask.bgra) * dst.bgra
 	ALU:
@@ -120,22 +66,25 @@ EXEC
 		ALU1:	MAD  r0.h, r2.h, alu1, #0
 		ALU2:	MAD  r1.l, r3.l, alu2, #0
 		ALU3:	MAD  r1.h, r3.h, alu3, #0
-
-	ALU:
-		ALU0:	CSEL r3.h, -u8.l, r3.h, #1
 ;
 
 EXEC
+	// src.a = src_fmt_alpha ? src.a : 1.0
+	ALU:
+		ALU0:	MAD  r6.h, r0.h, #1, #0
+		ALU1:	MAD  r6.l, r0.l, #1, #0
+		ALU2:	MAD  r7.l, r1.l, #1, #0
+		ALU3:	CSEL r7.h, -u5.l, r1.h, #1
 ;
 
-// Fifth batch
+// Second batch
 EXEC
 	// tmp =  src.bgra * mask.bgra
 	ALU:
 		ALU0:	MAD  lp.lh, r6.l, u2.l, #0
 		ALU1:	MAD  lp.lh, r6.h, u2.h, #0
 		ALU2:	MAD  lp.lh, r7.l, u3.l, #0
-		ALU3:	MAD  lp.lh, r7.h, u3.h, #0
+		ALU3:	MAD  lp.lh, r7.h, u3.h, u8.l-1 (sat)
 
 	// r0,r1 = (1 - src.aaaa * mask.bgra) * dst.bgra + src.bgra * mask.bgra * dst.aaaa
 	ALU:
@@ -143,29 +92,6 @@ EXEC
 		ALU1:	MAD  r0.h, r3.h, alu1, r0.h (sat)
 		ALU2:	MAD  r1.l, r3.h, alu2, r1.l (sat)
 		ALU3:	MAD  r1.h, r3.h, alu3, r1.h (sat)
-;
-
-EXEC
-;
-
-// Sixth batch
-EXEC
-	ALU:
-		ALU0:	MAD  lp.lh, r0.l, #1, -r2.l
-		ALU1:	MAD  lp.lh, r0.h, #1, -r2.h
-		ALU2:	MAD  lp.lh, r1.l, #1, -r3.l
-		ALU3:	MAD  lp.lh, r1.h, #1, -r3.h
-
-	ALU:
-		ALU0:	MAD  lp.lh, abs(alu0), #1, #0 (this)
-		ALU1:	MAD  lp.lh, abs(alu1), #1, #0 (other)
-		ALU2:	MAD  lp.lh, abs(alu2), #1, #0 (other)
-		ALU3:	MAD  lp.lh, abs(alu3), u8.l, #0
-
-	// kill the pixel if dst is unchanged
-	ALU:
-		ALU0:	CSEL kill, -alu0, #0, #1
-		ALU1:	CSEL r1.h, -u8.l, r1.h, #0
 
 	DW:	store rt1, r0, r1
 ;
