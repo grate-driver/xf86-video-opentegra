@@ -330,12 +330,16 @@ static Bool TegraEXAAllocatePixmapData(TegraPtr tegra,
                                        TegraPixmapPtr pixmap,
                                        unsigned int width,
                                        unsigned int height,
-                                       unsigned int bpp)
+                                       unsigned int bpp,
+                                       int usage_hint)
 {
     unsigned int pitch = TegraEXAPitch(width, height, bpp);
     unsigned int size = pitch * height;
 
     pixmap->accel = TegraEXAAccelerated(bpp);
+
+    if (usage_hint == TEGRA_DRI_USAGE_HINT)
+        pixmap->dri = TRUE;
 
     /* DRI allocation must be accelerateable, otherwise what's the point? */
     if (pixmap->dri && !pixmap->accel)
@@ -356,9 +360,13 @@ static Bool TegraEXAAllocatePixmapData(TegraPtr tegra,
     /*
      * Allocation is deferred to TegraEXAThawPixmap() invocation
      * because there is no point to allocate BO if pixmap won't
-     * be ever used for accelerated drawing.
+     * be ever used for accelerated drawing. A set usage_hint
+     * usually means that we really want to allocate data right
+     * now, this will also bypass data-zeroing that is performed
+     * for deferred allocations and shouldn't be needed for the
+     * internal use.
      */
-    if (!pixmap->dri)
+    if (!usage_hint)
         return TRUE;
 
     return (TegraEXAAllocateDRMFromPool(tegra, pixmap, size) ||
@@ -387,14 +395,11 @@ static void *TegraEXACreatePixmap2(ScreenPtr pScreen, int width, int height,
         break;
     }
 
-    if (usage_hint == TEGRA_DRI_USAGE_HINT)
-        pixmap->dri = TRUE;
-
     if (width > 0 && height > 0 && bitsPerPixel > 0) {
         *new_fb_pitch = TegraEXAPitch(width, height, bitsPerPixel);
 
         if (!TegraEXAAllocatePixmapData(tegra, pixmap, width, height,
-                                        bitsPerPixel)) {
+                                        bitsPerPixel, usage_hint)) {
             free(pixmap);
             return NULL;
         }
