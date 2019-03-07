@@ -118,7 +118,7 @@ TegraGR3DStateSelectProgram(TegraGR3DStatePtr state)
     if (state->new.op == PictOpOver) {
         if (src_sel == TEX_PAD && !state->new.src.alpha &&
             (mask_sel == TEX_SOLID || mask_sel == TEX_EMPTY)) {
-                prog = &prog_blend_over_opaque_clamped_src_solid_mask;
+                prog = &prog_blend_over_opaque_pad_src_solid_mask;
                 goto custom_shader;
         }
 
@@ -136,13 +136,13 @@ TegraGR3DStateSelectProgram(TegraGR3DStatePtr state)
 
         if (src_sel == TEX_PAD && state->new.src.alpha &&
             mask_sel == TEX_EMPTY && !state->new.dst.alpha) {
-                prog = &prog_blend_over_alpha_clamped_src_empty_mask_dst_opaque;
+                prog = &prog_blend_over_alpha_pad_src_empty_mask_dst_opaque;
                 goto custom_shader;
         }
 
         if (src_sel == TEX_PAD && state->new.src.alpha &&
             (mask_sel == TEX_SOLID || mask_sel == TEX_EMPTY)) {
-                prog = &prog_blend_over_alpha_clamped_src_solid_mask;
+                prog = &prog_blend_over_alpha_pad_src_solid_mask;
                 goto custom_shader;
         }
 
@@ -184,11 +184,11 @@ TegraGR3DStateSelectProgram(TegraGR3DStatePtr state)
         if (src_sel == TEX_SOLID && mask_sel == TEX_PAD &&
             state->new.mask.component_alpha) {
                 if (state->new.src.solid == 0xff000000 && !state->new.dst.alpha) {
-                    prog = &prog_blend_over_solid_black_src_clamped_mask_dst_opaque;
+                    prog = &prog_blend_over_solid_black_src_pad_mask_dst_opaque;
                     goto custom_shader;
                 }
 
-                prog = &prog_blend_over_solid_src_clamped_mask;
+                prog = &prog_blend_over_solid_src_pad_mask;
                 goto custom_shader;
         }
 
