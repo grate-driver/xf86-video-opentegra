@@ -125,12 +125,14 @@ TegraGR3DStateSelectProgram(TegraGR3DStatePtr state)
         if (src_sel == TEX_NORMAL && state->new.src.alpha &&
             mask_sel == TEX_EMPTY && !state->new.dst.alpha) {
                 prog = &prog_blend_over_alpha_normal_src_empty_mask_dst_opaque;
+                state->new.src.tex_sel = TEX_PAD;
                 goto custom_shader;
         }
 
         if (src_sel == TEX_NORMAL && state->new.src.alpha &&
             (mask_sel == TEX_SOLID || mask_sel == TEX_EMPTY)) {
                 prog = &prog_blend_over_alpha_normal_src_solid_mask;
+                state->new.src.tex_sel = TEX_PAD;
                 goto custom_shader;
         }
 
