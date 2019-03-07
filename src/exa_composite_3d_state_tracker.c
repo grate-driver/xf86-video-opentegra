@@ -200,6 +200,20 @@ TegraGR3DStateSelectProgram(TegraGR3DStatePtr state)
         }
     }
 
+    if (state->new.op == PictOpSrc) {
+        if (src_sel == TEX_CLIPPED &&
+            (mask_sel == TEX_SOLID || mask_sel == TEX_EMPTY)) {
+                prog = &prog_blend_src_clipped_src_solid_mask;
+                goto custom_shader;
+        }
+
+        if (mask_sel == TEX_CLIPPED &&
+            (src_sel == TEX_SOLID || src_sel == TEX_EMPTY)) {
+                prog = &prog_blend_src_solid_src_clipped_mask;
+                goto custom_shader;
+        }
+    }
+
     prog = cfg->prog[PROG_SEL(src_sel, mask_sel)];
     if (!prog) {
         FallbackMsg("no shader for operation %d src_sel %u mask_sel %u\n",
@@ -316,7 +330,28 @@ static void TegraGR3DStateFinalize(TegraGR3DStatePtr state)
                                        wrap_mirrored_repeat);
         }
 
-        TegraGR3D_UploadConstFP(cmds, 5, FX10x2(tex->alpha, 0));
+        /*
+         * A special case of blend_src to optimize shader a tad, maybe will
+         * apply similar thing to other shaders as well later on.
+         */
+        if (prog == &prog_blend_src_clipped_src_solid_mask ||
+                prog == &prog_blend_src_solid_mask)
+        {
+            if (state->new.dst.alpha && tex->alpha)
+                TegraGR3D_UploadConstFP(cmds, 5, FX10x2(0, 0));
+
+            if (state->new.dst.alpha && !tex->alpha) {
+                TegraGR3D_UploadConstFP(cmds, 5,
+                                        FX10x2((state->new.mask.solid >> 24) / 255.0f,
+                                               0));
+                state->new.mask.solid &= 0x00fffffff;
+            }
+
+            if (!state->new.dst.alpha)
+                TegraGR3D_UploadConstFP(cmds, 5, FX10x2(-1, 0));
+        } else {
+            TegraGR3D_UploadConstFP(cmds, 5, FX10x2(tex->alpha, 0));
+        }
     } else {
         TegraGR3D_UploadConstFP(cmds, 0, FX10x2(BLUE(tex->solid), GREEN(tex->solid)));
         TegraGR3D_UploadConstFP(cmds, 1, FX10x2(RED(tex->solid), ALPHA(tex->solid)));

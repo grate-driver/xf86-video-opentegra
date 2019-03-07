@@ -20,16 +20,19 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-pseq_to_dw_exec_nb = 1	// the number of 'EXEC' block where DW happens
+pseq_to_dw_exec_nb = 2	// the number of 'EXEC' block where DW happens
 alu_buffer_size = 1	// number of .rgba regs carried through pipeline
 
 .uniforms
-	[2].l = "mask_color.r";
-	[2].h = "mask_color.g";
-	[3].l = "mask_color.b";
-	[3].h = "mask_color.a";
+	[0].l = "src_color.r";
+	[0].h = "src_color.g";
+	[1].l = "src_color.b";
+	[1].h = "src_color.a";
 
-	[5].l = "src_fmt_alpha";
+	[6].l = "mask_has_per_component_alpha";
+	[6].h = "mask_fmt_alpha";
+
+	[8].l = "dst_fmt_alpha";
 
 .asm
 
@@ -39,15 +42,37 @@ EXEC
 		mul1: bar, sfu, bar1
 		ipl:  t0.fp20, t0.fp20, NOP, NOP
 
-	// sample tex0 (src)
-	TEX:	tex r2, r3, tex0, r0, r1, r2
+	// sample tex1 (mask)
+	TEX:	tex r2, r3, tex1, r0, r1, r2
 
+	// tmp = mask_fmt_alpha ? mask.a : 1.0
+	ALU:
+		ALU0:	CSEL  lp.lh, -u6.h, r3.h, #1
+
+	// mask.r = mask_has_per_component_alpha ? mask.r : tmp
+	// mask.g = mask_has_per_component_alpha ? mask.g : tmp
+	// mask.b = mask_has_per_component_alpha ? mask.b : tmp
+	// tmp.a  = src.a * tmp
+	ALU:
+		ALU0:	CSEL  lp.lh, -u6.l, r2.l, alu0
+		ALU1:	CSEL  lp.lh, -u6.l, r2.h, alu0
+		ALU2:	CSEL  lp.lh, -u6.l, r3.l, alu0
+		ALU3:	MAD   lp.lh,  alu0,   #1,   #0
+
+	ALU:
+		ALU0:	CSEL  r2.l, r0,     #0,  alu0
+		ALU1:	CSEL  r2.h, r0-1, alu1,    #0
+		ALU2:	CSEL  r3.l, r1,     #0,  alu2
+		ALU3:	CSEL  r3.h, r1-1, alu3,    #0
+;
+
+EXEC
 	// dst = src.bgra * mask.bgra
 	ALU:
-		ALU0:	MAD  r0.l, r2.l, u2.l, #0
-		ALU1:	MAD  r0.h, r2.h, u2.h, #0
-		ALU2:	MAD  r1.l, r3.l, u3.l, #0
-		ALU3:	MAD  r1.h, r3.h, u3.h, u5.l (sat)
+		ALU0:	MAD  r0.l, r2.l, u0.l, #0
+		ALU1:	MAD  r0.h, r2.h, u0.h, #0
+		ALU2:	MAD  r1.l, r3.l, u1.l, #0
+		ALU3:	MAD  r1.h, r3.h, u1.h, u8.l-1 (sat)
 
 	DW:	store rt1, r0, r1
 ;

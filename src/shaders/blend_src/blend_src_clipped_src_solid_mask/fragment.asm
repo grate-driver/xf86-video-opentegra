@@ -42,12 +42,18 @@ EXEC
 	// sample tex0 (src)
 	TEX:	tex r2, r3, tex0, r0, r1, r2
 
+	ALU:
+		ALU0:	CSEL  lp.lh, r0,     #0,  r2.l
+		ALU1:	CSEL  lp.lh, r0-1, r2.h,    #0
+		ALU2:	CSEL  lp.lh, r1,     #0,  r3.l
+		ALU3:	CSEL  lp.lh, r1-1, r3.h,    #0
+
 	// dst = src.bgra * mask.bgra
 	ALU:
-		ALU0:	MAD  r0.l, r2.l, u2.l, #0
-		ALU1:	MAD  r0.h, r2.h, u2.h, #0
-		ALU2:	MAD  r1.l, r3.l, u3.l, #0
-		ALU3:	MAD  r1.h, r3.h, u3.h, u5.l (sat)
+		ALU0:	MAD  r0.l, alu0, u2.l, #0
+		ALU1:	MAD  r0.h, alu1, u2.h, #0
+		ALU2:	MAD  r1.l, alu2, u3.l, #0
+		ALU3:	MAD  r1.h, alu3, u3.h, u5.l (sat)
 
 	DW:	store rt1, r0, r1
 ;

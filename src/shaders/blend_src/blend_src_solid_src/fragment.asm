@@ -20,7 +20,7 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-pseq_to_dw_exec_nb = 3	// the number of 'EXEC' block where DW happens
+pseq_to_dw_exec_nb = 1	// the number of 'EXEC' block where DW happens
 alu_buffer_size = 1	// number of .rgba regs carried through pipeline
 
 .uniforms
@@ -31,8 +31,6 @@ alu_buffer_size = 1	// number of .rgba regs carried through pipeline
 
 	[6].l = "mask_has_per_component_alpha";
 	[6].h = "mask_fmt_alpha";
-	[7].l = "mask_swap_bgr";
-	[7].h = "mask_clamp_to_border";
 
 	[8].l = "dst_fmt_alpha";
 
@@ -44,60 +42,29 @@ EXEC
 		mul1: bar, sfu, bar1
 		ipl:  t0.fp20, t0.fp20, NOP, NOP
 
-	ALU:
-		ALU0:	MAD r2.l, #0, #0, #0
-		ALU1:	MAD r2.h, #0, #0, #0
-		ALU2:	MAD r3.l, #0, #0, #0
-		ALU3:	MAD r3.h, #0, #0, #0
-
-	DW:	store rt1, r2, r3
-;
-
-EXEC
-	ALU:
-		ALU0:	MAD  lp.lh, r0, #1, -#1
-		ALU1:	MAD  lp.lh, r1, #1, -#1
-
-	/*
-	 * Emulate clamp-to-border by writing black color and killing
-	 * the pixel if texels coords are outside of [0.0, 1.0].
-	 */
-	ALU:
-		ALU0:	CSEL  kill,   r0, u7.h, #0
-		ALU1:	CSEL  kill, alu0,   #0, u7.h
-		ALU2:	CSEL  kill,   r1, u7.h, #0
-		ALU3:	CSEL  kill, alu1,   #0, u7.h
-;
-
-EXEC
 	// sample tex1 (mask)
-	TEX:	tex r0, r1, tex1, r0, r1, r2
+	TEX:	tex r2, r3, tex1, r0, r1, r2
 
 	// tmp = mask_fmt_alpha ? mask.a : 1.0
 	ALU:
-		ALU0:	CSEL  lp.lh, -u6.h, r1.h, #1
-
-		// swap mask ABGR to ARGB if needed
-		ALU1:	CSEL  lp.lh, -u7.l, r1.l, r0.l
-		ALU2:	CSEL  lp.lh, -u7.l, r0.l, r1.l
+		ALU0:	CSEL  lp.lh, -u6.h, r3.h, #1
 
 	// mask.r = mask_has_per_component_alpha ? mask.r : tmp
 	// mask.g = mask_has_per_component_alpha ? mask.g : tmp
 	// mask.b = mask_has_per_component_alpha ? mask.b : tmp
 	// tmp.a  = src.a * tmp
 	ALU:
-		ALU0:	CSEL  lp.lh, -u6.l, alu1, alu0
-		ALU1:	CSEL  lp.lh, -u6.l, r0.h, alu0
-		ALU2:	CSEL  lp.lh, -u6.l, alu2, alu0
-		ALU3:	MAD   lp.lh,  u1.h, alu0,   #0
+		ALU0:	CSEL  lp.lh, -u6.l, r2.l, alu0
+		ALU1:	CSEL  lp.lh, -u6.l, r2.h, alu0
+		ALU2:	CSEL  lp.lh, -u6.l, r3.l, alu0
+		ALU3:	MAD   lp.lh,  alu0,   #1,   #0
 
-	// dst.bgr = src.bgr * mask.bgr
-	// dst.a = dst_fmt_alpha ? tmp.a : 0.0
+	// dst = src.bgra * mask.bgra
 	ALU:
-		ALU0:	MAD   r0.l,  u0.l, alu0, #0
-		ALU1:	MAD   r0.h,  u0.h, alu1, #0
-		ALU2:	MAD   r1.l,  u1.l, alu2, #0
-		ALU3:	CSEL  r1.h, -u8.l, alu3, #0
+		ALU0:	MAD  r0.l, alu0, u0.l, #0
+		ALU1:	MAD  r0.h, alu1, u0.h, #0
+		ALU2:	MAD  r1.l, alu2, u1.l, #0
+		ALU3:	MAD  r1.h, alu3, u1.h, u8.l-1 (sat)
 
 	DW:	store rt1, r0, r1
 ;
