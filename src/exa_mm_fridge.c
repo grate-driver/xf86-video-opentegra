@@ -715,12 +715,8 @@ TegraEXAAllocatePixmapDataNoFail(TegraPtr tegra, TegraPixmapPtr pixmap,
                                  Bool accel)
 {
     unsigned int size = TegraPixmapSize(pixmap);
-    Bool retry = FALSE;
 
     while (1) {
-        if (retry)
-            usleep(100000);
-
         if (!accel) {
             if (TegraEXAAllocateMem(pixmap, size))
                 return;
@@ -731,7 +727,7 @@ TegraEXAAllocatePixmapDataNoFail(TegraPtr tegra, TegraPixmapPtr pixmap,
                 return;
         }
 
-        retry = TRUE;
+        usleep(100000);
     }
 }
 
