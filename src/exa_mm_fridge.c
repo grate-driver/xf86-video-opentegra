@@ -495,6 +495,7 @@ static void TegraEXAThawPixmapData(TegraPtr tegra, TegraPixmapPtr pixmap,
 {
     TegraEXAPtr exa = tegra->exa;
     struct compression_arg carg;
+    unsigned int retries = 0;
     unsigned int data_size;
     void *pixmap_data;
     Bool ret = FALSE;
@@ -524,6 +525,9 @@ retry:
     }
 
     if (ret == FALSE) {
+        if (retries++ > 100)
+            ErrorMsg("stuck! size %u\n", data_size);
+
         usleep(100000);
         goto retry;
     }
@@ -716,6 +720,7 @@ TegraEXAAllocatePixmapDataNoFail(TegraPtr tegra, TegraPixmapPtr pixmap,
 {
     unsigned int size = TegraPixmapSize(pixmap);
     PixmapPtr pix = pixmap->pPixmap;
+    unsigned int retries = 0;
     void *ptr;
 
     while (1) {
@@ -736,6 +741,9 @@ TegraEXAAllocatePixmapDataNoFail(TegraPtr tegra, TegraPixmapPtr pixmap,
                 return;
             }
         }
+
+        if (retries++ > 100)
+            ErrorMsg("stuck! size %u\n", size);
 
         usleep(100000);
     }
