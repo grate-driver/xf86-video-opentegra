@@ -77,13 +77,13 @@ opentegra_drv_la_SOURCES = \
 shaders_dir := $(filter %/, $(wildcard $(srcdir)/shaders/*/*/))
 shaders_gen := $(addsuffix .bin.h, $(shaders_dir:%/=%))
 
-%.bin.h: gen_shader_bin shaders/prog.h \
-			shaders/vertex_common.asm \
-			shaders/linker_common.asm \
+%.bin.h: gen_shader_bin $(srcdir)/shaders/prog.h \
+			$(srcdir)/shaders/vertex_common.asm \
+			$(srcdir)/shaders/linker_common.asm \
 			%/fragment.asm
 	$(builddir)/gen_shader_bin \
-		--vs shaders/vertex_common.asm \
-		--lnk shaders/linker_common.asm \
+		--vs $(srcdir)/shaders/vertex_common.asm \
+		--lnk $(srcdir)/shaders/linker_common.asm \
 		--fs $*/fragment.asm \
 		--fpname $(*F) \
 		--vpname vertex_common \
