@@ -1,7 +1,6 @@
 .exports
 	[0] = "position";
-	[1] = "src_texcoords";
-	[2] = "mask_texcoords";
+	[1] = "texcoords";
 
 .attributes
 	[0] = "position";
