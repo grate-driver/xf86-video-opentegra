@@ -50,6 +50,13 @@
 #define AccelMsg(fmt, args...) do {} while(0)
 #endif
 
+#if 0
+#define DebugMsg(fmt, args...)                                              \
+    printf("DEBUG: %s:%d/%s(): " fmt, __FILE__, __LINE__, __func__, ##args)
+#else
+#define DebugMsg(fmt, args...) do {} while(0)
+#endif
+
 #define PROFILE 0
 
 #define PROFILE_DEF                                                 \

@@ -126,10 +126,12 @@ Bool TegraEXAPrepareCPUAccess(PixmapPtr pPix, int idx, void **ptr)
     TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pPix);
     int err;
 
-    FallbackMsg("pPix %p idx %d type %u %d:%d\n",
+    FallbackMsg("pPix %p idx %d type %u %d:%d:%d %p\n",
                 pPix, idx, priv->type,
                 pPix->drawable.width,
-                pPix->drawable.height);
+                pPix->drawable.height,
+                pPix->drawable.bitsPerPixel,
+                pPix->devPrivate.ptr);
 
     TegraEXAThawPixmap(pPix, FALSE);
 
@@ -408,6 +410,10 @@ static void *TegraEXACreatePixmap2(ScreenPtr pScreen, int width, int height,
         *new_fb_pitch = 0;
     }
 
+    DebugMsg("priv %p type %u %d:%d:%d stride %d\n",
+             pixmap, pixmap->type, width, height, bitsPerPixel,
+             *new_fb_pitch);
+
     return pixmap;
 }
 
@@ -416,6 +422,13 @@ static void TegraEXADestroyPixmap(ScreenPtr pScreen, void *driverPriv)
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pScreen);
     TegraPtr tegra = TegraPTR(pScrn);
     TegraPixmapPtr priv = driverPriv;
+
+    DebugMsg("pPix %p priv %p type %u %d:%d:%d stride %d\n",
+             priv->pPixmap, priv, priv->type,
+             priv->pPixmap->drawable.width,
+             priv->pPixmap->drawable.height,
+             priv->pPixmap->drawable.bitsPerPixel,
+             priv->pPixmap->devKind);
 
     TegraEXAReleasePixmapData(tegra, priv);
     free(priv);
@@ -447,7 +460,7 @@ static Bool TegraEXAModifyPixmapHeader(PixmapPtr pPixmap, int width,
             priv->offscreen = TRUE;
             priv->scanout = TRUE;
             priv->accel = TRUE;
-            return TRUE;
+            goto success;
         }
 
         if (pPixData == drmmode_crtc_map_rotate_bo(pScrn, 0)) {
@@ -460,7 +473,7 @@ static Bool TegraEXAModifyPixmapHeader(PixmapPtr pPixmap, int width,
             priv->scanout = TRUE;
             priv->accel = TRUE;
             priv->crtc = 0;
-            return TRUE;
+            goto success;
         }
 
         if (pPixData == drmmode_crtc_map_rotate_bo(pScrn, 1)) {
@@ -473,7 +486,7 @@ static Bool TegraEXAModifyPixmapHeader(PixmapPtr pPixmap, int width,
             priv->scanout = TRUE;
             priv->accel = TRUE;
             priv->crtc = 1;
-            return TRUE;
+            goto success;
         }
 
         return FALSE;
@@ -484,6 +497,15 @@ static Bool TegraEXAModifyPixmapHeader(PixmapPtr pPixmap, int width,
 
     priv->pPixmap = pPixmap;
     TegraEXACoolTegraPixmap(tegra, priv);
+
+success:
+    DebugMsg("pPix %p priv %p type %u %d:%d:%d stride %d %d:%d:%d:%p\n",
+             pPixmap, priv, priv->type,
+             pPixmap->drawable.width,
+             pPixmap->drawable.height,
+             pPixmap->drawable.bitsPerPixel,
+             pPixmap->devKind,
+             width, height, bitsPerPixel, pPixData);
 
     return TRUE;
 }

@@ -268,6 +268,13 @@ static Bool TegraEXAPrepareCopyExt(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
         return FALSE;
     }
 
+    AccelMsg("pSrcPixmap %p priv %p type %u %d:%d:%d stride %d\n",
+             pSrcPixmap, priv, priv->type,
+             pSrcPixmap->drawable.width,
+             pSrcPixmap->drawable.height,
+             pSrcPixmap->drawable.bitsPerPixel,
+             pSrcPixmap->devKind);
+
     priv = exaGetPixmapDriverPrivate(pDstPixmap);
     if (priv->type <= TEGRA_EXA_PIXMAP_TYPE_FALLBACK) {
         FallbackMsg("unaccelerateable dst pixmap %d:%d:%d\n",
@@ -276,6 +283,13 @@ static Bool TegraEXAPrepareCopyExt(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
                     pDstPixmap->drawable.bitsPerPixel);
         return FALSE;
     }
+
+    AccelMsg("pDstPixmap %p priv %p type %u %d:%d:%d stride %d\n",
+             pDstPixmap, priv, priv->type,
+             pDstPixmap->drawable.width,
+             pDstPixmap->drawable.height,
+             pDstPixmap->drawable.bitsPerPixel,
+             pDstPixmap->devKind);
 
     err = tegra_stream_begin(&tegra->cmds, tegra->gr2d);
     if (err < 0)
