@@ -244,6 +244,8 @@ static void TegraGR3DStateFinalize(TegraGR3DStatePtr state)
     Bool wrap_mirrored_repeat = FALSE;
     Bool wrap_clamp_to_edge = TRUE;
     TegraGR3DStateTexPtr tex;
+    uint32_t attrs_out = 0;
+    uint32_t attrs_in = 0;
 
     if (state->clean)
         return;
@@ -267,6 +269,33 @@ static void TegraGR3DStateFinalize(TegraGR3DStatePtr state)
 
         state->inited = TRUE;
     }
+
+    attrs_id = 0;
+    attrs_in |= 1 << attrs_id;
+    attrs_out |= 1 << attrs_id;
+
+    if (scratch->pSrc) {
+        attrs_id += 1;
+        attrs_in |= 1 << attrs_id;
+        attrs_out |= 1 << 1;
+    }
+
+    if (scratch->pMask) {
+        attrs_id += 1;
+        attrs_in |= 1 << attrs_id;
+        attrs_out |= 1 << 1;
+    }
+
+    /*
+     * Set up actual in/out attributes masks since we are using common
+     * vertex and linker programs and the common definition enables all
+     * 3 attributes, while only 2 may be actually active (if mask or src
+     * textures are absent). Note that that we're setting up the masks
+     * before the descriptors because Tegra's HW like to start data-fetching
+     * on writing to address registers, so better to set up the masks now
+     * to be on a safe side.
+     */
+    TegraGR3D_SetupVpAttributesInOutMask(cmds, attrs_in, attrs_out);
 
     attrs_num = 1 + !!scratch->pSrc + !!scratch->pMask;
     attribs_offset = 0;
