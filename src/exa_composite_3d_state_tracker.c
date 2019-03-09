@@ -476,7 +476,10 @@ static Bool TegraGR3DStateAppend(TegraGR3DStatePtr state, TegraEXAPtr tegra,
 
         priv = exaGetPixmapDriverPrivate(state->new.src.pPix);
         if (priv->type <= TEGRA_EXA_PIXMAP_TYPE_FALLBACK) {
-            FallbackMsg("unaccelerateable src pixmap\n");
+            FallbackMsg("unaccelerateable src pixmap %d:%d:%d\n",
+                        state->new.src.pPix->drawable.width,
+                        state->new.src.pPix->drawable.height,
+                        state->new.src.pPix->drawable.bitsPerPixel);
             TegraGR3DStateReset(state);
             return FALSE;
         }
@@ -487,7 +490,10 @@ static Bool TegraGR3DStateAppend(TegraGR3DStatePtr state, TegraEXAPtr tegra,
 
         priv = exaGetPixmapDriverPrivate(state->new.mask.pPix);
         if (priv->type <= TEGRA_EXA_PIXMAP_TYPE_FALLBACK) {
-            FallbackMsg("unaccelerateable mask pixmap\n");
+            FallbackMsg("unaccelerateable mask pixmap %d:%d:%d\n",
+                        state->new.mask.pPix->drawable.width,
+                        state->new.mask.pPix->drawable.height,
+                        state->new.mask.pPix->drawable.bitsPerPixel);
             TegraGR3DStateReset(state);
             return FALSE;
         }
@@ -497,7 +503,10 @@ static Bool TegraGR3DStateAppend(TegraGR3DStatePtr state, TegraEXAPtr tegra,
 
     priv = exaGetPixmapDriverPrivate(state->new.dst.pPix);
     if (priv->type <= TEGRA_EXA_PIXMAP_TYPE_FALLBACK) {
-        FallbackMsg("unaccelerateable dst pixmap\n");
+        FallbackMsg("unaccelerateable dst pixmap %d:%d:%d\n",
+                        state->new.dst.pPix->drawable.width,
+                        state->new.dst.pPix->drawable.height,
+                        state->new.dst.pPix->drawable.bitsPerPixel);
         TegraGR3DStateReset(state);
         return FALSE;
     }

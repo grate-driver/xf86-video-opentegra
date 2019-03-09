@@ -102,9 +102,10 @@ static Bool TegraEXAPrepareSolid(PixmapPtr pPixmap, int op, Pixel planemask,
                 }
         }
 
-        FallbackMsg("unaccelerateable pixmap %d:%d\n",
+        FallbackMsg("unaccelerateable pixmap %d:%d:%d\n",
                     pPixmap->drawable.width,
-                    pPixmap->drawable.height);
+                    pPixmap->drawable.height,
+                    pPixmap->drawable.bitsPerPixel);
 
         return FALSE;
     }
@@ -260,17 +261,19 @@ static Bool TegraEXAPrepareCopyExt(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
 
     priv = exaGetPixmapDriverPrivate(pSrcPixmap);
     if (priv->type <= TEGRA_EXA_PIXMAP_TYPE_FALLBACK) {
-        FallbackMsg("unaccelerateable src pixmap %d:%d\n",
+        FallbackMsg("unaccelerateable src pixmap %d:%d:%d\n",
                     pSrcPixmap->drawable.width,
-                    pSrcPixmap->drawable.height);
+                    pSrcPixmap->drawable.height,
+                    pSrcPixmap->drawable.bitsPerPixel);
         return FALSE;
     }
 
     priv = exaGetPixmapDriverPrivate(pDstPixmap);
     if (priv->type <= TEGRA_EXA_PIXMAP_TYPE_FALLBACK) {
-        FallbackMsg("unaccelerateable dst pixmap %d:%d\n",
+        FallbackMsg("unaccelerateable dst pixmap %d:%d:%d\n",
                     pDstPixmap->drawable.width,
-                    pDstPixmap->drawable.height);
+                    pDstPixmap->drawable.height,
+                    pDstPixmap->drawable.bitsPerPixel);
         return FALSE;
     }
 
