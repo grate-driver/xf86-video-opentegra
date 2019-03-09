@@ -366,7 +366,7 @@ static Bool TegraEXAAllocatePixmapData(TegraPtr tegra,
      * for deferred allocations and shouldn't be needed for the
      * internal use.
      */
-    if (!usage_hint)
+    if (!usage_hint && tegra->exa_refrigerator)
         return TRUE;
 
     return (TegraEXAAllocateDRMFromPool(tegra, pixmap, size) ||
