@@ -43,10 +43,10 @@ EXEC
 	MFU:	sfu:  rcp r4
 		mul0: bar, sfu, bar0
 		mul1: bar, sfu, bar1
-		ipl:  NOP, NOP, t0.fp20, t0.fp20
+		ipl:  t0.fp20, t0.fp20, NOP, NOP
 
 	// sample tex1 (mask)
-	TEX:	tex r0, r1, tex1, r2, r3, r0
+	TEX:	tex r0, r1, tex1, r0, r1, r2
 
 	// tmp = mask_fmt_alpha ? mask.a : 1.0
 	ALU:
