@@ -78,14 +78,16 @@ shaders_dir := $(filter %/, $(wildcard $(srcdir)/shaders/*/*/))
 shaders_gen := $(addsuffix .bin.h, $(shaders_dir:%/=%))
 
 %.bin.h: gen_shader_bin shaders/prog.h \
-			%/vertex.asm \
-			%/linker.asm \
+			shaders/vertex_common.asm \
+			shaders/linker_common.asm \
 			%/fragment.asm
 	$(builddir)/gen_shader_bin \
-		--vs $*/vertex.asm \
-		--lnk $*/linker.asm \
+		--vs shaders/vertex_common.asm \
+		--lnk shaders/linker_common.asm \
 		--fs $*/fragment.asm \
-		--name $(*F) \
+		--fpname $(*F) \
+		--vpname vertex_common \
+		--lpname linker_common \
 		--out $@
 
 shaders.h: $(shaders_gen) $(srcdir)/gen_shaders_h.sh

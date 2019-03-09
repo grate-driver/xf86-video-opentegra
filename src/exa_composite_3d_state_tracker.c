@@ -239,7 +239,7 @@ static void TegraGR3DStateFinalize(TegraGR3DStatePtr state)
 {
     struct tegra_exa_scratch *scratch = state->scratch;
     struct tegra_stream *cmds = state->cmds;
-    unsigned attrs_num, attribs_offset;
+    unsigned attrs_num, attribs_offset, attrs_id;
     const struct shader_program *prog;
     Bool wrap_mirrored_repeat = FALSE;
     Bool wrap_clamp_to_edge = TRUE;
@@ -270,23 +270,26 @@ static void TegraGR3DStateFinalize(TegraGR3DStatePtr state)
 
     attrs_num = 1 + !!scratch->pSrc + !!scratch->pMask;
     attribs_offset = 0;
+    attrs_id = 0;
 
-    TegraGR3D_SetupAttribute(cmds, 0, scratch->attribs.bo,
+    TegraGR3D_SetupAttribute(cmds, attrs_id, scratch->attribs.bo,
                              attribs_offset, TGR3D_ATTRIB_TYPE_FLOAT16,
                              2, 4 * attrs_num);
 
     if (scratch->pSrc) {
         attribs_offset += 4;
+        attrs_id += 1;
 
-        TegraGR3D_SetupAttribute(cmds, 1, scratch->attribs.bo,
+        TegraGR3D_SetupAttribute(cmds, attrs_id, scratch->attribs.bo,
                                  attribs_offset, TGR3D_ATTRIB_TYPE_FLOAT16,
                                  2, 4 * attrs_num);
     }
 
     if (scratch->pMask) {
         attribs_offset += 4;
+        attrs_id += 1;
 
-        TegraGR3D_SetupAttribute(cmds, 2, scratch->attribs.bo,
+        TegraGR3D_SetupAttribute(cmds, attrs_id, scratch->attribs.bo,
                                  attribs_offset, TGR3D_ATTRIB_TYPE_FLOAT16,
                                  2, 4 * attrs_num);
     }
