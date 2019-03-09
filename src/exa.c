@@ -207,7 +207,7 @@ static Bool TegraEXAPixmapIsOffscreen(PixmapPtr pPix)
 {
     TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pPix);
 
-    return priv && priv->accel;
+    return priv && priv->accel && priv->tegra_data;
 }
 
 static void TegraEXATrimHeap(TegraEXAPtr exa)
@@ -336,6 +336,7 @@ static Bool TegraEXAAllocatePixmapData(TegraPtr tegra,
     unsigned int pitch = TegraEXAPitch(width, height, bpp);
     unsigned int size = pitch * height;
 
+    pixmap->tegra_data = TRUE;
     pixmap->accel = TegraEXAAccelerated(bpp);
 
     if (usage_hint == TEGRA_DRI_USAGE_HINT)
@@ -442,6 +443,7 @@ static Bool TegraEXAModifyPixmapHeader(PixmapPtr pPixmap, int width,
             scanout = drmmode_get_front_bo(&tegra->drmmode);
             priv->type = TEGRA_EXA_PIXMAP_TYPE_BO;
             priv->bo = drm_tegra_bo_ref(scanout);
+            priv->tegra_data = TRUE;
             priv->offscreen = TRUE;
             priv->scanout = TRUE;
             priv->accel = TRUE;
@@ -453,6 +455,7 @@ static Bool TegraEXAModifyPixmapHeader(PixmapPtr pPixmap, int width,
             priv->type = TEGRA_EXA_PIXMAP_TYPE_BO;
             priv->bo = drm_tegra_bo_ref(scanout);
             priv->scanout_rotated = TRUE;
+            priv->tegra_data = TRUE;
             priv->offscreen = TRUE;
             priv->scanout = TRUE;
             priv->accel = TRUE;
@@ -465,6 +468,7 @@ static Bool TegraEXAModifyPixmapHeader(PixmapPtr pPixmap, int width,
             priv->type = TEGRA_EXA_PIXMAP_TYPE_BO;
             priv->bo = drm_tegra_bo_ref(scanout);
             priv->scanout_rotated = TRUE;
+            priv->tegra_data = TRUE;
             priv->offscreen = TRUE;
             priv->scanout = TRUE;
             priv->accel = TRUE;
@@ -473,7 +477,7 @@ static Bool TegraEXAModifyPixmapHeader(PixmapPtr pPixmap, int width,
         }
 
         return FALSE;
-    } else if (!priv->accel) {
+    } else if (!priv->accel && priv->tegra_data) {
         /* this tells EXA that this pixmap is unacceleratable */
         pPixmap->devPrivate.ptr = priv->fallback;
     }

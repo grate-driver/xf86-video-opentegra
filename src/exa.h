@@ -184,6 +184,7 @@ typedef struct _TegraEXARec{
 #define TEGRA_EXA_COMPRESSION_PNG           4
 
 typedef struct tegra_pixmap {
+    bool tegra_data : 1;        /* pixmap's data allocated by Opentegra */
     bool scanout_rotated : 1;   /* pixmap backs rotated frontbuffer BO */
     bool no_compress : 1;       /* pixmap's data compress poorly */
     bool accelerated : 1;       /* pixmap was accelerated at least once */

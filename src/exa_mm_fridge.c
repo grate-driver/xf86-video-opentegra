@@ -209,7 +209,7 @@ static void TegraEXAResurrectAccelPixmap(TegraPtr tegra, TegraPixmapPtr pixmap)
     TegraEXAPtr exa;
     Bool ret;
 
-    if (!pixmap->accel || !pixmap->offscreen ||
+    if (!pixmap->accel || !pixmap->offscreen || !pixmap->tegra_data ||
         pixmap->type != TEGRA_EXA_PIXMAP_TYPE_FALLBACK)
         return;
 
@@ -677,7 +677,7 @@ static void TegraEXACoolTegraPixmap(TegraPtr tegra, TegraPixmapPtr pix)
     struct timespec time;
 
     if (pix->frozen || pix->cold || pix->scanout || pix->dri ||
-        !pix->accel || !pix->offscreen ||
+        !pix->accel || !pix->offscreen || !pix->tegra_data ||
         pix->type == TEGRA_EXA_PIXMAP_TYPE_NONE)
         return;
 
@@ -783,7 +783,7 @@ static void TegraEXAThawPixmap(PixmapPtr pPixmap, Bool accel)
         if (accel)
             TegraEXAResurrectAccelPixmap(tegra, priv);
 
-        if (priv->type == TEGRA_EXA_PIXMAP_TYPE_NONE)
+        if (priv->type == TEGRA_EXA_PIXMAP_TYPE_NONE && priv->tegra_data)
             TegraEXAAllocatePixmapDataNoFail(tegra, priv, accel);
     }
 }
