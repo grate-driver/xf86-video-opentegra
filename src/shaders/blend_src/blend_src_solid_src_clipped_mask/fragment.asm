@@ -54,25 +54,28 @@ EXEC
 	// mask.b = mask_has_per_component_alpha ? mask.b : tmp
 	// tmp.a  = src.a * tmp
 	ALU:
-		ALU0:	CSEL  lp.lh, -u6.l, r2.l, alu0
-		ALU1:	CSEL  lp.lh, -u6.l, r2.h, alu0
-		ALU2:	CSEL  lp.lh, -u6.l, r3.l, alu0
-		ALU3:	MAD   lp.lh,  alu0,   #1,   #0
-
-	ALU:
-		ALU0:	CSEL  r2.l, r0,     #0,  alu0
-		ALU1:	CSEL  r2.h, r0-1, alu1,    #0
-		ALU2:	CSEL  r3.l, r1,     #0,  alu2
-		ALU3:	CSEL  r3.h, r1-1, alu3,    #0
+		ALU0:	CSEL  r2.l, -u6.l, r2.l, alu0
+		ALU1:	CSEL  r2.h, -u6.l, r2.h, alu0
+		ALU2:	CSEL  r3.l, -u6.l, r3.l, alu0
+		ALU3:	MAD   r3.h,  alu0,   #1,   #0
 ;
 
 EXEC
+	ALU:
+		ALU0:	CSEL  lp.lh, r0,  -#1,  #0 (this)
+		ALU1:	CSEL  lp.lh, r0-1, #0, -#1 (other)
+		ALU2:	CSEL  lp.lh, r1,  -#1,  #0 (other)
+		ALU3:	CSEL  lp.lh, r1-1, #0, -#1
+
 	// dst = src.bgra * mask.bgra
 	ALU:
-		ALU0:	MAD  r0.l, r2.l, u0.l, #0
-		ALU1:	MAD  r0.h, r2.h, u0.h, #0
-		ALU2:	MAD  r1.l, r3.l, u1.l, #0
-		ALU3:	MAD  r1.h, r3.h, u1.h, u8.l-1 (sat)
+		ALU0:	MAD  r0.l,  r2.l, u0.l, alu0 (sat)
+		ALU1:	MAD  r0.h,  r2.h, u0.h, alu0 (sat)
+		ALU2:	MAD  r1.l,  r3.l, u1.l, alu0 (sat)
+		ALU3:	MAD  lp.lh, r3.h, u1.h, alu0 (sat)
+
+	ALU:
+		ALU3:	MAD  r1.h, alu3, #1, u8.l-1 (sat)
 
 	DW:	store rt1, r0, r1
 ;
