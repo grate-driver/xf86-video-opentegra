@@ -50,13 +50,13 @@ EXEC
 		ALU0:	MAD  lp.lh, -r2.l, u2.l-1, #0
 		ALU1:	MAD  lp.lh, -r2.h, u2.h-1, #0
 		ALU2:	MAD  lp.lh, -r3.l, u3.l-1, #0
-		ALU3:	MAD  lp.lh, -r3.h, u3.h-1, #0
+		ALU3:	MAD  lp.lh, -r3.h, u3.h-1, u8.l-1
 
 	ALU:
 		ALU0:	MAD  r0.l, u2.l, r0.l, alu0 (sat)
 		ALU1:	MAD  r0.h, u2.h, r0.h, alu1 (sat)
 		ALU2:	MAD  r1.l, u3.l, r1.l, alu2 (sat)
-		ALU3:	CSEL r1.h, -u8.l, alu3,  #0
+		ALU3:	MAD  r1.h, u3.h,   #1, alu3 (sat)
 
 	DW:	store rt1, r0, r1
 ;
