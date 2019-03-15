@@ -1467,7 +1467,7 @@ void *drmmode_crtc_map_rotate_bo(ScrnInfoPtr scrn, int crtc_num)
     xf86CrtcPtr crtc;
     int ret;
 
-    if (crtc_num > xf86_config->num_crtc)
+    if (crtc_num >= xf86_config->num_crtc)
         return NULL;
 
     crtc = xf86_config->crtc[crtc_num];
@@ -1494,7 +1494,7 @@ drmmode_crtc_get_rotate_bo(ScrnInfoPtr scrn, int crtc_num)
     drmmode_crtc_private_ptr drmmode_crtc;
     xf86CrtcPtr crtc;
 
-    if (crtc_num > xf86_config->num_crtc)
+    if (crtc_num >= xf86_config->num_crtc)
         return NULL;
 
     crtc = xf86_config->crtc[crtc_num];
