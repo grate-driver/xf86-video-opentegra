@@ -489,8 +489,6 @@ static Bool TegraEXAModifyPixmapHeader(PixmapPtr pPixmap, int width,
             priv->crtc = 1;
             goto success;
         }
-
-        return FALSE;
     } else if (!priv->accel && priv->tegra_data) {
         /* this tells EXA that this pixmap is unacceleratable */
         pPixmap->devPrivate.ptr = priv->fallback;
