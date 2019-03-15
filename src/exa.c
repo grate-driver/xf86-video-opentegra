@@ -37,6 +37,7 @@ static void TegraEXAFinishCPUAccess(PixmapPtr pPix, int idx);
 #include "exa_mm.c"
 #include "exa_mm_pool.c"
 #include "exa_mm_fridge.c"
+#include "exa_helpers.c"
 #include "exa_2d.c"
 #include "exa_composite_2d.c"
 #include "exa_composite_3d.c"

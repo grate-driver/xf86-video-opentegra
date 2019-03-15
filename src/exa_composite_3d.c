@@ -314,8 +314,9 @@ static unsigned TegraCompositeFormatToGR3D(unsigned format)
     }
 }
 
-static Bool TegraCompositeCheckTexture(PicturePtr pic)
+static Bool TegraCompositeCheckTexture(int op, PicturePtr pic)
 {
+    const struct tegra_composite_config *cfg = &composite_cfgs[op];
     unsigned width, height;
 
     if (pic && pic->pDrawable && !TegraCompositeReducedTexture(pic)) {
@@ -327,7 +328,9 @@ static Bool TegraCompositeCheckTexture(PicturePtr pic)
             return FALSE;
         }
 
-        if (pic->transform) {
+        if ((cfg->discards_clipped_area &&
+                !exa_helper_is_simple_transform(pic->transform)) ||
+                !exa_helper_is_simple_transform_scale(pic->transform)) {
             FallbackMsg("unsupported transform\n");
             return FALSE;
         }
@@ -365,7 +368,7 @@ static Bool TegraEXACheckComposite3D(int op, PicturePtr pSrcPicture,
     if (!tegra->exa_compositing)
         return FALSE;
 
-    if (op > PictOpSaturate) {
+    if (op > TEGRA_ARRAY_SIZE(composite_cfgs)) {
         FallbackMsg("unsupported operation %d\n", op);
         return FALSE;
     }
@@ -386,7 +389,7 @@ static Bool TegraEXACheckComposite3D(int op, PicturePtr pSrcPicture,
         }
 
         if (pSrcPicture->pDrawable) {
-            if (!TegraCompositeCheckTexture(pSrcPicture))
+            if (!TegraCompositeCheckTexture(op, pSrcPicture))
                 return FALSE;
         } else {
             if (pSrcPicture->pSourcePict->type != SourcePictTypeSolidFill) {
@@ -406,7 +409,7 @@ static Bool TegraEXACheckComposite3D(int op, PicturePtr pSrcPicture,
         }
 
         if (pMaskPicture->pDrawable) {
-            if (!TegraCompositeCheckTexture(pMaskPicture))
+            if (!TegraCompositeCheckTexture(op, pMaskPicture))
                 return FALSE;
         } else {
             if (pMaskPicture->pSourcePict->type != SourcePictTypeSolidFill) {
@@ -466,10 +469,10 @@ static Bool TegraEXAPrepareComposite3D(int op,
     Pixel solid;
     Bool alpha;
 
-    if (!TegraCompositeCheckTexture(pMaskPicture))
+    if (!TegraCompositeCheckTexture(op, pMaskPicture))
             return FALSE;
 
-    if (!TegraCompositeCheckTexture(pSrcPicture))
+    if (!TegraCompositeCheckTexture(op, pSrcPicture))
             return FALSE;
 
     if (src_tex && TegraCompositeReducedTexture(pSrcPicture))
@@ -519,6 +522,16 @@ static Bool TegraEXAPrepareComposite3D(int op,
             draw_state.src.bilinear         = (pSrcPicture->filter == PictFilterBilinear);
             draw_state.src.tex_sel          = src_sel;
             draw_state.src.pPix             = pSrc;
+
+            if (pSrcPicture->transform) {
+                tegra->scratch.transform_src = *pSrcPicture->transform;
+
+                if (src_sel == TEX_CLIPPED)
+                    pixman_transform_invert(&tegra->scratch.transform_src_inv,
+                                            &tegra->scratch.transform_src);
+
+                draw_state.src.transform_coords = TRUE;
+            }
         } else {
             if (op != PictOpClear && pSrcPicture) {
                 if (src_tex_reduced)
@@ -580,6 +593,16 @@ static Bool TegraEXAPrepareComposite3D(int op,
             draw_state.mask.bilinear        = (pMaskPicture->filter == PictFilterBilinear);
             draw_state.mask.tex_sel         = mask_sel;
             draw_state.mask.pPix            = pMask;
+
+            if (pMaskPicture->transform) {
+                tegra->scratch.transform_mask = *pMaskPicture->transform;
+
+                if (mask_sel == TEX_CLIPPED)
+                    pixman_transform_invert(&tegra->scratch.transform_mask_inv,
+                                            &tegra->scratch.transform_mask);
+
+                draw_state.mask.transform_coords = TRUE;
+            }
         } else {
             if (op != PictOpClear && pMaskPicture) {
                 if (mask_tex_reduced)
@@ -645,6 +668,14 @@ static void TegraEXAComposite3D(PixmapPtr pDst,
     bool push_src = !!tegra->scratch.pSrc;
     int swidth = 0, sheight = 0;
     int mwidth = 0, mheight = 0;
+    PictTransformPtr mask_t = NULL, mask_t_inv = NULL;
+    PictTransformPtr src_t = NULL, src_t_inv = NULL;
+    struct tegra_box src_untransformed = {0}, mask_untransformed = {0};
+    struct tegra_box src_transformed = {0}, mask_transformed = {0};
+    struct tegra_box src = {0}, mask = {0};
+    struct tegra_box dst;
+    Bool clip_mask;
+    Bool clip_src;
 
     /* if attributes buffer is full, do nothing for now (TODO better job) */
     if (TegraCompositeAttribBufferIsFull(&tegra->scratch)) {
@@ -652,122 +683,149 @@ static void TegraEXAComposite3D(PixmapPtr pDst,
         return;
     }
 
+    dst.x0 = dstX;
+    dst.y0 = dstY;
+    dst.x1 = dstX + width;
+    dst.y1 = dstY + height;
+
+    clip_src = (draw_state->src.tex_sel == TEX_CLIPPED);
+    clip_mask = (draw_state->mask.tex_sel == TEX_CLIPPED);
+
+    if (draw_state->src.transform_coords) {
+        src_t = &tegra->scratch.transform_src;
+        src_t_inv = &tegra->scratch.transform_src_inv;
+    }
+
+    if (draw_state->mask.transform_coords) {
+        mask_t = &tegra->scratch.transform_mask;
+        mask_t_inv = &tegra->scratch.transform_mask_inv;
+    }
+
     if (push_src) {
         swidth = tegra->scratch.pSrc->drawable.width;
         sheight = tegra->scratch.pSrc->drawable.height;
+
+        src.x0 = srcX;
+        src.y0 = srcY;
+        src.x1 = srcX + width;
+        src.y1 = srcY + height;
     }
 
     if (push_mask) {
         mwidth = tegra->scratch.pMask->drawable.width;
         mheight = tegra->scratch.pMask->drawable.height;
+
+        mask.x0 = maskX;
+        mask.y0 = maskY;
+        mask.x1 = maskX + width;
+        mask.y1 = maskY + height;
     }
 
-    /* EXA doesn't discard transparent areas for us */
-    if (draw_state->discards_clip) {
-        if (push_src && draw_state->src.tex_sel == TEX_CLIPPED) {
-            if (srcX < 0) {
-                dstX += -srcX;
-                maskX += -srcX;
-                width += srcX;
-                srcX = 0;
-            }
+    if (push_src) {
+        exa_helper_apply_transform(src_t, &src, &src_transformed);
 
-            if (srcY < 0) {
-                dstY += -srcY;
-                maskY += -srcY;
-                height += srcY;
-                srcY = 0;
-            }
+        /*
+         * EXA doesn't clip transparent areas for us, hence we're doing
+         * it by ourselves here because it is important to be able to use
+         * optimized shaders and to reduce memory bandwidth usage.
+         */
+        if (draw_state->discards_clip && clip_src) {
+            exa_helper_clip_to_pixmap_area(tegra->scratch.pSrc,
+                                           &src_transformed,
+                                           &src_transformed);
 
-            if (srcX + width > swidth)
-                width = swidth - srcX;
-
-            if (srcY + height > sheight)
-                height = sheight - srcY;
-
-            /* check for degenerate, shouldn't happen in practice */
-            if ((push_src && srcX >= swidth) ||
-                (push_src && srcY >= sheight))
-            {
+            if (exa_helper_degenerate(&src_transformed))
                 goto degenerate;
-            }
+
+            exa_helper_get_untransformed(src_t_inv,
+                                         &src_transformed,
+                                         &src_untransformed);
+
+            exa_helper_clip(&dst, &src_untransformed,
+                            dstX - srcX, dstY - srcY);
+            exa_helper_clip(&mask, &dst,
+                            maskX - dstX, maskY - dstY);
+            exa_helper_clip(&src, &dst,
+                            srcX - dstX, srcY - dstY);
+
+            dstX = dst.x0;
+            dstY = dst.y0;
+
+            srcX = src.x0;
+            srcY = src.y0;
+
+            maskX = mask.x0;
+            maskY = mask.y0;
         }
+    }
 
-        if (push_mask && draw_state->mask.tex_sel == TEX_CLIPPED) {
-            if (maskX < 0) {
-                dstX += -maskX;
-                srcX += -maskX;
-                width += maskX;
-                maskX = 0;
-            }
+    if (push_mask) {
+        exa_helper_apply_transform(mask_t, &mask, &mask_transformed);
 
-            if (maskY < 0) {
-                dstY += -maskY;
-                srcY += -maskY;
-                height += maskY;
-                maskY = 0;
-            }
+        if (draw_state->discards_clip && clip_mask) {
+            exa_helper_clip_to_pixmap_area(tegra->scratch.pMask,
+                                           &mask_transformed,
+                                           &mask_transformed);
 
-            if (maskX + width > mwidth)
-                width = mwidth - maskX;
-
-            if (maskY + height > mheight)
-                height = mheight - maskY;
-
-            /* check for degenerate, shouldn't happen in practice */
-            if ((push_mask && maskX >= mwidth) ||
-                (push_mask && maskY >= mheight))
-            {
+            if (exa_helper_degenerate(&mask_transformed))
                 goto degenerate;
-            }
 
-            if (push_src && draw_state->src.tex_sel == TEX_CLIPPED) {
-                if (srcX + width > swidth)
-                    width = swidth - srcX;
+            exa_helper_get_untransformed(mask_t_inv,
+                                         &mask_transformed,
+                                         &mask_untransformed);
 
-                if (srcY + height > sheight)
-                    height = sheight - srcY;
+            exa_helper_clip(&dst, &mask_untransformed,
+                            dstX - maskX, dstY - maskY);
 
-                /* check for degenerate, shouldn't happen in practice */
-                if ((push_src && srcX >= swidth) ||
-                    (push_src && srcY >= sheight))
-                {
-                    goto degenerate;
-                }
-            }
+            exa_helper_clip(&src, &dst,
+                            srcX - dstX, srcY - dstY);
+
+            exa_helper_apply_transform(src_t, &src, &src_transformed);
         }
     }
 
     if (push_src) {
-        src_left   = (float) srcX   / swidth;
-        src_right  = (float) width  / swidth + src_left;
-        src_bottom = (float) srcY   / sheight;
-        src_top    = (float) height / sheight + src_bottom;
-
-        if ((src_left < 0.0f || src_right > 1.0f) && swidth > 1)
+        if (swidth > 1 && (src_transformed.x0 < 0 || src_transformed.x0 > swidth))
             draw_state->src.coords_wrap = TRUE;
 
-        if ((src_bottom < 0.0f || src_top > 1.0f) && sheight > 1)
+        if (swidth > 1 && (src_transformed.x1 < 0 || src_transformed.x1 > swidth))
             draw_state->src.coords_wrap = TRUE;
+
+        if (sheight > 1 && (src_transformed.y0 < 0 || src_transformed.y0 > sheight))
+            draw_state->src.coords_wrap = TRUE;
+
+        if (sheight > 1 && (src_transformed.y1 < 0 || src_transformed.y1 > sheight))
+            draw_state->src.coords_wrap = TRUE;
+
+        src_left   = src.x0;
+        src_right  = src.x1;
+        src_bottom = src.y0;
+        src_top    = src.y1;
     }
 
     if (push_mask) {
-        mask_left   = (float) maskX  / mwidth;
-        mask_right  = (float) width  / mwidth + mask_left;
-        mask_bottom = (float) maskY  / mheight;
-        mask_top    = (float) height / mheight + mask_bottom;
-
-        if ((mask_left < 0.0f || mask_right > 1.0f) && mwidth > 1)
+        if (mwidth > 1 && (mask_transformed.x0 < 0 || mask_transformed.x0 > mwidth))
             draw_state->mask.coords_wrap = TRUE;
 
-        if ((mask_bottom < 0.0f || mask_top > 1.0f) && mheight > 1)
+        if (mwidth > 1 && (mask_transformed.x1 < 0 || mask_transformed.x1 > mwidth))
             draw_state->mask.coords_wrap = TRUE;
+
+        if (mheight > 1 && (mask_transformed.y0 < 0 || mask_transformed.y0 > mheight))
+            draw_state->mask.coords_wrap = TRUE;
+
+        if (mheight > 1 && (mask_transformed.y1 < 0 || mask_transformed.y1 > mheight))
+            draw_state->mask.coords_wrap = TRUE;
+
+        mask_left   = mask.x0;
+        mask_right  = mask.x1;
+        mask_bottom = mask.y0;
+        mask_top    = mask.y1;
     }
 
-    dst_left   = (float) (dstX   * 2) / pDst->drawable.width  - 1.0f;
-    dst_right  = (float) (width  * 2) / pDst->drawable.width  + dst_left;
-    dst_bottom = (float) (dstY   * 2) / pDst->drawable.height - 1.0f;
-    dst_top    = (float) (height * 2) / pDst->drawable.height + dst_bottom;
+    dst_left   = (float) (dst.x0 * 2) / pDst->drawable.width  - 1.0f;
+    dst_right  = (float) (dst.x1 * 2) / pDst->drawable.width  - 1.0f;
+    dst_bottom = (float) (dst.y0 * 2) / pDst->drawable.height - 1.0f;
+    dst_top    = (float) (dst.y1 * 2) / pDst->drawable.height - 1.0f;
 
     /* push first triangle of the quad to attributes buffer */
     TegraPushVtxAttr(dst_left,  dst_bottom,  true);

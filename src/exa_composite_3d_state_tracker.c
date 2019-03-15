@@ -240,6 +240,7 @@ static void TegraGR3DStateFinalize(TegraGR3DStatePtr state)
     struct tegra_exa_scratch *scratch = state->scratch;
     struct tegra_stream *cmds = state->cmds;
     unsigned attrs_num, attribs_offset, attrs_id;
+    unsigned const_id;
     const struct shader_program *prog;
     Bool wrap_mirrored_repeat = FALSE;
     Bool wrap_clamp_to_edge = TRUE;
@@ -256,13 +257,15 @@ static void TegraGR3DStateFinalize(TegraGR3DStatePtr state)
         return;
     }
 
+    const_id = 0;
+
     if (!state->inited) {
         tegra_stream_prep(cmds, 1);
         tegra_stream_push_setclass(cmds, HOST1X_CLASS_GR3D);
 
         TegraGR3D_Initialize(cmds);
 
-        TegraGR3D_UploadConstVP(cmds, 0, 0.0f, 0.0f, 0.0f, 1.0f);
+        TegraGR3D_UploadConstVP(cmds, const_id++, 0.0f, 0.0f, 0.0f, 1.0f);
 
         TegraGR3D_SetupDrawParams(cmds, TGR3D_PRIMITIVE_TYPE_TRIANGLES,
                                   TGR3D_INDEX_MODE_NONE, 0);
@@ -386,6 +389,26 @@ static void TegraGR3DStateFinalize(TegraGR3DStatePtr state)
         } else {
             TegraGR3D_UploadConstFP(cmds, 5, FX10x2(tex->alpha, 0));
         }
+
+        if (tex->transform_coords) {
+            TegraGR3D_UploadConstVP(cmds, const_id++,
+                                    pixman_fixed_to_double(scratch->transform_src.matrix[0][0]),
+                                    pixman_fixed_to_double(scratch->transform_src.matrix[0][1]),
+                                    pixman_fixed_to_double(scratch->transform_src.matrix[0][2]),
+                                    tex->pPix->drawable.width * pixman_fixed_to_double(scratch->transform_src.matrix[2][2]));
+
+            TegraGR3D_UploadConstVP(cmds, const_id++,
+                                    pixman_fixed_to_double(scratch->transform_src.matrix[1][0]),
+                                    pixman_fixed_to_double(scratch->transform_src.matrix[1][1]),
+                                    pixman_fixed_to_double(scratch->transform_src.matrix[1][2]),
+                                    tex->pPix->drawable.height * pixman_fixed_to_double(scratch->transform_src.matrix[2][2]));
+        } else {
+            TegraGR3D_UploadConstVP(cmds, const_id++,
+                                    1.0f, 0.0f, 0.0f, tex->pPix->drawable.width);
+
+            TegraGR3D_UploadConstVP(cmds, const_id++,
+                                    0.0f, 1.0f, 0.0f, tex->pPix->drawable.height);
+        }
     } else {
         TegraGR3D_UploadConstFP(cmds, 0, FX10x2(BLUE(tex->solid), GREEN(tex->solid)));
         TegraGR3D_UploadConstFP(cmds, 1, FX10x2(RED(tex->solid), ALPHA(tex->solid)));
@@ -435,6 +458,26 @@ static void TegraGR3DStateFinalize(TegraGR3DStatePtr state)
         TegraGR3D_UploadConstFP(cmds, 6, FX10x2(tex->component_alpha,
                                                 tex->alpha));
         TegraGR3D_UploadConstFP(cmds, 7, FX10x2(0, tex->tex_sel == TEX_CLIPPED));
+
+        if (tex->transform_coords) {
+            TegraGR3D_UploadConstVP(cmds, const_id++,
+                                    pixman_fixed_to_double(scratch->transform_mask.matrix[0][0]),
+                                    pixman_fixed_to_double(scratch->transform_mask.matrix[0][1]),
+                                    pixman_fixed_to_double(scratch->transform_mask.matrix[0][2]),
+                                    tex->pPix->drawable.width * pixman_fixed_to_double(scratch->transform_mask.matrix[2][2]));
+
+            TegraGR3D_UploadConstVP(cmds, const_id++,
+                                    pixman_fixed_to_double(scratch->transform_mask.matrix[1][0]),
+                                    pixman_fixed_to_double(scratch->transform_mask.matrix[1][1]),
+                                    pixman_fixed_to_double(scratch->transform_mask.matrix[1][2]),
+                                    tex->pPix->drawable.height * pixman_fixed_to_double(scratch->transform_mask.matrix[2][2]));
+        } else {
+            TegraGR3D_UploadConstVP(cmds, const_id++,
+                                    1.0f, 0.0f, 0.0f, tex->pPix->drawable.width);
+
+            TegraGR3D_UploadConstVP(cmds, const_id++,
+                                    0.0f, 1.0f, 0.0f, tex->pPix->drawable.height);
+        }
     } else {
         TegraGR3D_UploadConstFP(cmds, 2, FX10x2(BLUE(tex->solid),
                                                 GREEN(tex->solid)));

@@ -87,6 +87,7 @@ typedef struct gr3d_tex_state {
     bool bilinear : 1;
     bool alpha : 1;
     bool pow2 : 1;
+    bool transform_coords : 1;
 } TegraGR3DStateTex, *TegraGR3DStateTexPtr;
 
 typedef struct gr3d_draw_state {
@@ -133,7 +134,16 @@ typedef struct tegra_exa_scratch {
     enum Tegra2DCompositeOp op2d;
     struct tegra_fence *marker;
     TegraEXAAttribBo attribs;
-    PictTransform transform;
+    union {
+        PictTransform transform;
+
+        struct {
+            PictTransform transform_src;
+            PictTransform transform_src_inv;
+            PictTransform transform_mask;
+            PictTransform transform_mask_inv;
+        };
+    };
     struct drm_tegra *drm;
     unsigned attrib_itr;
     unsigned vtx_cnt;

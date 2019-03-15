@@ -112,10 +112,23 @@ static __maybe_unused int pict_height(PicturePtr pict)
 
 static __maybe_unused char const * pict_transform(PicturePtr pict)
 {
+    static char buf[256];
+
     if (!pict->pDrawable || !pict->transform)
         return "No";
 
-    return "Yes";
+    sprintf(buf, "Yes (%f:%f:%f  %f:%f:%f  %f:%f:%f)",
+            pixman_fixed_to_double(pict->transform->matrix[0][0]),
+            pixman_fixed_to_double(pict->transform->matrix[0][1]),
+            pixman_fixed_to_double(pict->transform->matrix[0][2]),
+            pixman_fixed_to_double(pict->transform->matrix[1][0]),
+            pixman_fixed_to_double(pict->transform->matrix[1][1]),
+            pixman_fixed_to_double(pict->transform->matrix[1][2]),
+            pixman_fixed_to_double(pict->transform->matrix[2][0]),
+            pixman_fixed_to_double(pict->transform->matrix[2][1]),
+            pixman_fixed_to_double(pict->transform->matrix[2][2]));
+
+    return buf;
 }
 
 static __maybe_unused char const * pict_alphamap(PicturePtr pict)
