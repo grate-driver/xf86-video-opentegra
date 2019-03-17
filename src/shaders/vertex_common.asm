@@ -53,6 +53,6 @@ EXEC
 	RCPs r0.***w, c[4].wwww
 ;
 
-EXEC(export[1]=vector)
+EXEC_END(export[1]=vector)
 	MULv r63.xyzw, r3.xyzw, r0.xyzw
 ;
