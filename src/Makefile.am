@@ -36,6 +36,20 @@ opentegra_drv_ladir = @moduledir@/drivers
 # enable fp16 for the 3d attributes
 opentegra_drv_la_CFLAGS = $(AM_CFLAGS) $(DEFINES) -mfp16-format=ieee
 
+opentegra_drv_la_DEPENDENCIES = \
+	shaders.h \
+	exa_mm.c \
+	exa_mm_pool.c \
+	exa_mm_fridge.c \
+	exa_helpers.c \
+	exa_2d.c \
+	exa_composite.c \
+	exa_composite_2d.c \
+	exa_composite_3d.c \
+	exa_composite_3d_state_tracker.c \
+	pool_alloc.c \
+	gr3d.c
+
 opentegra_drv_la_SOURCES = \
 	compat-api.h \
 	common_helpers.c \
@@ -50,38 +64,35 @@ opentegra_drv_la_SOURCES = \
 	xv.c \
 	xv.h \
 	exa.c \
-	exa_2d.c \
-	exa_composite.c \
-	exa_mm.c \
-	exa_mm_pool.c \
-	exa_mm_fridge.c \
 	exa.h \
 	vblank.c \
 	vblank.h \
 	tegra_stream.c \
 	tegra_stream.h \
 	shaders/prog.h \
-	$(shaders_gen) \
-	tgr_3d.xml.h \
 	shaders.h \
-	gr3d.c \
+	tgr_3d.xml.h \
 	gr3d.h \
-	pool_alloc.c \
 	memcpy_vfp.c
 
-shaders_dir := $(filter %/, $(wildcard $(srcdir)/shaders/*/))
+shaders_dir := $(filter %/, $(wildcard $(srcdir)/shaders/*/*/))
 shaders_gen := $(addsuffix .bin.h, $(shaders_dir:%/=%))
 
-%.bin.h: gen_shader_bin \
-			%/vertex.asm \
-			%/linker.asm \
+%.bin.h: gen_shader_bin $(srcdir)/shaders/prog.h \
+			$(srcdir)/shaders/vertex_common.asm \
+			$(srcdir)/shaders/linker_common.asm \
 			%/fragment.asm
 	$(builddir)/gen_shader_bin \
-		--vs $*/vertex.asm \
-		--lnk $*/linker.asm \
+		--vs $(srcdir)/shaders/vertex_common.asm \
+		--lnk $(srcdir)/shaders/linker_common.asm \
 		--fs $*/fragment.asm \
-		--name $(*F) \
+		--fpname $(*F) \
+		--vpname vertex_common \
+		--lpname linker_common \
 		--out $@
+
+shaders.h: $(shaders_gen) $(srcdir)/gen_shaders_h.sh
+	$(srcdir)/gen_shaders_h.sh $(srcdir)
 
 asm_grammars := $(wildcard $(srcdir)/asm/*.y)
 asm_headers  := $(wildcard $(srcdir)/asm/*.h)
@@ -108,10 +119,13 @@ gen_shader_bin: gen_shader_bin.c $(asm_gen_c) $(asm_headers)
 BUILT_SOURCES = \
 	$(asm_gen_c) \
 	$(asm_gen_h) \
-	$(shaders_gen)
+	$(shaders_gen) \
+	shaders.h
 
 CLEANFILES = \
 	$(asm_gen_c) \
 	$(asm_gen_h) \
 	$(shaders_gen) \
-	$(builddir)/gen_shader_bin
+	$(builddir)/gen_shader_bin \
+	$(shell find $(srcdir)/shaders/ -type f -name '*.bin.h') \
+	shaders.h

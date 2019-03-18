@@ -25,21 +25,23 @@
 #define __TEGRA_GR3D_SHADER_PROG_H
 
 struct shader_program {
-    uint32_t *vs_prog_words;
-    unsigned vs_prog_words_nb;
-    uint16_t vs_attrs_in_mask;
-    uint16_t vs_attrs_out_mask;
+    const uint32_t *vs_prog_words;
+    const unsigned vs_prog_words_nb;
+    const uint16_t vs_attrs_in_mask;
+    const uint16_t vs_attrs_out_mask;
 
-    uint32_t *fs_prog_words;
-    unsigned fs_prog_words_nb;
-    unsigned fs_alu_buf_size;
-    unsigned fs_pseq_to_dw;
-    unsigned fs_pseq_inst_nb;
+    const uint32_t *fs_prog_words;
+    const unsigned fs_prog_words_nb;
+    const unsigned fs_alu_buf_size;
+    const unsigned fs_pseq_to_dw;
+    const unsigned fs_pseq_inst_nb;
 
-    uint32_t *linker_words;
-    unsigned linker_words_nb;
-    unsigned linker_inst_nb;
-    unsigned used_tram_rows_nb;
+    const uint32_t *linker_words;
+    const unsigned linker_words_nb;
+    const unsigned linker_inst_nb;
+    const unsigned used_tram_rows_nb;
+
+    const char *name;
 };
 
 #endif

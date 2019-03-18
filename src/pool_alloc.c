@@ -75,8 +75,8 @@ static struct {
  *         pool-owners back.
  */
 
-int mem_pool_init(struct mem_pool *pool, void *addr, unsigned long size,
-                  unsigned int bitmap_size)
+static int mem_pool_init(struct mem_pool *pool, void *addr, unsigned long size,
+                         unsigned int bitmap_size)
 {
     pool->bitmap_size = bitmap_size;
     pool->fragmented = 0;
@@ -206,7 +206,7 @@ static void mem_pool_set_canary(struct __mem_pool_entry *entry)
 #endif
 }
 
-void mem_pool_check_canary(struct __mem_pool_entry *entry)
+static void mem_pool_check_canary(struct __mem_pool_entry *entry)
 {
 #ifdef POOL_DEBUG_CANARY
     int i;
@@ -447,8 +447,8 @@ static int mem_pool_grow_bitmap(struct mem_pool * restrict pool)
     return mem_pool_resize_bitmap(pool, pool->bitmap_size + 1);
 }
 
-void *mem_pool_alloc(struct mem_pool * restrict pool, unsigned long size,
-                     struct mem_pool_entry *ret_entry, int defrag)
+static void *mem_pool_alloc(struct mem_pool * restrict pool, unsigned long size,
+                            struct mem_pool_entry *ret_entry, int defrag)
 {
     struct __mem_pool_entry *empty;
     struct __mem_pool_entry *busy;
@@ -558,7 +558,7 @@ retry:
     return start;
 }
 
-void mem_pool_free(struct mem_pool_entry *entry)
+static void mem_pool_free(struct mem_pool_entry *entry)
 {
     struct mem_pool *pool = entry->pool;
     unsigned int entry_id = entry->id;
@@ -597,7 +597,7 @@ void mem_pool_free(struct mem_pool_entry *entry)
 #endif
 }
 
-void mem_pool_destroy(struct mem_pool *pool)
+static void mem_pool_destroy(struct mem_pool *pool)
 {
 #ifdef POOL_DEBUG
     PRINTF("%s: pool %p: size=%lu remain=%lu pools_num=%u\n",
@@ -611,8 +611,8 @@ void mem_pool_destroy(struct mem_pool *pool)
 #endif
 }
 
-int mem_pool_transfer_entries(struct mem_pool * restrict pool_to,
-                              struct mem_pool * restrict pool_from)
+static int mem_pool_transfer_entries(struct mem_pool * restrict pool_to,
+                                     struct mem_pool * restrict pool_from)
 {
     struct __mem_pool_entry *busy_from;
     struct __mem_pool_entry *busy_to;
@@ -699,8 +699,8 @@ next_from:
     return transferred_entries;
 }
 
-int mem_pool_transfer_entries_fast(struct mem_pool * restrict pool_to,
-                                   struct mem_pool * restrict pool_from)
+static int mem_pool_transfer_entries_fast(struct mem_pool * restrict pool_to,
+                                          struct mem_pool * restrict pool_from)
 {
     struct __mem_pool_entry *busy_from;
     struct mem_pool_entry empty_to;
@@ -778,13 +778,13 @@ int mem_pool_transfer_entries_fast(struct mem_pool * restrict pool_to,
     return transferred_entries;
 }
 
-void mem_pool_defrag(struct mem_pool *pool)
+static __maybe_unused void mem_pool_defrag(struct mem_pool *pool)
 {
     if (!mem_pool_empty(pool))
         defrag_pool(pool, ~0ul, 0);
 }
 
-void mem_pool_debug_dump(struct mem_pool *pool)
+static __maybe_unused void mem_pool_debug_dump(struct mem_pool *pool)
 {
 #ifdef POOL_DEBUG_VERBOSE
     struct __mem_pool_entry *busy;
@@ -807,7 +807,7 @@ void mem_pool_debug_dump(struct mem_pool *pool)
 #endif
 }
 
-void mem_pool_check_entry(struct mem_pool_entry *entry)
+static __maybe_unused void mem_pool_check_entry(struct mem_pool_entry *entry)
 {
 #ifdef POOL_DEBUG
     struct mem_pool *pool = entry->pool;

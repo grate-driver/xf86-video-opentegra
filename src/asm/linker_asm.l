@@ -38,9 +38,15 @@ int yywrap(void)
 }
 %}
 
+%x comment
 %%
+"/*"				BEGIN(comment);
+<comment>[^*\n]*		/* eat anything that's not a '*' */
+<comment>"*"+[^*/\n]*		/* eat up '*'s not followed by '/'s */
+<comment>\n			yylineno++;
+<comment>"*"+"/"		BEGIN(INITIAL);
+
 [ \t]+				/* skip */;
-"/*"([^*]|(\*+[^*/]))*\*+\/ 	/* multi line comment */;
 "//".*				/* single line comment */;
 [\n]				yylineno++;
 "."				return '.';

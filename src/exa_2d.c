@@ -24,10 +24,6 @@
 #include "driver.h"
 #include "exa_mm.h"
 
-#define ErrorMsg(fmt, args...)                                              \
-    xf86DrvMsg(-1, X_ERROR, "%s:%d/%s(): " fmt, __FILE__,                   \
-               __LINE__, __func__, ##args)
-
 static const uint8_t rop3[] = {
     0x00, /* GXclear */
     0x88, /* GXand */
@@ -59,8 +55,8 @@ static uint32_t sb_offset(PixmapPtr pix, unsigned xpos, unsigned ypos)
     return TegraEXAPixmapOffset(pix) + offset;
 }
 
-Bool TegraEXAPrepareSolid(PixmapPtr pPixmap, int op, Pixel planemask,
-                          Pixel color)
+static Bool TegraEXAPrepareSolid(PixmapPtr pPixmap, int op, Pixel planemask,
+                                 Pixel color)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pPixmap->drawable.pScreen);
     TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pPixmap);
@@ -71,21 +67,48 @@ Bool TegraEXAPrepareSolid(PixmapPtr pPixmap, int op, Pixel planemask,
     /*
      * It should be possible to support this, but let's bail for now
      */
-    if (planemask != FB_ALLONES)
+    if (planemask != FB_ALLONES) {
+        FallbackMsg("unsupported planemask 0x%08lx\n", planemask);
         return FALSE;
+    }
 
     /*
      * It should be possible to support all GX* raster operations given the
      * mapping in the rop3 table, but none other than GXcopy have been
      * validated.
      */
-    if (op != GXcopy)
+    if (op != GXcopy) {
+        FallbackMsg("unsupported operation %d\n", op);
         return FALSE;
+    }
 
     TegraEXAThawPixmap(pPixmap, TRUE);
 
-    if (priv->type <= TEGRA_EXA_PIXMAP_TYPE_FALLBACK)
+    if (priv->type <= TEGRA_EXA_PIXMAP_TYPE_FALLBACK) {
+        if (pPixmap->drawable.width == 1 &&
+            pPixmap->drawable.height == 1) {
+                void *ptr = priv->fallback;
+
+                switch (pPixmap->drawable.bitsPerPixel) {
+                case 8:
+                    *((CARD8*) ptr) = color;
+                    return TRUE;
+                case 16:
+                    *((CARD16*) ptr) = color;
+                    return TRUE;
+                case 32:
+                    *((CARD32*) ptr) = color;
+                    return TRUE;
+                }
+        }
+
+        FallbackMsg("unaccelerateable pixmap %d:%d:%d\n",
+                    pPixmap->drawable.width,
+                    pPixmap->drawable.height,
+                    pPixmap->drawable.bitsPerPixel);
+
         return FALSE;
+    }
 
     err = tegra_stream_begin(&tegra->cmds, tegra->gr2d);
     if (err < 0)
@@ -119,13 +142,25 @@ Bool TegraEXAPrepareSolid(PixmapPtr pPixmap, int op, Pixel planemask,
 
     tegra->scratch.ops = 0;
 
+    AccelMsg("pixmap %p %d:%d color %08lx\n",
+             pPixmap,
+             pPixmap->drawable.width,
+             pPixmap->drawable.height,
+             color);
+
     return TRUE;
 }
 
-void TegraEXASolid(PixmapPtr pPixmap, int px1, int py1, int px2, int py2)
+static void TegraEXASolid(PixmapPtr pPixmap, int px1, int py1, int px2, int py2)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pPixmap->drawable.pScreen);
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
+
+    AccelMsg("%dx%d w:h %d:%d\n", px1, py1, px2 - px1, py2 - py1);
+
+    if (pPixmap->drawable.width == 1 &&
+        pPixmap->drawable.height == 1)
+            return;
 
     tegra_stream_prep(&tegra->cmds, 3);
     tegra_stream_push(&tegra->cmds, HOST1X_OPCODE_MASK(0x38, 0x5));
@@ -136,12 +171,12 @@ void TegraEXASolid(PixmapPtr pPixmap, int px1, int py1, int px2, int py2)
     tegra->scratch.ops++;
 }
 
-void TegraEXADoneSolid(PixmapPtr pPixmap)
+static void TegraEXADoneSolid(PixmapPtr pPixmap)
 {
     TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pPixmap);
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pPixmap->drawable.pScreen);
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
-    struct tegra_fence *fence;
+    struct tegra_fence *fence = NULL;
 
     if (tegra->scratch.ops && tegra->cmds.status == TEGRADRM_STREAM_CONSTRUCT) {
         if (priv->fence_write && !priv->fence_write->gr2d)
@@ -151,7 +186,11 @@ void TegraEXADoneSolid(PixmapPtr pPixmap)
             TegraEXAWaitFence(priv->fence_read);
 
         tegra_stream_end(&tegra->cmds);
+#if PROFILE
+        tegra_stream_flush(&tegra->cmds);
+#else
         fence = tegra_stream_submit(&tegra->cmds, true);
+#endif
 
         if (priv->fence_write != fence) {
             tegra_stream_put_fence(priv->fence_write);
@@ -162,21 +201,12 @@ void TegraEXADoneSolid(PixmapPtr pPixmap)
     }
 
     TegraEXACoolPixmap(pPixmap, TRUE);
+
+    AccelMsg("\n");
 }
 
-Bool TegraEXAPrepareCopy(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
-                         int dx, int dy, int op, Pixel planemask)
-{
-    ScrnInfoPtr pScrn = xf86ScreenToScrn(pDstPixmap->drawable.pScreen);
-    TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
-
-    tegra->scratch.orientation = TEGRA2D_IDENTITY;
-
-    return TegraEXAPrepareCopyExt(pSrcPixmap, pDstPixmap, op, planemask);
-}
-
-Bool TegraEXAPrepareCopyExt(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
-                            int op, Pixel planemask)
+static Bool TegraEXAPrepareCopyExt(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
+                                   int op, Pixel planemask)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pDstPixmap->drawable.pScreen);
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
@@ -185,6 +215,8 @@ Bool TegraEXAPrepareCopyExt(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
     unsigned int bpp;
     int fr_mode;
     int err;
+
+    AccelMsg("\n");
 
     orientation = tegra->scratch.orientation;
 
@@ -198,35 +230,66 @@ Bool TegraEXAPrepareCopyExt(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
     /*
      * It should be possible to support this, but let's bail for now
      */
-    if (planemask != FB_ALLONES)
+    if (planemask != FB_ALLONES) {
+        FallbackMsg("unsupported planemask 0x%08lx\n", planemask);
         return FALSE;
+    }
 
     /*
      * It should be possible to support all GX* raster operations given the
      * mapping in the rop3 table, but none other than GXcopy have been
      * validated.
      */
-    if (op != GXcopy)
+    if (op != GXcopy) {
+        FallbackMsg("unsupported operation %d\n", op);
         return FALSE;
+    }
 
     /*
      * Some restrictions apply to the hardware accelerated copying.
      */
     bpp = pSrcPixmap->drawable.bitsPerPixel;
 
-    if (pDstPixmap->drawable.bitsPerPixel != bpp)
+    if (pDstPixmap->drawable.bitsPerPixel != bpp) {
+        FallbackMsg("BPP mismatch %u %u\n",
+                    pDstPixmap->drawable.bitsPerPixel, bpp);
         return FALSE;
+    }
 
     TegraEXAThawPixmap(pSrcPixmap, TRUE);
     TegraEXAThawPixmap(pDstPixmap, TRUE);
 
     priv = exaGetPixmapDriverPrivate(pSrcPixmap);
-    if (priv->type <= TEGRA_EXA_PIXMAP_TYPE_FALLBACK)
+    if (priv->type <= TEGRA_EXA_PIXMAP_TYPE_FALLBACK) {
+        FallbackMsg("unaccelerateable src pixmap %d:%d:%d\n",
+                    pSrcPixmap->drawable.width,
+                    pSrcPixmap->drawable.height,
+                    pSrcPixmap->drawable.bitsPerPixel);
         return FALSE;
+    }
+
+    AccelMsg("pSrcPixmap %p priv %p type %u %d:%d:%d stride %d\n",
+             pSrcPixmap, priv, priv->type,
+             pSrcPixmap->drawable.width,
+             pSrcPixmap->drawable.height,
+             pSrcPixmap->drawable.bitsPerPixel,
+             pSrcPixmap->devKind);
 
     priv = exaGetPixmapDriverPrivate(pDstPixmap);
-    if (priv->type <= TEGRA_EXA_PIXMAP_TYPE_FALLBACK)
+    if (priv->type <= TEGRA_EXA_PIXMAP_TYPE_FALLBACK) {
+        FallbackMsg("unaccelerateable dst pixmap %d:%d:%d\n",
+                    pDstPixmap->drawable.width,
+                    pDstPixmap->drawable.height,
+                    pDstPixmap->drawable.bitsPerPixel);
         return FALSE;
+    }
+
+    AccelMsg("pDstPixmap %p priv %p type %u %d:%d:%d stride %d\n",
+             pDstPixmap, priv, priv->type,
+             pDstPixmap->drawable.width,
+             pDstPixmap->drawable.height,
+             pDstPixmap->drawable.bitsPerPixel,
+             pDstPixmap->devKind);
 
     err = tegra_stream_begin(&tegra->cmds, tegra->gr2d);
     if (err < 0)
@@ -282,8 +345,19 @@ Bool TegraEXAPrepareCopyExt(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
     return TRUE;
 }
 
-void TegraEXACopyExt(PixmapPtr pDstPixmap, int srcX, int srcY, int dstX,
-                     int dstY, int width, int height)
+static Bool TegraEXAPrepareCopy(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
+                                int dx, int dy, int op, Pixel planemask)
+{
+    ScrnInfoPtr pScrn = xf86ScreenToScrn(pDstPixmap->drawable.pScreen);
+    TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
+
+    tegra->scratch.orientation = TEGRA2D_IDENTITY;
+
+    return TegraEXAPrepareCopyExt(pSrcPixmap, pDstPixmap, op, planemask);
+}
+
+static void TegraEXACopyExt(PixmapPtr pDstPixmap, int srcX, int srcY, int dstX,
+                            int dstY, int width, int height)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pDstPixmap->drawable.pScreen);
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
@@ -296,6 +370,9 @@ void TegraEXACopyExt(PixmapPtr pDstPixmap, int srcX, int srcY, int dstX,
     unsigned bpp;
     PictVector v;
     BoxRec grid;
+
+    AccelMsg("src %dx%d dst %dx%d w:h %d:%d\n",
+             srcX, srcY, dstX, dstY, width, height);
 
     pSrcPixmap = tegra->scratch.pSrc;
     src_bo     = TegraEXAPixmapBO(pSrcPixmap);
@@ -410,12 +487,15 @@ void TegraEXACopyExt(PixmapPtr pDstPixmap, int srcX, int srcY, int dstX,
     tegra->scratch.ops++;
 }
 
-void TegraEXACopy(PixmapPtr pDstPixmap, int srcX, int srcY, int dstX,
-                  int dstY, int width, int height)
+static void TegraEXACopy(PixmapPtr pDstPixmap, int srcX, int srcY, int dstX,
+                         int dstY, int width, int height)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pDstPixmap->drawable.pScreen);
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
     uint32_t controlmain;
+
+    AccelMsg("src %dx%d dst %dx%d w:h %d:%d\n",
+             srcX, srcY, dstX, dstY, width, height);
 
     /*
      * [20:20] source color depth (0: mono, 1: same)
@@ -450,11 +530,11 @@ void TegraEXACopy(PixmapPtr pDstPixmap, int srcX, int srcY, int dstX,
     tegra->scratch.ops++;
 }
 
-void TegraEXADoneCopy(PixmapPtr pDstPixmap)
+static void TegraEXADoneCopy(PixmapPtr pDstPixmap)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pDstPixmap->drawable.pScreen);
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
-    struct tegra_fence *fence;
+    struct tegra_fence *fence = NULL;
     TegraPixmapPtr priv;
 
     if (tegra->scratch.ops && tegra->cmds.status == TEGRADRM_STREAM_CONSTRUCT) {
@@ -477,7 +557,11 @@ void TegraEXADoneCopy(PixmapPtr pDstPixmap)
             TegraEXAWaitFence(priv->fence_read);
 
         tegra_stream_end(&tegra->cmds);
+#if PROFILE
+        tegra_stream_flush(&tegra->cmds);
+#else
         fence = tegra_stream_submit(&tegra->cmds, true);
+#endif
 
         if (priv->fence_write != fence) {
             tegra_stream_put_fence(priv->fence_write);
@@ -498,6 +582,8 @@ void TegraEXADoneCopy(PixmapPtr pDstPixmap)
 
     TegraEXACoolPixmap(tegra->scratch.pSrc, FALSE);
     TegraEXACoolPixmap(pDstPixmap, TRUE);
+
+    AccelMsg("\n");
 }
 
 /* vim: set et sts=4 sw=4 ts=4: */

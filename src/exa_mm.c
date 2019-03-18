@@ -24,13 +24,9 @@
 #include "driver.h"
 #include "exa_mm.h"
 
-#define ErrorMsg(fmt, args...)                                              \
-    xf86DrvMsg(-1, X_ERROR, "%s:%d/%s(): " fmt, __FILE__,                   \
-               __LINE__, __func__, ##args)
-
-Bool TegraEXAAllocateDRM(TegraPtr tegra,
-                         TegraPixmapPtr pixmap,
-                         unsigned int size)
+static Bool TegraEXAAllocateDRM(TegraPtr tegra,
+                                TegraPixmapPtr pixmap,
+                                unsigned int size)
 {
     int err;
 
@@ -46,7 +42,7 @@ Bool TegraEXAAllocateDRM(TegraPtr tegra,
     return TRUE;
 }
 
-Bool TegraEXAAllocateMem(TegraPixmapPtr pixmap, unsigned int size)
+static Bool TegraEXAAllocateMem(TegraPixmapPtr pixmap, unsigned int size)
 {
     int err;
 
@@ -62,7 +58,7 @@ Bool TegraEXAAllocateMem(TegraPixmapPtr pixmap, unsigned int size)
     return TRUE;
 }
 
-int TegraEXAInitMM(TegraPtr tegra, TegraEXAPtr exa)
+static int TegraEXAInitMM(TegraPtr tegra, TegraEXAPtr exa)
 {
     xorg_list_init(&exa->cool_pixmaps);
     xorg_list_init(&exa->mem_pools);
@@ -77,7 +73,7 @@ int TegraEXAInitMM(TegraPtr tegra, TegraEXAPtr exa)
     return 0;
 }
 
-void TegraEXAReleaseMM(TegraPtr tegra, TegraEXAPtr exa)
+static void TegraEXAReleaseMM(TegraPtr tegra, TegraEXAPtr exa)
 {
 #ifdef HAVE_JPEG
     if (tegra->exa_compress_jpeg) {

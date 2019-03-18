@@ -21,6 +21,9 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
+#ifndef __TEGRA_MEM_POOL_H
+#define __TEGRA_MEM_POOL_H
+
 #ifdef DEBUG
 #define POOL_DEBUG
 #endif
@@ -51,21 +54,6 @@ struct mem_pool {
     unsigned long *bitmap;
     struct __mem_pool_entry *entries;
 };
-
-int mem_pool_init(struct mem_pool *pool, void *addr, unsigned long size,
-                  unsigned int bitmap_size);
-void *mem_pool_alloc(struct mem_pool *pool, unsigned long size,
-                     struct mem_pool_entry *ret_entry, int defrag);
-void mem_pool_free(struct mem_pool_entry *entry);
-int mem_pool_transfer_entries(struct mem_pool *pool_to,
-                              struct mem_pool *pool_from);
-int mem_pool_transfer_entries_fast(struct mem_pool *pool_to,
-                                   struct mem_pool *pool_from);
-void mem_pool_defrag(struct mem_pool *pool);
-void mem_pool_debug_dump(struct mem_pool *pool);
-void mem_pool_destroy(struct mem_pool *pool);
-void mem_pool_check_entry(struct mem_pool_entry *entry);
-void mem_pool_check_canary(struct __mem_pool_entry *entry);
 
 static inline int mem_pool_has_space(struct mem_pool *pool, unsigned long size)
 {
@@ -111,3 +99,5 @@ static inline unsigned long mem_pool_entry_offset(struct mem_pool_entry *entry)
 
     return pool->entries[entry_id].base - pool->base;
 }
+
+#endif

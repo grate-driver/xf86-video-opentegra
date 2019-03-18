@@ -29,10 +29,85 @@
 
 #define TEGRA_DRI_USAGE_HINT ('D' << 16 | 'R' << 8 | 'I')
 
-#define TEGRA_EXA_OFFSET_ALIGN          256
+/*
+ * The maximum alignment required by hardware seems is 64 bytes,
+ * but we are also using VFP for copying write-combined data and
+ * it requires a 128 bytes alignment.
+ */
+#define TEGRA_EXA_OFFSET_ALIGN          128
+
+#if 0
+#define FallbackMsg(fmt, args...)                                           \
+    printf("FALLBACK: %s:%d/%s(): " fmt, __FILE__, __LINE__, __func__, ##args)
+#else
+#define FallbackMsg(fmt, args...) do {} while(0)
+#endif
+
+#if 0
+#define AccelMsg(fmt, args...)                                              \
+    printf("ACCELERATE: %s:%d/%s(): " fmt, __FILE__, __LINE__, __func__, ##args)
+#else
+#define AccelMsg(fmt, args...) do {} while(0)
+#endif
+
+#if 0
+#define DebugMsg(fmt, args...)                                              \
+    printf("DEBUG: %s:%d/%s(): " fmt, __FILE__, __LINE__, __func__, ##args)
+#else
+#define DebugMsg(fmt, args...) do {} while(0)
+#endif
+
+#define PROFILE 0
+
+#define PROFILE_DEF                                                 \
+    static clock_t profile_start;
+
+#define PROFILE_START                                               \
+    if (PROFILE) {                                                  \
+        printf("%s:%d: profile start\n", __func__, __LINE__);       \
+        profile_start = clock();                                    \
+    }
+
+#define PROFILE_STOP                                                \
+    if (PROFILE) {                                                  \
+        printf("%s:%d: profile stop: %f us\n",                      \
+               __func__, __LINE__,                                  \
+               (double)(clock() - profile_start) / CLOCKS_PER_SEC); \
+    }
+
+struct tegra_pixmap;
+
+typedef struct gr3d_tex_state {
+    PixmapPtr pPix;
+    Pixel solid;
+    unsigned format : 5;
+    unsigned tex_sel : 3;
+    bool component_alpha : 1;
+    bool coords_wrap : 1;
+    bool bilinear : 1;
+    bool alpha : 1;
+    bool pow2 : 1;
+    bool transform_coords : 1;
+} TegraGR3DStateTex, *TegraGR3DStateTexPtr;
+
+typedef struct gr3d_draw_state {
+    TegraGR3DStateTex src;
+    TegraGR3DStateTex mask;
+    TegraGR3DStateTex dst;
+    bool discards_clip : 1;
+    int op;
+} TegraGR3DDrawState, *TegraGR3DDrawStatePtr;
+
+typedef struct gr3d_state {
+    struct tegra_exa_scratch *scratch;
+    struct tegra_stream *cmds;
+    TegraGR3DDrawState new;
+    TegraGR3DDrawState cur;
+    bool inited : 1;
+    bool clean : 1;
+} TegraGR3DState, *TegraGR3DStatePtr;
 
 typedef struct tegra_attrib_bo {
-    struct tegra_attrib_bo *next;
     struct drm_tegra_bo *bo;
     __fp16 *map;
 } TegraEXAAttribBo;
@@ -58,9 +133,17 @@ typedef struct tegra_exa_scratch {
     enum Tegra2DOrientation orientation;
     enum Tegra2DCompositeOp op2d;
     struct tegra_fence *marker;
-    TegraEXAAttribBo *attribs;
-    PictTransform transform;
-    Bool attribs_alloc_err;
+    TegraEXAAttribBo attribs;
+    union {
+        PictTransform transform;
+
+        struct {
+            PictTransform transform_src;
+            PictTransform transform_src_inv;
+            PictTransform transform_mask;
+            PictTransform transform_mask_inv;
+        };
+    };
     struct drm_tegra *drm;
     unsigned attrib_itr;
     unsigned vtx_cnt;
@@ -96,12 +179,13 @@ typedef struct _TegraEXARec{
     time_t last_freezing_time;
     unsigned release_count;
     CreatePictureProcPtr CreatePicture;
-    DestroyPictureProcPtr DestroyPicture;
     ScreenBlockHandlerProcPtr BlockHandler;
 #ifdef HAVE_JPEG
     tjhandle jpegCompressor;
     tjhandle jpegDecompressor;
 #endif
+
+    TegraGR3DState gr3d_state;
 
     ExaDriverPtr driver;
 } *TegraEXAPtr;
@@ -116,17 +200,19 @@ typedef struct _TegraEXARec{
 #define TEGRA_EXA_COMPRESSION_JPEG          3
 #define TEGRA_EXA_COMPRESSION_PNG           4
 
-typedef struct {
-    Bool scanout_rotated : 1;   /* pixmap backs rotated frontbuffer BO */
-    Bool no_compress : 1;       /* pixmap's data compress poorly */
-    Bool accelerated : 1;       /* pixmap was accelerated at least once */
-    Bool scanout : 1;           /* pixmap backs frontbuffer BO */
-    Bool frozen : 1;            /* pixmap's data compressed */
-    Bool accel : 1;             /* pixmap acceleratable */
-    Bool cold : 1;              /* pixmap scheduled for compression */
-    Bool dri : 1;               /* pixmap's BO was exported */
+typedef struct tegra_pixmap {
+    bool tegra_data : 1;        /* pixmap's data allocated by Opentegra */
+    bool scanout_rotated : 1;   /* pixmap backs rotated frontbuffer BO */
+    bool no_compress : 1;       /* pixmap's data compress poorly */
+    bool accelerated : 1;       /* pixmap was accelerated at least once */
+    bool offscreen : 1;         /* pixmap's data resides in Tegra's GEM */
+    bool scanout : 1;           /* pixmap backs frontbuffer BO */
+    bool frozen : 1;            /* pixmap's data compressed */
+    bool accel : 1;             /* pixmap acceleratable */
+    bool cold : 1;              /* pixmap scheduled for compression */
+    bool dri : 1;               /* pixmap's BO was exported */
 
-    unsigned crtc : 2;          /* pixmap's CRTC ID (for display rotation) */
+    unsigned crtc : 1;          /* pixmap's CRTC ID (for display rotation) */
 
     unsigned type : 2;
 
@@ -154,68 +240,63 @@ typedef struct {
             void *compressed_data;
             unsigned compressed_size;
             unsigned compression_type;
-            unsigned picture_format;
         };
     };
 
     PixmapPtr pPixmap;
-    PicturePtr pPicture;
+
+    unsigned picture_format;
 } TegraPixmapRec, *TegraPixmapPtr;
 
 unsigned int TegraEXAPitch(unsigned int width, unsigned int height,
                            unsigned int bpp);
 
-void TegraEXAWaitFence(struct tegra_fence *fence);
-
-unsigned TegraPixmapSize(TegraPixmapPtr pixmap);
+static inline void TegraEXAWaitFence(struct tegra_fence *fence)
+{
+    tegra_stream_wait_fence(fence);
+}
 
 unsigned TegraEXAHeightHwAligned(unsigned int height, unsigned int bpp);
 
-unsigned long TegraEXAPixmapOffset(PixmapPtr pix);
+static inline Pixel TegraPixelRGB565to888(Pixel pixel)
+{
+    Pixel p = 0;
 
-struct drm_tegra_bo * TegraEXAPixmapBO(PixmapPtr pix);
+    p |= 0xff000000;
+    p |=  ((pixel >> 11)   * 255 + 15) / 31;
+    p |=  (((pixel >> 5) & 0x3f) * 255 + 31) / 63;
+    p |=  ((pixel & 0x3f)  * 255 + 15) / 31;
 
-Bool TegraEXAPrepareSolid(PixmapPtr pPixmap, int op, Pixel planemask,
-                          Pixel color);
+    return p;
+}
 
-void TegraEXASolid(PixmapPtr pPixmap, int px1, int py1, int px2, int py2);
+static inline Pixel TegraPixelRGB888to565(Pixel pixel)
+{
+    unsigned red, green, blue;
+    Pixel p = 0;
 
-void TegraEXADoneSolid(PixmapPtr pPixmap);
+    red   = (pixel & 0x00ff0000) >> 16;
+    green = (pixel & 0x0000ff00) >> 8;
+    blue  = (pixel & 0x000000ff) >> 0;
 
-Bool TegraEXAPrepareCopyExt(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
-                            int op, Pixel planemask);
+    p |= ((red >> 3) & 0x1f) << 11;
+    p |= ((green >> 2) & 0x3f) << 5;
+    p |= (blue >> 3) & 0x1f;
 
-Bool TegraEXAPrepareCopy(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
-                         int dx, int dy, int op, Pixel planemask);
+    return p;
+}
 
-void TegraEXACopy(PixmapPtr pDstPixmap, int srcX, int srcY, int dstX,
-                  int dstY, int width, int height);
+static inline Bool TegraCompositeFormatHasAlpha(unsigned format)
+{
+    switch (format) {
+    case PICT_a8:
+    case PICT_a8r8g8b8:
+        return TRUE;
 
-void TegraEXACopyExt(PixmapPtr pDstPixmap, int srcX, int srcY, int dstX,
-                     int dstY, int width, int height);
-
-void TegraEXADoneCopy(PixmapPtr pDstPixmap);
-
-void TegraCompositeReleaseAttribBuffers(TegraEXAScratchPtr scratch);
-
-Bool TegraEXACheckComposite(int op, PicturePtr pSrcPicture,
-                            PicturePtr pMaskPicture,
-                            PicturePtr pDstPicture);
-
-Bool TegraEXAPrepareComposite(int op, PicturePtr pSrcPicture,
-                              PicturePtr pMaskPicture,
-                              PicturePtr pDstPicture,
-                              PixmapPtr pSrc,
-                              PixmapPtr pMask,
-                              PixmapPtr pDst);
-
-void TegraEXAComposite(PixmapPtr pDst,
-                       int srcX, int srcY,
-                       int maskX, int maskY,
-                       int dstX, int dstY,
-                       int width, int height);
-
-void TegraEXADoneComposite(PixmapPtr pDst);
+    default:
+        return FALSE;
+    }
+}
 
 #endif
 

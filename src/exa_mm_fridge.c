@@ -24,10 +24,6 @@
 #include "driver.h"
 #include "exa_mm.h"
 
-#define ErrorMsg(fmt, args...)                                              \
-    xf86DrvMsg(-1, X_ERROR, "%s:%d/%s(): " fmt, __FILE__,                   \
-               __LINE__, __func__, ##args)
-
 #define TEGRA_EXA_FREEZE_ALLOWANCE_DELTA    1
 #define TEGRA_EXA_FREEZE_BOUNCE_DELTA       3
 #define TEGRA_EXA_FREEZE_DELTA              2
@@ -59,44 +55,30 @@ static int TegraEXAToPNGFormat(TegraPtr tegra, TegraPixmapPtr pixmap)
         return -1;
 
 #ifdef HAVE_PNG
-    if (pixmap->pPicture) {
-        switch (pixmap->pPicture->format) {
-        case PICT_a8:
-            return PNG_FORMAT_GRAY;
+    switch (pixmap->picture_format) {
+    case PICT_a8:
+        return PNG_FORMAT_GRAY;
 
-        case PICT_c8:
-            return PNG_FORMAT_GRAY;
+    case PICT_c8:
+        return PNG_FORMAT_GRAY;
 
-        case PICT_r8g8b8:
-            return PNG_FORMAT_BGR;
+    case PICT_r8g8b8:
+        return PNG_FORMAT_BGR;
 
-        case PICT_b8g8r8:
-            return PNG_FORMAT_RGB;
+    case PICT_b8g8r8:
+        return PNG_FORMAT_RGB;
 
-        case PICT_a8r8g8b8:
-            return PNG_FORMAT_BGRA;
+    case PICT_a8r8g8b8:
+        return PNG_FORMAT_BGRA;
 
-        case PICT_a8b8g8r8:
-            return PNG_FORMAT_RGBA;
+    case PICT_a8b8g8r8:
+        return PNG_FORMAT_RGBA;
 
-        case PICT_b8g8r8a8:
-            return PNG_FORMAT_ARGB;
+    case PICT_b8g8r8a8:
+        return PNG_FORMAT_ARGB;
 
-        default:
-            break;
-        }
-    } else {
-        switch (pixmap->pPixmap->drawable.bitsPerPixel) {
-        case 8:
-            return PNG_FORMAT_GRAY;
-
-        case 32:
-            /* XXX: assume display pixel format, is this always correct? */
-            return PNG_FORMAT_BGRA;
-
-        default:
-            break;
-        }
+    default:
+        break;
     }
 #endif
 
@@ -109,47 +91,30 @@ static int TegraEXAToJpegTurboFormat(TegraPtr tegra, TegraPixmapPtr pixmap)
         return -1;
 
 #ifdef HAVE_JPEG
-    if (pixmap->pPicture) {
-        switch (pixmap->pPicture->format) {
-        case PICT_a8:
-            return TJPF_GRAY;
+    switch (pixmap->picture_format) {
+    case PICT_a8:
+        return TJPF_GRAY;
 
-        case PICT_c8:
-            return TJPF_GRAY;
+    case PICT_c8:
+        return TJPF_GRAY;
 
-        case PICT_r8g8b8:
-            return TJPF_BGR;
+    case PICT_r8g8b8:
+        return TJPF_BGR;
 
-        case PICT_b8g8r8:
-            return TJPF_RGB;
+    case PICT_b8g8r8:
+        return TJPF_RGB;
 
-        case PICT_x8r8g8b8:
-            return TJPF_BGRX;
+    case PICT_x8r8g8b8:
+        return TJPF_BGRX;
 
-        case PICT_x8b8g8r8:
-            return TJPF_RGBX;
+    case PICT_x8b8g8r8:
+        return TJPF_RGBX;
 
-        case PICT_b8g8r8x8:
-            return TJPF_XRGB;
+    case PICT_b8g8r8x8:
+        return TJPF_XRGB;
 
-        default:
-            break;
-        }
-    } else {
-        switch (pixmap->pPixmap->drawable.bitsPerPixel) {
-        case 8:
-            return TJPF_GRAY;
-
-        case 32:
-            /* XXX: assume display pixel format, is this always correct? */
-            if (pixmap->pPixmap->drawable.depth == 24)
-                return TJPF_BGRX;
-
-            break;
-
-        default:
-            break;
-        }
+    default:
+        break;
     }
 #endif
 
@@ -244,7 +209,8 @@ static void TegraEXAResurrectAccelPixmap(TegraPtr tegra, TegraPixmapPtr pixmap)
     TegraEXAPtr exa;
     Bool ret;
 
-    if (!pixmap->accel || pixmap->type != TEGRA_EXA_PIXMAP_TYPE_FALLBACK)
+    if (!pixmap->accel || !pixmap->offscreen || !pixmap->tegra_data ||
+        pixmap->type != TEGRA_EXA_PIXMAP_TYPE_FALLBACK)
         return;
 
     exa = tegra->exa;
@@ -529,6 +495,7 @@ static void TegraEXAThawPixmapData(TegraPtr tegra, TegraPixmapPtr pixmap,
 {
     TegraEXAPtr exa = tegra->exa;
     struct compression_arg carg;
+    unsigned int retries = 0;
     unsigned int data_size;
     void *pixmap_data;
     Bool ret = FALSE;
@@ -558,6 +525,9 @@ retry:
     }
 
     if (ret == FALSE) {
+        if (retries++ > 100)
+            ErrorMsg("stuck! size %u\n", data_size);
+
         usleep(100000);
         goto retry;
     }
@@ -633,7 +603,7 @@ fail_unmap:
     return -1;
 }
 
-void TegraEXAFreezePixmaps(TegraPtr tegra, time_t time_sec)
+static void TegraEXAFreezePixmaps(TegraPtr tegra, time_t time_sec)
 {
     TegraEXAPtr exa = tegra->exa;
     TegraPixmapPtr pix, tmp;
@@ -700,13 +670,15 @@ out:
     }
 }
 
-void TegraEXACoolTegraPixmap(TegraPtr tegra, TegraPixmapPtr pix)
+static void TegraEXACoolTegraPixmap(TegraPtr tegra, TegraPixmapPtr pix)
 {
     TegraEXAPtr exa = tegra->exa;
     unsigned int current_sec8;
     struct timespec time;
 
-    if (pix->frozen || pix->cold || pix->scanout || pix->dri || !pix->accel)
+    if (pix->frozen || pix->cold || pix->scanout || pix->dri ||
+        !pix->accel || !pix->offscreen || !pix->tegra_data ||
+        pix->type == TEGRA_EXA_PIXMAP_TYPE_NONE)
         return;
 
     if (!tegra->exa_refrigerator)
@@ -722,7 +694,7 @@ void TegraEXACoolTegraPixmap(TegraPtr tegra, TegraPixmapPtr pix)
     exa->cooling_size += TegraPixmapSize(pix);
 }
 
-void TegraEXACoolPixmap(PixmapPtr pPixmap, Bool write)
+static void TegraEXACoolPixmap(PixmapPtr pPixmap, Bool write)
 {
     ScrnInfoPtr pScrn;
     TegraPixmapPtr priv;
@@ -742,7 +714,42 @@ void TegraEXACoolPixmap(PixmapPtr pPixmap, Bool write)
     }
 }
 
-void TegraEXAThawPixmap(PixmapPtr pPixmap, Bool accel)
+static void
+TegraEXAAllocatePixmapDataNoFail(TegraPtr tegra, TegraPixmapPtr pixmap,
+                                 Bool accel)
+{
+    unsigned int size = TegraPixmapSize(pixmap);
+    PixmapPtr pix = pixmap->pPixmap;
+    unsigned int retries = 0;
+    void *ptr;
+
+    while (1) {
+        if (!accel) {
+            if (TegraEXAAllocateMem(pixmap, size))
+                return;
+        } else {
+            if (TegraEXAAllocateDRMFromPool(tegra, pixmap, size) ||
+                TegraEXAAllocateDRM(tegra, pixmap, size) ||
+                TegraEXAAllocateMem(pixmap, size))
+            {
+                if (TegraEXAPrepareCPUAccess(pix, EXA_PREPARE_DEST, &ptr)) {
+                    /* always zero-fill allocated data for consistency */
+                    memset(ptr, 0, size);
+
+                    TegraEXAFinishCPUAccess(pix, EXA_PREPARE_DEST);
+                }
+                return;
+            }
+        }
+
+        if (retries++ > 100)
+            ErrorMsg("stuck! size %u\n", size);
+
+        usleep(100000);
+    }
+}
+
+static void TegraEXAThawPixmap(PixmapPtr pPixmap, Bool accel)
 {
     ScrnInfoPtr pScrn;
     TegraPixmapPtr priv;
@@ -775,5 +782,8 @@ void TegraEXAThawPixmap(PixmapPtr pPixmap, Bool accel)
 
         if (accel)
             TegraEXAResurrectAccelPixmap(tegra, priv);
+
+        if (priv->type == TEGRA_EXA_PIXMAP_TYPE_NONE && priv->tegra_data)
+            TegraEXAAllocatePixmapDataNoFail(tegra, priv, accel);
     }
 }

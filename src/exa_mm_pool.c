@@ -24,9 +24,7 @@
 #include "driver.h"
 #include "exa_mm.h"
 
-#define ErrorMsg(fmt, args...)                                              \
-    xf86DrvMsg(-1, X_ERROR, "%s:%d/%s(): " fmt, __FILE__,                   \
-               __LINE__, __func__, ##args)
+#include "pool_alloc.c"
 
 #define TEGRA_EXA_POOL_SIZE             0x10000
 #define TEGRA_EXA_PAGE_SIZE             0x1000
@@ -34,7 +32,7 @@
 #define TEGRA_EXA_POOL_SIZE_MAX         (TEGRA_EXA_POOL_SIZE * 3 / 2)
 #define TEGRA_EXA_POOL_SIZE_MERGED_MAX  0x100000
 
-void TegraEXADestroyPool(TegraPixmapPoolPtr pool)
+static void TegraEXADestroyPool(TegraPixmapPoolPtr pool)
 {
     mem_pool_destroy(&pool->pool);
     drm_tegra_bo_unref(pool->bo);
@@ -507,7 +505,7 @@ static TegraPixmapPoolPtr TegraEXACompactPools(TegraPtr tegra, size_t size)
     return NULL;
 }
 
-void TegraEXAPoolFree(struct mem_pool_entry *pool_entry)
+static void TegraEXAPoolFree(struct mem_pool_entry *pool_entry)
 {
     TegraPixmapPoolPtr pool = TEGRA_CONTAINER_OF(pool_entry->pool,
                                                  TegraPixmapPool, pool);
@@ -581,9 +579,9 @@ success:
     return 0;
 }
 
-Bool TegraEXAAllocateDRMFromPool(TegraPtr tegra,
-                                 TegraPixmapPtr pixmap,
-                                 unsigned int size)
+static Bool TegraEXAAllocateDRMFromPool(TegraPtr tegra,
+                                        TegraPixmapPtr pixmap,
+                                        unsigned int size)
 {
     unsigned int size_masked = size & TEGRA_EXA_PAGE_MASK;
     int err;

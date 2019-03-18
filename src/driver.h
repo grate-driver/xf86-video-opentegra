@@ -115,15 +115,17 @@
 #include "host1x.h"
 #include "vblank.h"
 #include "xv.h"
-#include "tgr_3d.xml.h"
 #include "shaders/prog.h"
-#include "gr3d.h"
 #include "memcpy_vfp.h"
 
 #ifdef LONG64
 #  define FMT_CARD32 "x"
 #else
 #  define FMT_CARD32 "lx"
+#endif
+
+#ifndef __maybe_unused
+#define __maybe_unused  __attribute__((unused))
 #endif
 
 #define TEGRA_ARRAY_SIZE(x) (sizeof(x) / sizeof(*x))

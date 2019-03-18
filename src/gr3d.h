@@ -24,6 +24,8 @@
 #ifndef __TEGRA_GR3D_H
 #define __TEGRA_GR3D_H
 
+#include "tgr_3d.xml.h"
+
 #define FX10(f)	            (((int32_t)((f) * 256.0f + 0.5f)) & 0x3ff)
 #define FX10_L(f)           FX10(f)
 #define FX10_H(f)           (FX10(f) << 10)
@@ -39,18 +41,22 @@
 #define LOG2_SIZE(v)    (31 - __builtin_clz(v))
 #define IS_POW2(v)      (((v) & ((v) - 1)) == 0)
 
+static
 void TegraGR3D_UploadConstVP(struct tegra_stream *cmds, unsigned index,
                              float x, float y, float z, float w);
 
+static
 void TegraGR3D_UploadConstFP(struct tegra_stream *cmds, unsigned index,
                              uint32_t constant);
 
+static
 void TegraGR3D_SetupScissor(struct tegra_stream *cmds,
                             unsigned scissor_x,
                             unsigned scissor_y,
                             unsigned scissor_width,
                             unsigned scissor_heigth);
 
+static
 void TegraGR3D_SetupViewportBiasScale(struct tegra_stream *cmds,
                                       float viewport_x_bias,
                                       float viewport_y_bias,
@@ -59,12 +65,14 @@ void TegraGR3D_SetupViewportBiasScale(struct tegra_stream *cmds,
                                       float viewport_y_scale,
                                       float viewport_z_scale);
 
+static
 void TegraGR3D_SetupAttribute(struct tegra_stream *cmds,
                               unsigned index,
                               struct drm_tegra_bo *bo,
                               unsigned offset, unsigned type,
                               unsigned size, unsigned stride);
 
+static
 void TegraGR3D_SetupRenderTarget(struct tegra_stream *cmds,
                                  unsigned index,
                                  struct drm_tegra_bo *bo,
@@ -72,8 +80,10 @@ void TegraGR3D_SetupRenderTarget(struct tegra_stream *cmds,
                                  unsigned pixel_format,
                                  unsigned pitch);
 
+static
 void TegraGR3D_EnableRenderTargets(struct tegra_stream *cmds, uint32_t mask);
 
+static
 void TegraGR3D_SetupTextureDesc(struct tegra_stream *cmds,
                                 unsigned index,
                                 struct drm_tegra_bo *bo,
@@ -87,15 +97,21 @@ void TegraGR3D_SetupTextureDesc(struct tegra_stream *cmds,
                                 bool clamp_to_edge,
                                 bool mirrored_repeat);
 
+static
 void TegraGR3D_SetupDrawParams(struct tegra_stream *cmds,
                                unsigned primitive_type,
                                unsigned index_mode,
                                unsigned first_vtx);
 
+static
 void TegraGR3D_DrawPrimitives(struct tegra_stream *cmds,
                               unsigned first_index, unsigned count);
 
-void TegraGR3D_Initialize(struct tegra_stream *cmds,
-                          const struct shader_program *prog);
+static
+void TegraGR3D_UploadProgram(struct tegra_stream *cmds,
+                             const struct shader_program *prog);
+
+static
+void TegraGR3D_Initialize(struct tegra_stream *cmds);
 
 #endif

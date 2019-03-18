@@ -33,6 +33,8 @@ dumb_bo_create(struct drm_tegra *drm,
                const unsigned bpp)
 {
     struct dumb_bo *bo;
+    unsigned int size;
+    void *ptr;
     int ret;
 
     bo = calloc(1, sizeof(*bo));
@@ -40,15 +42,22 @@ dumb_bo_create(struct drm_tegra *drm,
         return NULL;
 
     bo->pitch = TegraEXAPitch(width, height, bpp);
+    size = bo->pitch * TegraEXAHeightHwAligned(height, bpp);
 
-    ret = drm_tegra_bo_new(&bo->bo, drm, 0,
-                           bo->pitch * TegraEXAHeightHwAligned(height, bpp));
+    ret = drm_tegra_bo_new(&bo->bo, drm, 0, size);
     if (ret)
         goto err_free;
 
     ret = drm_tegra_bo_get_handle(bo->bo, &bo->handle);
     if (ret)
         goto err_free;
+
+    if (drm_tegra_bo_map(bo->bo, &ptr) == 0) {
+        /* zero-fill framebuffer's data for consistency */
+        memset(ptr, 0, size);
+
+        drm_tegra_bo_unmap(bo->bo);
+    }
 
     return bo;
 
@@ -1458,7 +1467,7 @@ void *drmmode_crtc_map_rotate_bo(ScrnInfoPtr scrn, int crtc_num)
     xf86CrtcPtr crtc;
     int ret;
 
-    if (crtc_num > xf86_config->num_crtc)
+    if (crtc_num >= xf86_config->num_crtc)
         return NULL;
 
     crtc = xf86_config->crtc[crtc_num];
@@ -1485,7 +1494,7 @@ drmmode_crtc_get_rotate_bo(ScrnInfoPtr scrn, int crtc_num)
     drmmode_crtc_private_ptr drmmode_crtc;
     xf86CrtcPtr crtc;
 
-    if (crtc_num > xf86_config->num_crtc)
+    if (crtc_num >= xf86_config->num_crtc)
         return NULL;
 
     crtc = xf86_config->crtc[crtc_num];
