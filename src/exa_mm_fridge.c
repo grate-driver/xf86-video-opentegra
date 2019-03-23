@@ -320,7 +320,9 @@ static int TegraEXACompressPixmap(TegraEXAPtr exa, struct compression_arg *c)
 #ifdef HAVE_PNG
     if (c->compression_type == TEGRA_EXA_COMPRESSION_PNG) {
         png_alloc_size_t png_size;
-        png_image png = { 0 };
+        png_image png;
+
+        memset(&png, 0, sizeof(png));
 
         png.version             = PNG_IMAGE_VERSION;
         png.width               = c->width;

@@ -461,7 +461,7 @@ static Bool TegraEXAPrepareComposite3D(int op,
     Bool mask_tex = (pMaskPicture && pMaskPicture->pDrawable);
     Bool src_tex = (pSrcPicture && pSrcPicture->pDrawable);
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
-    TegraGR3DDrawState draw_state = { 0 };
+    TegraGR3DDrawState draw_state;
     Bool mask_tex_reduced = TRUE;
     Bool src_tex_reduced = TRUE;
     unsigned mask_sel;
@@ -474,6 +474,8 @@ static Bool TegraEXAPrepareComposite3D(int op,
 
     if (!TegraCompositeCheckTexture(op, pSrcPicture))
             return FALSE;
+
+    memset(&draw_state, 0, sizeof(draw_state));
 
     if (src_tex && TegraCompositeReducedTexture(pSrcPicture))
         src_tex = FALSE;
