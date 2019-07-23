@@ -206,7 +206,7 @@ static void mem_pool_set_canary(struct __mem_pool_entry *entry)
 #endif
 }
 
-static void mem_pool_check_canary(struct __mem_pool_entry *entry)
+inline void mem_pool_check_canary(struct __mem_pool_entry *entry)
 {
 #ifdef POOL_DEBUG_CANARY
     int i;
@@ -807,7 +807,7 @@ static __maybe_unused void mem_pool_debug_dump(struct mem_pool *pool)
 #endif
 }
 
-static __maybe_unused void mem_pool_check_entry(struct mem_pool_entry *entry)
+void mem_pool_check_entry(struct mem_pool_entry *entry)
 {
 #ifdef POOL_DEBUG
     struct mem_pool *pool = entry->pool;
