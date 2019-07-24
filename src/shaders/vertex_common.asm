@@ -39,17 +39,16 @@ EXEC
 ;
 
 EXEC
-	MOVv r4.xy**, a[2].xyzw
-	MOVs r4.**zw, c[0].wwwz
+	MOVv r1.xy**, a[2].xyzw
 ;
 
 EXEC
-	DP3v r3.**z*, r4.xyzw, c[3].xyzw
+	DP3v r3.**z*, r1.xyzw, c[3].xyzw
 	RCPs r0.**z*, c[3].wwww
 ;
 
 EXEC
-	DP3v r3.***w, r4.xyzw, c[4].xyzw
+	DP3v r3.***w, r1.xyzw, c[4].xyzw
 	RCPs r0.***w, c[4].wwww
 ;
 
