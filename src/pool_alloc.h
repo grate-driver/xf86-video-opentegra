@@ -55,6 +55,9 @@ struct mem_pool {
     struct __mem_pool_entry *entries;
 };
 
+void mem_pool_check_canary(struct __mem_pool_entry *entry);
+void mem_pool_check_entry(struct mem_pool_entry *entry);
+
 static inline int mem_pool_has_space(struct mem_pool *pool, unsigned long size)
 {
     return !(size > pool->remain || pool->bitmap_full);
