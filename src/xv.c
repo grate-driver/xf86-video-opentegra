@@ -124,6 +124,12 @@ static XF86VideoFormatRec XvFormats[] = {
 
 static XF86AttributeRec XvAttributes[] = {
     {
+        .flags      = XvGettable,
+        .min_value  = 1,
+        .max_value  = 1,
+        .name       = (char *)"XV_SUPPORTS_DISP_ROTATION",
+    },
+    {
         .flags      = XvSettable | XvGettable,
         .min_value  = 0,
         .max_value  = 0xFFFFFF,
