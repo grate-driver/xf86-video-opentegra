@@ -1181,6 +1181,16 @@ TegraXvGetDrmPlaneProperty(ScrnInfoPtr scrn,
     }
 
     ErrorMsg("Failed to get \"%s\" property\n", prop_name);
+    ErrorMsg("Available properties:\n");
+
+    for (i = 0; i < properties->count_props; i++) {
+        property = drmModeGetProperty(tegra->fd, properties->props[i]);
+        if (!property)
+            continue;
+
+        ErrorMsg("\t\"%s\"\n", property->name);
+        free(property);
+    }
 
     *prop_id = 0;
 
