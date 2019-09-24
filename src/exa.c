@@ -122,7 +122,7 @@ static void TegraEXAWaitMarker(ScreenPtr pScreen, int marker)
         tegra->scratch.marker = NULL;
 }
 
-Bool TegraEXAPrepareCPUAccess(PixmapPtr pPix, int idx, void **ptr)
+static Bool TegraEXAPrepareCPUAccess(PixmapPtr pPix, int idx, void **ptr)
 {
     TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pPix);
     int err;
