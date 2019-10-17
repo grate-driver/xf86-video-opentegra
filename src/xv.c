@@ -124,6 +124,12 @@ static XF86VideoFormatRec XvFormats[] = {
 
 static XF86AttributeRec XvAttributes[] = {
     {
+        .flags      = XvGettable,
+        .min_value  = 1,
+        .max_value  = 1,
+        .name       = (char *)"XV_SUPPORTS_DISP_ROTATION",
+    },
+    {
         .flags      = XvSettable | XvGettable,
         .min_value  = 0,
         .max_value  = 0xFFFFFF,
@@ -1181,6 +1187,16 @@ TegraXvGetDrmPlaneProperty(ScrnInfoPtr scrn,
     }
 
     ErrorMsg("Failed to get \"%s\" property\n", prop_name);
+    ErrorMsg("Available properties:\n");
+
+    for (i = 0; i < properties->count_props; i++) {
+        property = drmModeGetProperty(tegra->fd, properties->props[i]);
+        if (!property)
+            continue;
+
+        ErrorMsg("\t\"%s\"\n", property->name);
+        free(property);
+    }
 
     *prop_id = 0;
 
