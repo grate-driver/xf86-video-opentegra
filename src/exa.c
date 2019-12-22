@@ -220,10 +220,12 @@ static void TegraEXATrimHeap(TegraEXAPtr exa)
      * a big amounts of wasted memory due to high fragmentation. Hence
      * manually enforce trimming of the heap when it makes sense.
      */
+#ifdef __GLIBC__
     if (exa->release_count > TEGRA_MALLOC_TRIM_THRESHOLD) {
         exa->release_count = 0;
         malloc_trim(0);
     }
+#endif
 }
 
 static void TegraEXAReleasePixmapData(TegraPtr tegra, TegraPixmapPtr priv)
@@ -289,7 +291,6 @@ static void TegraEXAReleasePixmapData(TegraPtr tegra, TegraPixmapPtr priv)
 
 out_final:
     priv->type = TEGRA_EXA_PIXMAP_TYPE_NONE;
-
     TegraEXATrimHeap(exa);
 }
 
