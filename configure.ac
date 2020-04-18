@@ -80,7 +80,7 @@ AM_CONDITIONAL(HAVE_XEXTPROTO_71, [ test "$HAVE_XEXTPROTO_71" = "yes" ])
 
 AC_HEADER_STDC
 
-PKG_CHECK_MODULES(DRM, [libdrm_tegra >= 2.4.81])
+PKG_CHECK_MODULES(DRM, [libdrm >= 2.4.81])
 AM_CONDITIONAL(DRM, test "x$DRM" = xyes)
 
 PKG_CHECK_MODULES(UDEV, [libudev], [udev=yes], [udev=no])
@@ -107,13 +107,46 @@ SAVE_CFLAGS=$CFLAGS
 SAVE_LIBS=$LIBS
 CFLAGS=$DRM_CFLAGS
 LIBS=$DRM_LIBS
-AC_CHECK_FUNCS([drm_tegra_bo_forbid_caching])
+
+AC_CHECK_FUNCS(
+	[drmSyncobjCreate],
+	[
+		AC_MSG_RESULT([yes])
+		AC_DEFINE(HAVE_LIBDRM_SYNCOBJ_SUPPORT, [], [Does libdrm have drmSyncobjCreate])
+	],
+	[
+		AC_MSG_RESULT([no])
+	])
+
 CFLAGS=$SAVE_CFLAGS
 LIBS=$SAVE_LIBS
 
 DRIVER_NAME=opentegra
 AC_SUBST([DRIVER_NAME])
 AC_SUBST([moduledir])
+
+AC_ARG_ENABLE(valgrind,
+	      [AS_HELP_STRING([--enable-valgrind],
+	      [Build libdrm with  valgrind support (default: auto)])],
+	      [VALGRIND=$enableval], [VALGRIND=auto])
+if test "x$VALGRIND" != xno; then
+	PKG_CHECK_MODULES(VALGRIND, [valgrind], [have_valgrind=yes], [have_valgrind=no])
+fi
+AC_MSG_CHECKING([whether to enable Valgrind support])
+if test "x$VALGRIND" = xauto; then
+	VALGRIND="$have_valgrind"
+fi
+
+if test "x$VALGRIND" = "xyes"; then
+	if ! test "x$have_valgrind" = xyes; then
+		AC_MSG_ERROR([Valgrind support required but not present])
+	fi
+	AC_DEFINE([HAVE_VALGRIND], 1, [Use valgrind intrinsics to suppress false warnings])
+else
+	AC_DEFINE([HAVE_VALGRIND], 0)
+fi
+
+AC_MSG_RESULT([$VALGRIND])
 
 AC_ARG_ENABLE([debug],
 	      [AS_HELP_STRING([--enable-debug],

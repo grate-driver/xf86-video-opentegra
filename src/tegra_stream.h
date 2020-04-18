@@ -30,7 +30,13 @@
 
 #include <stdbool.h>
 #include <stdint.h>
-#include <libdrm/tegra.h>
+#include <stdio.h>
+
+#include "host1x.h"
+#include "opentegra_lib.h"
+
+#define TGR_STRM_ERROR_MSG(fmt, args...) \
+    fprintf(stderr, "%s:%d/%s(): " fmt, __FILE__, __LINE__, __func__, ##args)
 
 struct _TegraRec;
 
@@ -41,27 +47,6 @@ enum tegra_stream_status {
     TEGRADRM_STREAM_READY,
 };
 
-struct tegra_fence {
-    int drm_fd;
-    uint32_t syncobj_handle;
-    void *opaque;
-    int refcnt;
-    bool gr2d;
-};
-
-struct tegra_stream {
-    enum tegra_stream_status status;
-
-    int drm_fd;
-    struct drm_tegra *drm;
-    struct drm_tegra_job_v2 *job;
-
-    struct tegra_fence *last_fence;
-    uint32_t class_id;
-
-    bool op_done_synced;
-};
-
 struct tegra_reloc {
     const void *addr;
     struct drm_tegra_bo *bo;
@@ -69,31 +54,226 @@ struct tegra_reloc {
     unsigned var_offset;
 };
 
+struct tegra_fence {
+    void *opaque;
+    int refcnt;
+    bool gr2d;
+
+    bool (*wait_fence)(struct tegra_fence *f);
+    void (*free_fence)(struct tegra_fence *f);
+};
+
+struct tegra_stream {
+    enum tegra_stream_status status;
+    struct tegra_fence *last_fence;
+    bool op_done_synced;
+    uint32_t **buf_ptr;
+    uint32_t class_id;
+
+    void (*destroy)(struct tegra_stream *stream);
+    int (*begin)(struct tegra_stream *stream,
+                 struct drm_tegra_channel *channel);
+    int (*end)(struct tegra_stream *stream);
+    int (*cleanup)(struct tegra_stream *stream);
+    int (*flush)(struct tegra_stream *stream);
+    struct tegra_fence * (*submit)(struct tegra_stream *stream, bool gr2d);
+    int (*push_reloc)(struct tegra_stream *stream,
+                      struct drm_tegra_bo *bo,
+                      unsigned offset);
+    int (*push_words)(struct tegra_stream *stream, const void *addr,
+                      unsigned words, int num_relocs, ...);
+    int (*prep)(struct tegra_stream *stream, uint32_t words);
+    int (*sync)(struct tegra_stream *stream,
+                enum drm_tegra_syncpt_cond cond,
+                bool keep_class);
+};
+
 /* Stream operations */
-int tegra_stream_create(struct tegra_stream *stream, struct _TegraRec *tegra);
-void tegra_stream_destroy(struct tegra_stream *stream);
-int tegra_stream_begin(struct tegra_stream *stream);
-int tegra_stream_end(struct tegra_stream *stream);
-int tegra_stream_cleanup(struct tegra_stream *stream);
-int tegra_stream_flush(struct tegra_stream *stream);
-struct tegra_fence * tegra_stream_submit(struct tegra_stream *stream, bool gr2d);
-struct tegra_fence * tegra_stream_ref_fence(struct tegra_fence *f, void *opaque);
-struct tegra_fence * tegra_stream_get_last_fence(struct tegra_stream *stream);
-struct tegra_fence * tegra_stream_create_fence(struct tegra_stream *stream,
-                                               bool gr2d);
-bool tegra_stream_wait_fence(struct tegra_fence *f);
-void tegra_stream_put_fence(struct tegra_fence *f);
-int tegra_stream_push_setclass(struct tegra_stream *stream, unsigned class_id);
-int tegra_stream_push_reloc(struct tegra_stream *stream,
-                            struct drm_tegra_bo *bo, unsigned offset);
-struct tegra_reloc tegra_reloc(const void *var_ptr, struct drm_tegra_bo *bo,
-                               uint32_t offset, uint32_t var_offset);
-int tegra_stream_push_words(struct tegra_stream *stream, const void *addr,
-                            unsigned words, int num_relocs, ...);
-int tegra_stream_prep(struct tegra_stream *stream, uint32_t words);
-int tegra_stream_sync(struct tegra_stream *stream,
-                      enum drm_tegra_syncpt_cond cond,
-                      bool keep_class);
+int tegra_stream_create_v1(struct tegra_stream **stream,
+                           struct _TegraRec *tegra);
+
+int grate_stream_create_v2(struct tegra_stream **stream,
+                           struct _TegraRec *tegra);
+
+static inline int tegra_stream_create(struct tegra_stream **stream,
+                                      struct _TegraRec *tegra)
+{
+    int ret;
+
+    ret = grate_stream_create_v2(stream, tegra);
+    if (ret)
+        ret = tegra_stream_create_v1(stream, tegra);
+
+    return ret;
+}
+
+static inline void tegra_stream_destroy(struct tegra_stream *stream)
+{
+    if (!stream)
+        return;
+
+    return stream->destroy(stream);
+}
+
+static inline int tegra_stream_begin(struct tegra_stream *stream,
+                                     struct drm_tegra_channel *channel)
+{
+    if (!(stream && stream->status == TEGRADRM_STREAM_FREE)) {
+        TGR_STRM_ERROR_MSG("Stream status isn't FREE\n");
+        return -1;
+    }
+
+    return stream->begin(stream, channel);
+}
+
+static inline int tegra_stream_end(struct tegra_stream *stream)
+{
+    int ret;
+
+    if (!(stream && stream->status == TEGRADRM_STREAM_CONSTRUCT)) {
+        TGR_STRM_ERROR_MSG("Stream status isn't CONSTRUCT\n");
+        return -1;
+    }
+
+    ret = stream->end(stream);
+    stream->buf_ptr = NULL;
+
+    return ret;
+}
+
+static inline int tegra_stream_cleanup(struct tegra_stream *stream)
+{
+    int ret;
+
+    if (!stream)
+        return -1;
+
+    ret = stream->cleanup(stream);
+    stream->buf_ptr = NULL;
+
+    return ret;
+}
+
+static inline int tegra_stream_flush(struct tegra_stream *stream)
+{
+    if (!stream)
+        return -1;
+
+    return stream->flush(stream);
+}
+
+static inline struct tegra_fence *
+tegra_stream_submit(struct tegra_stream *stream, bool gr2d)
+{
+    if (!stream)
+        return NULL;
+
+    return stream->submit(stream, gr2d);
+}
+
+static inline struct tegra_fence *
+tegra_stream_ref_fence(struct tegra_fence *f, void *opaque)
+{
+    if (f) {
+        f->opaque = opaque;
+        f->refcnt++;
+    }
+
+    return f;
+}
+
+static inline struct tegra_fence *
+tegra_stream_get_last_fence(struct tegra_stream *stream)
+{
+    if (stream->last_fence)
+        return tegra_stream_ref_fence(stream->last_fence,
+                                      stream->last_fence->opaque);
+
+    return NULL;
+}
+
+static inline bool tegra_stream_wait_fence(struct tegra_fence *f)
+{
+    if (f)
+        return f->wait_fence(f);
+
+    return false;
+}
+
+static inline void tegra_stream_put_fence(struct tegra_fence *f)
+{
+    if (f) {
+        if (f->refcnt < 0) {
+            TGR_STRM_ERROR_MSG("BUG: fence refcount underflow\n");
+            return;
+        }
+
+        if (f->refcnt > 10) {
+            TGR_STRM_ERROR_MSG("BUG: fence refcount overflow\n");
+            return;
+        }
+
+        if (--f->refcnt == -1)
+            f->free_fence(f);
+    }
+}
+
+static inline int
+tegra_stream_push_reloc(struct tegra_stream *stream,
+                        struct drm_tegra_bo *bo,
+                        unsigned offset)
+{
+    if (!(stream && stream->status == TEGRADRM_STREAM_CONSTRUCT)) {
+        TGR_STRM_ERROR_MSG("Stream status isn't CONSTRUCT\n");
+        return -1;
+    }
+
+    return stream->push_reloc(stream, bo, offset);
+}
+
+static inline int tegra_stream_push_words(struct tegra_stream *stream,
+                                          const void *addr,
+                                          unsigned words,
+                                          int num_relocs,
+                                          ...)
+{
+    va_list args;
+    int ret;
+
+    if (!(stream && stream->status == TEGRADRM_STREAM_CONSTRUCT)) {
+        TGR_STRM_ERROR_MSG("Stream status isn't CONSTRUCT\n");
+        return -1;
+    }
+
+    va_start(args, num_relocs);
+    ret = stream->push_words(stream, addr, words, num_relocs, args);
+    va_end(args);
+
+    return ret;
+}
+
+static inline int
+tegra_stream_prep(struct tegra_stream *stream, uint32_t words)
+{
+    if (!(stream && stream->status == TEGRADRM_STREAM_CONSTRUCT)) {
+        TGR_STRM_ERROR_MSG("Stream status isn't CONSTRUCT\n");
+        return -1;
+    }
+
+    return stream->prep(stream, words);
+}
+
+static inline int tegra_stream_sync(struct tegra_stream *stream,
+                                    enum drm_tegra_syncpt_cond cond,
+                                    bool keep_class)
+{
+    if (!(stream && stream->status == TEGRADRM_STREAM_CONSTRUCT)) {
+        TGR_STRM_ERROR_MSG("Stream status isn't CONSTRUCT\n");
+        return -1;
+    }
+
+    return stream->sync(stream, cond, keep_class);
+}
 
 static inline int
 tegra_stream_push(struct tegra_stream *stream, uint32_t word)
@@ -101,7 +281,7 @@ tegra_stream_push(struct tegra_stream *stream, uint32_t word)
     if (!(stream && stream->status == TEGRADRM_STREAM_CONSTRUCT))
         return -1;
 
-    *stream->job->ptr++ = word;
+    *(*stream->buf_ptr)++ = word;
     stream->op_done_synced = false;
 
     return 0;
@@ -120,5 +300,28 @@ tegra_stream_pushf(struct tegra_stream *stream, float f)
     return tegra_stream_push(stream, value.u);
 }
 
+static inline int
+tegra_stream_push_setclass(struct tegra_stream *stream, unsigned class_id)
+{
+    int result;
+
+    if (stream->class_id == class_id)
+        return 0;
+
+    result = tegra_stream_push(stream, HOST1X_OPCODE_SETCL(0, class_id, 0));
+
+    if (result == 0)
+        stream->class_id = class_id;
+
+    return result;
+}
+
+static inline struct tegra_reloc
+tegra_reloc(const void *var_ptr, struct drm_tegra_bo *bo,
+            uint32_t offset, uint32_t var_offset)
+{
+    struct tegra_reloc reloc = {var_ptr, bo, offset, var_offset};
+    return reloc;
+}
 
 #endif

@@ -872,7 +872,7 @@ static void TegraEXADoneComposite3D(PixmapPtr pDst)
     struct tegra_fence *fence = NULL;
     TegraPixmapPtr priv;
 
-    if (tegra->scratch.ops && tegra->cmds.status == TEGRADRM_STREAM_CONSTRUCT) {
+    if (tegra->scratch.ops && tegra->cmds->status == TEGRADRM_STREAM_CONSTRUCT) {
         if (tegra->scratch.pSrc) {
             priv = exaGetPixmapDriverPrivate(tegra->scratch.pSrc);
 

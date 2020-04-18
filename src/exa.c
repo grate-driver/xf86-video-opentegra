@@ -91,7 +91,7 @@ static int TegraEXAMarkSync(ScreenPtr pScreen)
     } data;
 
     /* on 32bit ARM size of integer is equal to size of pointer */
-    data.fence = tegra_stream_get_last_fence(&tegra->cmds);
+    data.fence = tegra_stream_get_last_fence(tegra->cmds);
 
     /*
      * EXA may take marker multiple times, but it waits only for the
@@ -740,7 +740,7 @@ Bool TegraEXAScreenInit(ScreenPtr pScreen)
 release_mm:
     TegraEXAReleaseMM(tegra, priv);
 destroy_stream:
-    tegra_stream_destroy(&priv->cmds);
+    tegra_stream_destroy(priv->cmds);
 close_gr3d:
     drm_tegra_channel_close(priv->gr3d);
 close_gr2d:
@@ -766,7 +766,7 @@ void TegraEXAScreenExit(ScreenPtr pScreen)
         free(priv->driver);
 
         TegraEXAReleaseMM(tegra, priv);
-        tegra_stream_destroy(&priv->cmds);
+        tegra_stream_destroy(priv->cmds);
         drm_tegra_channel_close(priv->gr2d);
         drm_tegra_channel_close(priv->gr3d);
         free(priv);

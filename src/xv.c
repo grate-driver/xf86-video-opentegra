@@ -156,7 +156,7 @@ typedef struct TegraVideo {
     drm_overlay_fb *fb;
 
     struct drm_tegra_channel *gr2d;
-    struct tegra_stream cmds;
+    struct tegra_stream *cmds;
 
     uint8_t passthrough_data[PASSTHROUGH_DATA_SIZE_V2];
     int passthrough;
@@ -397,7 +397,7 @@ static Bool TegraVideoOpenGPU(TegraVideoPtr priv, ScrnInfoPtr scrn)
 static void TegraVideoCloseGPU(TegraVideoPtr priv)
 {
     if (priv->gr2d) {
-        tegra_stream_destroy(&priv->cmds);
+        tegra_stream_destroy(priv->cmds);
         drm_tegra_channel_close(priv->gr2d);
         priv->gr2d = NULL;
     }
@@ -1188,39 +1188,39 @@ static Bool TegraVideoCopyRotatedPlane(TegraVideoPtr priv,
         return FALSE;
     }
 
-    err = tegra_stream_begin(&priv->cmds);
+    err = tegra_stream_begin(priv->cmds, priv->gr2d);
     if (err)
         return FALSE;
 
-    tegra_stream_prep(&priv->cmds, 16);
+    tegra_stream_prep(priv->cmds, 16);
 
-    tegra_stream_push_setclass(&priv->cmds, HOST1X_CLASS_GR2D);
+    tegra_stream_push_setclass(priv->cmds, HOST1X_CLASS_GR2D);
 
-    tegra_stream_push(&priv->cmds, HOST1X_OPCODE_MASK(0x9, 0x9));
-    tegra_stream_push(&priv->cmds, 0x00000046); /* trigger 0 */
-    tegra_stream_push(&priv->cmds, 0x00000000); /* cmdsel */
+    tegra_stream_push(priv->cmds, HOST1X_OPCODE_MASK(0x9, 0x9));
+    tegra_stream_push(priv->cmds, 0x00000046); /* trigger 0 */
+    tegra_stream_push(priv->cmds, 0x00000000); /* cmdsel */
 
-    tegra_stream_push(&priv->cmds, HOST1X_OPCODE_MASK(0x01e, 0x3));
-    tegra_stream_push(&priv->cmds, /* controlsecond*/
+    tegra_stream_push(priv->cmds, HOST1X_OPCODE_MASK(0x01e, 0x3));
+    tegra_stream_push(priv->cmds, /* controlsecond*/
                       (fr_type << 26) | (1 << 24));
-    tegra_stream_push(&priv->cmds, /* controlmain */
+    tegra_stream_push(priv->cmds, /* controlmain */
                       (1 << 29) | (1 << 20) | ((bpp >> 4) << 16));
 
-    tegra_stream_push(&priv->cmds, HOST1X_OPCODE_MASK(0x2b, 0x1149));
-    tegra_stream_push_reloc(&priv->cmds, dst_bo, offset_dst);
-    tegra_stream_push(&priv->cmds, pitch_dst);
-    tegra_stream_push_reloc(&priv->cmds, src_bo, offset_src);
-    tegra_stream_push(&priv->cmds, pitch_src);
-    tegra_stream_push(&priv->cmds, src_height << 16 | src_width);
+    tegra_stream_push(priv->cmds, HOST1X_OPCODE_MASK(0x2b, 0x1149));
+    tegra_stream_push_reloc(priv->cmds, dst_bo, offset_dst);
+    tegra_stream_push(priv->cmds, pitch_dst);
+    tegra_stream_push_reloc(priv->cmds, src_bo, offset_src);
+    tegra_stream_push(priv->cmds, pitch_src);
+    tegra_stream_push(priv->cmds, src_height << 16 | src_width);
 
-    tegra_stream_push(&priv->cmds, HOST1X_OPCODE_NONINCR(0x046, 1));
-    tegra_stream_push(&priv->cmds, 0x00000000); /* tilemode */
+    tegra_stream_push(priv->cmds, HOST1X_OPCODE_NONINCR(0x046, 1));
+    tegra_stream_push(priv->cmds, 0x00000000); /* tilemode */
 
-    tegra_stream_sync(&priv->cmds, DRM_TEGRA_SYNCPT_COND_OP_DONE, false);
+    tegra_stream_sync(priv->cmds, DRM_TEGRA_SYNCPT_COND_OP_DONE, false);
 
-    tegra_stream_end(&priv->cmds);
+    tegra_stream_end(priv->cmds);
 
-    fence = tegra_stream_submit(&priv->cmds, true);
+    fence = tegra_stream_submit(priv->cmds, true);
     if (!fence)
         return FALSE;
 
@@ -1332,7 +1332,7 @@ static Bool TegraVideoOverlayUpdateRotatedFb(TegraVideoPtr priv,
                                     rotation))
         goto err_destroy_fb;
 
-    tegra_stream_flush(&priv->cmds);
+    tegra_stream_flush(priv->cmds);
 
 done:
     TegraVideoDestroyFramebuffer(scrn, &overlay->old_fb_rotated);
@@ -1343,7 +1343,7 @@ done:
     return TRUE;
 
 err_destroy_fb:
-    tegra_stream_flush(&priv->cmds);
+    tegra_stream_flush(priv->cmds);
 
     TegraVideoDestroyFramebuffer(scrn, &fb_rotated);
 

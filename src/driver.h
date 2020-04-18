@@ -62,7 +62,6 @@
 
 #include <libdrm/drm.h>
 #include <libdrm/drm_fourcc.h>
-#include <libdrm/tegra_drm.h>
 
 #include <X11/extensions/Xv.h>
 #include <X11/extensions/randr.h>
@@ -104,7 +103,8 @@
 #include <xf86drm.h>
 #include <xf86drmMode.h>
 
-#include <libdrm/tegra.h>
+#include "opentegra_drm.h"
+#include "opentegra_lib.h"
 
 #include "common_helpers.h"
 #include "compat-api.h"
