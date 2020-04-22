@@ -24,8 +24,10 @@
 # _ladir passes a dummy rpath to libtool so the thing will actually link
 # TODO: -nostdlib/-Bstatic/-lgcc platform magic, not installing the .a, etc.
 
+AUTOMAKE_OPTIONS=subdir-objects
+
 AM_CFLAGS = $(XORG_CFLAGS) $(DRM_CFLAGS) $(UDEV_CFLAGS) $(LZ4_CFLAGS) \
-	$(CWARNFLAGS) $(JPEG_CFLAGS) $(PNG_CFLAGS)
+	$(CWARNFLAGS) $(JPEG_CFLAGS) $(PNG_CFLAGS) $(VALGRIND_CFLAGS)
 
 opentegra_drv_la_LTLIBRARIES = opentegra_drv.la
 opentegra_drv_la_LDFLAGS = -module -avoid-version
@@ -35,6 +37,7 @@ opentegra_drv_ladir = @moduledir@/drivers
 
 # enable fp16 for the 3d attributes
 opentegra_drv_la_CFLAGS = $(AM_CFLAGS) $(DEFINES) -mfp16-format=ieee
+opentegra_drv_la_CFLAGS +=-I$(srcdir)/tegradrm -pthread
 
 opentegra_drv_la_DEPENDENCIES = \
 	shaders.h \
@@ -67,13 +70,28 @@ opentegra_drv_la_SOURCES = \
 	exa.h \
 	vblank.c \
 	vblank.h \
-	tegra_stream.c \
+	tegra_stream_v1.c \
+	tegra_stream_v2.c \
 	tegra_stream.h \
 	shaders/prog.h \
 	shaders.h \
 	tgr_3d.xml.h \
 	gr3d.h \
 	memcpy_vfp.c
+
+opentegra_drv_la_SOURCES += \
+	tegradrm/atomic.h \
+	tegradrm/lists.h \
+	tegradrm/opentegra_drm.h \
+	tegradrm/opentegra_lib.h \
+	tegradrm/private.h \
+	tegradrm/tegra.c \
+	tegradrm/tegra_bo_cache.c \
+	tegradrm/uapi_v1/channel.c \
+	tegradrm/uapi_v1/fence.c \
+	tegradrm/uapi_v1/job.c \
+	tegradrm/uapi_v1/pushbuf.c \
+	tegradrm/uapi_v2/job.c
 
 shaders_dir := $(filter %/, $(wildcard $(srcdir)/shaders/*/*/))
 shaders_gen := $(addsuffix .bin.h, $(shaders_dir:%/=%))

@@ -523,7 +523,7 @@ static Bool TegraGR3DStateAppend(TegraGR3DStatePtr state, TegraEXAPtr tegra,
                                  TegraGR3DDrawState *draw_state)
 {
     struct tegra_exa_scratch *scratch = &tegra->scratch;
-    struct tegra_stream *cmds = &tegra->cmds;
+    struct tegra_stream *cmds = tegra->cmds;
     TegraPixmapPtr priv;
     int err;
 

@@ -168,7 +168,7 @@ typedef struct {
 typedef struct _TegraEXARec{
     struct drm_tegra_channel *gr2d;
     struct drm_tegra_channel *gr3d;
-    struct tegra_stream cmds;
+    struct tegra_stream *cmds;
     TegraEXAScratch scratch;
     struct xorg_list mem_pools;
     time_t pool_slow_compact_time;

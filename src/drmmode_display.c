@@ -357,6 +357,9 @@ drmmode_load_cursor_argb_check(xf86CrtcPtr crtc, CARD32 *image)
     uint32_t *ptr;
     static Bool first_time = TRUE;
 
+    if (tegra->xv_blocks_hw_cursor)
+        return FALSE;
+
     /* cursor should be mapped already */
     ptr = (uint32_t *) (drmmode_crtc->cursor_bo->ptr);
 

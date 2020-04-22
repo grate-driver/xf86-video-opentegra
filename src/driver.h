@@ -62,7 +62,6 @@
 
 #include <libdrm/drm.h>
 #include <libdrm/drm_fourcc.h>
-#include <libdrm/tegra_drm.h>
 
 #include <X11/extensions/Xv.h>
 #include <X11/extensions/randr.h>
@@ -104,7 +103,8 @@
 #include <xf86drm.h>
 #include <xf86drmMode.h>
 
-#include <libdrm/tegra.h>
+#include "opentegra_drm.h"
+#include "opentegra_lib.h"
 
 #include "common_helpers.h"
 #include "compat-api.h"
@@ -185,6 +185,8 @@ typedef struct _TegraRec
 
     struct drm_tegra *drm;
 
+    Bool xv_blocks_hw_cursor;
+
     Bool exa_compress_png;
     int exa_compress_jpeg_quality;
     Bool exa_compress_jpeg;
@@ -198,6 +200,7 @@ typedef struct _TegraRec
 #define TegraPTR(p) ((TegraPtr)((p)->driverPrivate))
 
 Bool TegraXvScreenInit(ScreenPtr pScreen);
+void TegraXvScreenExit(ScreenPtr pScreen);
 
 Bool TegraEXAScreenInit(ScreenPtr pScreen);
 void TegraEXAScreenExit(ScreenPtr pScreen);

@@ -110,33 +110,33 @@ static Bool TegraEXAPrepareSolid(PixmapPtr pPixmap, int op, Pixel planemask,
         return FALSE;
     }
 
-    err = tegra_stream_begin(&tegra->cmds, tegra->gr2d);
+    err = tegra_stream_begin(tegra->cmds, tegra->gr2d);
     if (err < 0)
             return FALSE;
 
-    tegra_stream_prep(&tegra->cmds, 15);
-    tegra_stream_push_setclass(&tegra->cmds, HOST1X_CLASS_GR2D);
-    tegra_stream_push(&tegra->cmds, HOST1X_OPCODE_MASK(0x9, 0x9));
-    tegra_stream_push(&tegra->cmds, 0x0000003a); /* trigger */
-    tegra_stream_push(&tegra->cmds, 0x00000000); /* cmdsel */
-    tegra_stream_push(&tegra->cmds, HOST1X_OPCODE_NONINCR(0x35, 1));
-    tegra_stream_push(&tegra->cmds, color);
-    tegra_stream_push(&tegra->cmds, HOST1X_OPCODE_MASK(0x1e, 0x7));
-    tegra_stream_push(&tegra->cmds, 0x00000000); /* controlsecond */
-    tegra_stream_push(&tegra->cmds, /* controlmain */
+    tegra_stream_prep(tegra->cmds, 15);
+    tegra_stream_push_setclass(tegra->cmds, HOST1X_CLASS_GR2D);
+    tegra_stream_push(tegra->cmds, HOST1X_OPCODE_MASK(0x9, 0x9));
+    tegra_stream_push(tegra->cmds, 0x0000003a); /* trigger */
+    tegra_stream_push(tegra->cmds, 0x00000000); /* cmdsel */
+    tegra_stream_push(tegra->cmds, HOST1X_OPCODE_NONINCR(0x35, 1));
+    tegra_stream_push(tegra->cmds, color);
+    tegra_stream_push(tegra->cmds, HOST1X_OPCODE_MASK(0x1e, 0x7));
+    tegra_stream_push(tegra->cmds, 0x00000000); /* controlsecond */
+    tegra_stream_push(tegra->cmds, /* controlmain */
                       ((bpp >> 4) << 16) | /* bytes per pixel */
                       (1 << 6) |           /* fill mode */
                       (1 << 2)             /* turbo-fill */);
-    tegra_stream_push(&tegra->cmds, rop3[op]); /* ropfade */
-    tegra_stream_push(&tegra->cmds, HOST1X_OPCODE_MASK(0x2b, 0x9));
-    tegra_stream_push_reloc(&tegra->cmds, TegraEXAPixmapBO(pPixmap),
+    tegra_stream_push(tegra->cmds, rop3[op]); /* ropfade */
+    tegra_stream_push(tegra->cmds, HOST1X_OPCODE_MASK(0x2b, 0x9));
+    tegra_stream_push_reloc(tegra->cmds, TegraEXAPixmapBO(pPixmap),
                             TegraEXAPixmapOffset(pPixmap));
-    tegra_stream_push(&tegra->cmds, exaGetPixmapPitch(pPixmap));
-    tegra_stream_push(&tegra->cmds, HOST1X_OPCODE_NONINCR(0x46, 1));
-    tegra_stream_push(&tegra->cmds, 0); /* non-tiled */
+    tegra_stream_push(tegra->cmds, exaGetPixmapPitch(pPixmap));
+    tegra_stream_push(tegra->cmds, HOST1X_OPCODE_NONINCR(0x46, 1));
+    tegra_stream_push(tegra->cmds, 0); /* non-tiled */
 
-    if (tegra->cmds.status != TEGRADRM_STREAM_CONSTRUCT) {
-        tegra_stream_cleanup(&tegra->cmds);
+    if (tegra->cmds->status != TEGRADRM_STREAM_CONSTRUCT) {
+        tegra_stream_cleanup(tegra->cmds);
         return FALSE;
     }
 
@@ -162,11 +162,11 @@ static void TegraEXASolid(PixmapPtr pPixmap, int px1, int py1, int px2, int py2)
         pPixmap->drawable.height == 1)
             return;
 
-    tegra_stream_prep(&tegra->cmds, 3);
-    tegra_stream_push(&tegra->cmds, HOST1X_OPCODE_MASK(0x38, 0x5));
-    tegra_stream_push(&tegra->cmds, (py2 - py1) << 16 | (px2 - px1));
-    tegra_stream_push(&tegra->cmds, py1 << 16 | px1);
-    tegra_stream_sync(&tegra->cmds, DRM_TEGRA_SYNCPT_COND_OP_DONE);
+    tegra_stream_prep(tegra->cmds, 3);
+    tegra_stream_push(tegra->cmds, HOST1X_OPCODE_MASK(0x38, 0x5));
+    tegra_stream_push(tegra->cmds, (py2 - py1) << 16 | (px2 - px1));
+    tegra_stream_push(tegra->cmds, py1 << 16 | px1);
+    tegra_stream_sync(tegra->cmds, DRM_TEGRA_SYNCPT_COND_OP_DONE, true);
 
     tegra->scratch.ops++;
 }
@@ -178,18 +178,18 @@ static void TegraEXADoneSolid(PixmapPtr pPixmap)
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
     struct tegra_fence *fence = NULL;
 
-    if (tegra->scratch.ops && tegra->cmds.status == TEGRADRM_STREAM_CONSTRUCT) {
+    if (tegra->scratch.ops && tegra->cmds->status == TEGRADRM_STREAM_CONSTRUCT) {
         if (priv->fence_write && !priv->fence_write->gr2d)
             TegraEXAWaitFence(priv->fence_write);
 
         if (priv->fence_read && !priv->fence_read->gr2d)
             TegraEXAWaitFence(priv->fence_read);
 
-        tegra_stream_end(&tegra->cmds);
+        tegra_stream_end(tegra->cmds);
 #if PROFILE
-        tegra_stream_flush(&tegra->cmds);
+        tegra_stream_flush(tegra->cmds);
 #else
-        fence = tegra_stream_submit(&tegra->cmds, true);
+        fence = tegra_stream_submit(tegra->cmds, true);
 #endif
 
         if (priv->fence_write != fence) {
@@ -197,7 +197,7 @@ static void TegraEXADoneSolid(PixmapPtr pPixmap)
             priv->fence_write = tegra_stream_ref_fence(fence, &tegra->scratch);
         }
     } else {
-        tegra_stream_cleanup(&tegra->cmds);
+        tegra_stream_cleanup(tegra->cmds);
     }
 
     TegraEXACoolPixmap(pPixmap, TRUE);
@@ -291,47 +291,47 @@ static Bool TegraEXAPrepareCopyExt(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
              pDstPixmap->drawable.bitsPerPixel,
              pDstPixmap->devKind);
 
-    err = tegra_stream_begin(&tegra->cmds, tegra->gr2d);
+    err = tegra_stream_begin(tegra->cmds, tegra->gr2d);
     if (err < 0)
         return FALSE;
 
-    tegra_stream_prep(&tegra->cmds, orientation == TEGRA2D_IDENTITY ? 14 : 12);
-    tegra_stream_push_setclass(&tegra->cmds, HOST1X_CLASS_GR2D);
-    tegra_stream_push(&tegra->cmds, HOST1X_OPCODE_MASK(0x9, 0x9));
-    tegra_stream_push(&tegra->cmds, orientation == TEGRA2D_IDENTITY ?
+    tegra_stream_prep(tegra->cmds, orientation == TEGRA2D_IDENTITY ? 14 : 12);
+    tegra_stream_push_setclass(tegra->cmds, HOST1X_CLASS_GR2D);
+    tegra_stream_push(tegra->cmds, HOST1X_OPCODE_MASK(0x9, 0x9));
+    tegra_stream_push(tegra->cmds, orientation == TEGRA2D_IDENTITY ?
                                     0x0000003a : 0x00000037 ); /* trigger */
-    tegra_stream_push(&tegra->cmds, 0x00000000); /* cmdsel */
-    tegra_stream_push(&tegra->cmds, HOST1X_OPCODE_MASK(0x01e, 0x5));
-    tegra_stream_push(&tegra->cmds, /* controlsecond */
+    tegra_stream_push(tegra->cmds, 0x00000000); /* cmdsel */
+    tegra_stream_push(tegra->cmds, HOST1X_OPCODE_MASK(0x01e, 0x5));
+    tegra_stream_push(tegra->cmds, /* controlsecond */
                       orientation << 26 | fr_mode << 24);
-    tegra_stream_push(&tegra->cmds, rop3[op]); /* ropfade */
-    tegra_stream_push(&tegra->cmds, HOST1X_OPCODE_NONINCR(0x046, 1));
+    tegra_stream_push(tegra->cmds, rop3[op]); /* ropfade */
+    tegra_stream_push(tegra->cmds, HOST1X_OPCODE_NONINCR(0x046, 1));
     /*
      * [20:20] destination write tile mode (0: linear, 1: tiled)
      * [ 0: 0] tile mode Y/RGB (0: linear, 1: tiled)
      */
-    tegra_stream_push(&tegra->cmds, 0x00000000); /* tilemode */
+    tegra_stream_push(tegra->cmds, 0x00000000); /* tilemode */
 
     if (orientation == TEGRA2D_IDENTITY) {
-        tegra_stream_push(&tegra->cmds, HOST1X_OPCODE_MASK(0x2b, 0x149));
+        tegra_stream_push(tegra->cmds, HOST1X_OPCODE_MASK(0x2b, 0x149));
 
-        tegra_stream_push_reloc(&tegra->cmds, TegraEXAPixmapBO(pDstPixmap),
+        tegra_stream_push_reloc(tegra->cmds, TegraEXAPixmapBO(pDstPixmap),
                                 TegraEXAPixmapOffset(pDstPixmap));
-        tegra_stream_push(&tegra->cmds,
+        tegra_stream_push(tegra->cmds,
                           exaGetPixmapPitch(pDstPixmap)); /* dstst */
 
-        tegra_stream_push_reloc(&tegra->cmds, TegraEXAPixmapBO(pSrcPixmap),
+        tegra_stream_push_reloc(tegra->cmds, TegraEXAPixmapBO(pSrcPixmap),
                                 TegraEXAPixmapOffset(pSrcPixmap));
-        tegra_stream_push(&tegra->cmds,
+        tegra_stream_push(tegra->cmds,
                           exaGetPixmapPitch(pSrcPixmap)); /* srcst */
     } else {
-        tegra_stream_push(&tegra->cmds, HOST1X_OPCODE_MASK(0x2b, 0x108));
-        tegra_stream_push(&tegra->cmds, exaGetPixmapPitch(pDstPixmap)); /* dstst */
-        tegra_stream_push(&tegra->cmds, exaGetPixmapPitch(pSrcPixmap)); /* srcst */
+        tegra_stream_push(tegra->cmds, HOST1X_OPCODE_MASK(0x2b, 0x108));
+        tegra_stream_push(tegra->cmds, exaGetPixmapPitch(pDstPixmap)); /* dstst */
+        tegra_stream_push(tegra->cmds, exaGetPixmapPitch(pSrcPixmap)); /* srcst */
     }
 
-    if (tegra->cmds.status != TEGRADRM_STREAM_CONSTRUCT) {
-        tegra_stream_cleanup(&tegra->cmds);
+    if (tegra->cmds->status != TEGRADRM_STREAM_CONSTRUCT) {
+        tegra_stream_cleanup(tegra->cmds);
         return FALSE;
     }
 
@@ -449,12 +449,12 @@ static void TegraEXACopyExt(PixmapPtr pDstPixmap, int srcX, int srcY, int dstX,
     width  = twidth  - 1;
     height = theight - 1;
 
-    tegra_stream_prep(&tegra->cmds, 11);
+    tegra_stream_prep(tegra->cmds, 11);
 
     if (tegra->scratch.dstX != dstX || tegra->scratch.dstY != dstY) {
-        tegra_stream_push(&tegra->cmds, HOST1X_OPCODE_NONINCR(0x2b, 1));
+        tegra_stream_push(tegra->cmds, HOST1X_OPCODE_NONINCR(0x2b, 1));
 
-        tegra_stream_push_reloc(&tegra->cmds, dst_bo,
+        tegra_stream_push_reloc(tegra->cmds, dst_bo,
                                 sb_offset(pDstPixmap, dstX, dstY));
 
         tegra->scratch.dstX = dstX;
@@ -462,9 +462,9 @@ static void TegraEXACopyExt(PixmapPtr pDstPixmap, int srcX, int srcY, int dstX,
     }
 
     if (tegra->scratch.srcX != srcX || tegra->scratch.srcY != srcY) {
-        tegra_stream_push(&tegra->cmds, HOST1X_OPCODE_NONINCR(0x31, 1));
+        tegra_stream_push(tegra->cmds, HOST1X_OPCODE_NONINCR(0x31, 1));
 
-        tegra_stream_push_reloc(&tegra->cmds, src_bo,
+        tegra_stream_push_reloc(tegra->cmds, src_bo,
                                 sb_offset(pSrcPixmap, srcX, srcY));
 
         tegra->scratch.srcX = srcX;
@@ -478,11 +478,11 @@ static void TegraEXACopyExt(PixmapPtr pDstPixmap, int srcX, int srcY, int dstX,
      */
     controlmain = (1 << 29) | (1 << 20) | ((bpp >> 4) << 16);
 
-    tegra_stream_push(&tegra->cmds, HOST1X_OPCODE_NONINCR(0x01f, 1));
-    tegra_stream_push(&tegra->cmds, controlmain);
-    tegra_stream_push(&tegra->cmds, HOST1X_OPCODE_NONINCR(0x37, 0x1));
-    tegra_stream_push(&tegra->cmds, height << 16 | width); /* srcsize */
-    tegra_stream_sync(&tegra->cmds, DRM_TEGRA_SYNCPT_COND_OP_DONE);
+    tegra_stream_push(tegra->cmds, HOST1X_OPCODE_NONINCR(0x01f, 1));
+    tegra_stream_push(tegra->cmds, controlmain);
+    tegra_stream_push(tegra->cmds, HOST1X_OPCODE_NONINCR(0x37, 0x1));
+    tegra_stream_push(tegra->cmds, height << 16 | width); /* srcsize */
+    tegra_stream_sync(tegra->cmds, DRM_TEGRA_SYNCPT_COND_OP_DONE, true);
 
     tegra->scratch.ops++;
 }
@@ -517,15 +517,15 @@ static void TegraEXACopy(PixmapPtr pDstPixmap, int srcX, int srcY, int dstX,
         dstY += height - 1;
     }
 
-    tegra_stream_prep(&tegra->cmds, 7);
-    tegra_stream_push(&tegra->cmds, HOST1X_OPCODE_INCR(0x01f, 1));
-    tegra_stream_push(&tegra->cmds, controlmain);
-    tegra_stream_push(&tegra->cmds, HOST1X_OPCODE_INCR(0x37, 0x4));
-    tegra_stream_push(&tegra->cmds, height << 16 | width); /* srcsize */
-    tegra_stream_push(&tegra->cmds, height << 16 | width); /* dstsize */
-    tegra_stream_push(&tegra->cmds, srcY << 16 | srcX); /* srcps */
-    tegra_stream_push(&tegra->cmds, dstY << 16 | dstX); /* dstps */
-    tegra_stream_sync(&tegra->cmds, DRM_TEGRA_SYNCPT_COND_OP_DONE);
+    tegra_stream_prep(tegra->cmds, 7);
+    tegra_stream_push(tegra->cmds, HOST1X_OPCODE_INCR(0x01f, 1));
+    tegra_stream_push(tegra->cmds, controlmain);
+    tegra_stream_push(tegra->cmds, HOST1X_OPCODE_INCR(0x37, 0x4));
+    tegra_stream_push(tegra->cmds, height << 16 | width); /* srcsize */
+    tegra_stream_push(tegra->cmds, height << 16 | width); /* dstsize */
+    tegra_stream_push(tegra->cmds, srcY << 16 | srcX); /* srcps */
+    tegra_stream_push(tegra->cmds, dstY << 16 | dstX); /* dstps */
+    tegra_stream_sync(tegra->cmds, DRM_TEGRA_SYNCPT_COND_OP_DONE, true);
 
     tegra->scratch.ops++;
 }
@@ -537,7 +537,7 @@ static void TegraEXADoneCopy(PixmapPtr pDstPixmap)
     struct tegra_fence *fence = NULL;
     TegraPixmapPtr priv;
 
-    if (tegra->scratch.ops && tegra->cmds.status == TEGRADRM_STREAM_CONSTRUCT) {
+    if (tegra->scratch.ops && tegra->cmds->status == TEGRADRM_STREAM_CONSTRUCT) {
         if (tegra->scratch.pSrc) {
             priv = exaGetPixmapDriverPrivate(tegra->scratch.pSrc);
 
@@ -556,11 +556,11 @@ static void TegraEXADoneCopy(PixmapPtr pDstPixmap)
         if (priv->fence_read && !priv->fence_read->gr2d)
             TegraEXAWaitFence(priv->fence_read);
 
-        tegra_stream_end(&tegra->cmds);
+        tegra_stream_end(tegra->cmds);
 #if PROFILE
-        tegra_stream_flush(&tegra->cmds);
+        tegra_stream_flush(tegra->cmds);
 #else
-        fence = tegra_stream_submit(&tegra->cmds, true);
+        fence = tegra_stream_submit(tegra->cmds, true);
 #endif
 
         if (priv->fence_write != fence) {
@@ -577,7 +577,7 @@ static void TegraEXADoneCopy(PixmapPtr pDstPixmap)
             }
         }
     } else {
-        tegra_stream_cleanup(&tegra->cmds);
+        tegra_stream_cleanup(tegra->cmds);
     }
 
     TegraEXACoolPixmap(tegra->scratch.pSrc, FALSE);

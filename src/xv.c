@@ -30,8 +30,65 @@
 
 #define MAKE_ATOM(a) MakeAtom(a, sizeof(a) - 1, TRUE)
 
+#define DEFAULT_COLOR_KEY 0xFF4AF6
+
+#define FLOAT_TO_FIXED_s2_8(fp) \
+    (((int32_t) (fp * 256.0f + 0.5f)) & ((1 << 11) - 1))
+
+#define FLOAT_TO_FIXED_s1_8(fp) \
+    (((int32_t) (fp * 256.0f + 0.5f)) & ((1 << 10) - 1))
+
+#define CLAMP(_v, _vmin, _vmax) \
+    (((_v) < (_vmin) ? (_vmin) : (((_v) > (_vmax)) ? (_vmax) : (_v))))
+
 static Atom xvColorKey;
+static Atom xvCSC_YOF_KYRGB;
+static Atom xvCSC_KUR_KVR;
+static Atom xvCSC_KUG_KVG;
+static Atom xvCSC_KUB_KVB;
+static Atom xvCSC_update;
+static Atom xvBrightness;
+static Atom xvContrast;
+static Atom xvSaturation;
+static Atom xvHue;
+static Atom xvBt709;
 static Atom xvVdpauInfo;
+
+static const float CSC_BT_601[3][3] = {
+    { 1.164384f, 0.000000f, 1.596027f },
+    { 1.164384f,-0.391762f,-0.812968f },
+    { 1.164384f, 2.017232f, 0.000000f },
+};
+
+static const float CSC_BT_709[3][3] = {
+    { 1.164384f, 0.000000f, 1.792741f },
+    { 1.164384f,-0.213249f,-0.532909f },
+    { 1.164384f, 2.112402f, 0.000000f },
+};
+
+struct drm_tegra_plane_csc_blob {
+    __u32 yof;
+    __u32 kyrgb;
+    __u32 kur;
+    __u32 kvr;
+    __u32 kug;
+    __u32 kvg;
+    __u32 kub;
+    __u32 kvb;
+};
+
+static const struct drm_tegra_plane_csc_blob csc_default_blob = {
+    .yof   = 0x00f0,
+    .kyrgb = 0x012a,
+    .kur   = 0x0000,
+    .kvr   = 0x0198,
+    .kug   = 0x039b,
+    .kvg   = 0x032f,
+    .kub   = 0x0204,
+    .kvb   = 0x0000,
+};
+
+static uint32_t csc_default_blob_id;
 
 typedef union TegraXvVdpauInfo {
     struct {
@@ -49,6 +106,7 @@ typedef struct TegraOverlay {
     drm_overlay_fb *fb_rotated;
     Rotation rotation;
 
+    uint32_t primary_plane_id;
     uint32_t plane_id;
     Bool visible;
     int crtc_id;
@@ -73,6 +131,23 @@ typedef struct TegraOverlay {
     uint32_t crtc_y_prop_id;
     uint32_t crtc_w_prop_id;
     uint32_t crtc_h_prop_id;
+
+    uint32_t zpos_prop_id;
+    uint32_t ckey_mode_prop_id;
+
+    uint32_t primary_ckey_min_prop_id;
+    uint32_t primary_ckey_max_prop_id;
+    uint32_t primary_zpos_prop_id;
+    uint32_t primary_ckey_mode_prop_id;
+    uint32_t primary_ckey_plane_mask_prop_id;
+    uint32_t primary_ckey_mask_prop_id;
+
+    uint32_t color_key;
+    Bool ckey_enb;
+
+    uint32_t csc_prop_id;
+
+    struct drm_tegra_plane_csc_blob csc_blob;
 } TegraOverlay, *TegraOverlayPtr;
 
 typedef struct TegraVideo {
@@ -81,13 +156,25 @@ typedef struct TegraVideo {
     drm_overlay_fb *fb;
 
     struct drm_tegra_channel *gr2d;
-    struct tegra_stream cmds;
+    struct tegra_stream *cmds;
 
     uint8_t passthrough_data[PASSTHROUGH_DATA_SIZE_V2];
     int passthrough;
 
     unsigned int overlays_num;
     unsigned int best_overlay_id;
+
+    uint32_t color_key;
+    Bool ckey_probed;
+
+    int brightness;
+    float contrast;
+    float saturation;
+    float hue;
+    Bool bt709;
+
+    struct drm_tegra_plane_csc_blob csc_blob;
+    Bool csc_blob_set;
 } TegraVideo, *TegraVideoPtr;
 
 typedef struct TegraXvAdaptor {
@@ -140,6 +227,66 @@ static XF86AttributeRec XvAttributes[] = {
         .min_value  = 0,
         .max_value  = 0xFFFFFFFF,
         .name       = (char *)"XV_TEGRA_VDPAU_INFO",
+    },
+    {
+        .flags      = XvSettable,
+        .min_value  = 0,
+        .max_value  = 0xFFFFFFFF,
+        .name       = (char *)"XV_TEGRA_YOF_KYRGB",
+    },
+    {
+        .flags      = XvSettable,
+        .min_value  = 0,
+        .max_value  = 0xFFFFFFFF,
+        .name       = (char *)"XV_TEGRA_KUR_KVR",
+    },
+    {
+        .flags      = XvSettable,
+        .min_value  = 0,
+        .max_value  = 0xFFFFFFFF,
+        .name       = (char *)"XV_TEGRA_KUG_KVG",
+    },
+    {
+        .flags      = XvSettable,
+        .min_value  = 0,
+        .max_value  = 0xFFFFFFFF,
+        .name       = (char *)"XV_TEGRA_KUB_KVB",
+    },
+    {
+        .flags      = XvSettable | XvGettable,
+        .min_value  = -128,
+        .max_value  = 127,
+        .name       = (char *)"XV_BRIGHTNESS",
+    },
+    {
+        .flags      = XvSettable | XvGettable,
+        .min_value  = -100,
+        .max_value  = 100,
+        .name       = (char *)"XV_CONTRAST",
+    },
+    {
+        .flags      = XvSettable | XvGettable,
+        .min_value  = -100,
+        .max_value  = 100,
+        .name       = (char *)"XV_SATURATION",
+    },
+    {
+        .flags      = XvSettable | XvGettable,
+        .min_value  = -100,
+        .max_value  = 100,
+        .name       = (char *)"XV_HUE",
+    },
+    {
+        .flags      = XvSettable | XvGettable,
+        .min_value  = 0,
+        .max_value  = 1,
+        .name       = (char *)"XV_ITURBT_709",
+    },
+    {
+        .flags      = XvSettable | XvGettable,
+        .min_value  = 0,
+        .max_value  = 1,
+        .name       = (char *)"XV_TEGRA_CSC_UPDATE",
     },
 };
 
@@ -235,7 +382,7 @@ static Bool TegraVideoOpenGPU(TegraVideoPtr priv, ScrnInfoPtr scrn)
             return FALSE;
         }
 
-        err = tegra_stream_create(&priv->cmds);
+        err = tegra_stream_create(&priv->cmds, tegra);
         if (err) {
             ErrorMsg("failed to create command stream: %d\n", err);
             drm_tegra_channel_close(priv->gr2d);
@@ -250,7 +397,7 @@ static Bool TegraVideoOpenGPU(TegraVideoPtr priv, ScrnInfoPtr scrn)
 static void TegraVideoCloseGPU(TegraVideoPtr priv)
 {
     if (priv->gr2d) {
-        tegra_stream_destroy(&priv->cmds);
+        tegra_stream_destroy(priv->cmds);
         drm_tegra_channel_close(priv->gr2d);
         priv->gr2d = NULL;
     }
@@ -344,6 +491,75 @@ static Bool TegraVideoOverlayShowAtomic(TegraVideoPtr priv,
     return TRUE;
 }
 
+static Bool TegraVideoOverlaySetPlaneColorKey(TegraVideoPtr priv,
+                                              ScrnInfoPtr scrn,
+                                              drmModeAtomicReqPtr req,
+                                              int overlay_id,
+                                              uint64_t color_key,
+                                              Bool enable,
+                                              Bool init)
+{
+    TegraOverlayPtr overlay = &priv->overlay[overlay_id];
+    uint64_t ckey = 0;
+    int ret = 0;
+
+    if (overlay->ckey_enb == enable &&
+            overlay->color_key == color_key &&
+                !init)
+        return TRUE;
+
+    /* swizzle BGR888 to RGB16161616 */
+    ckey |= (color_key & 0x000000ff) << 40;
+    ckey |= (color_key & 0x0000ff00) << 16;
+    ckey |= (color_key & 0x00ff0000) >> 8;
+
+    if (overlay->ckey_enb != enable || init) {
+        if (ret >= 0)
+            ret = drmModeAtomicAddProperty(req, overlay->plane_id,
+                                           overlay->zpos_prop_id,
+                                           enable ? 0 : 1);
+        if (ret >= 0)
+            ret = drmModeAtomicAddProperty(req, overlay->plane_id,
+                                           overlay->ckey_mode_prop_id,
+                                           0);
+        if (ret >= 0)
+            ret = drmModeAtomicAddProperty(req, overlay->primary_plane_id,
+                                           overlay->primary_ckey_mode_prop_id,
+                                           enable ? 1 : 0);
+        if (ret >= 0)
+            ret = drmModeAtomicAddProperty(req, overlay->primary_plane_id,
+                                           overlay->primary_zpos_prop_id,
+                                           enable ? 1 : 0);
+        if (ret >= 0)
+            ret = drmModeAtomicAddProperty(req, overlay->primary_plane_id,
+                                           overlay->primary_ckey_plane_mask_prop_id,
+                                           1 << overlay->primary_plane_id);
+        if (ret >= 0)
+            ret = drmModeAtomicAddProperty(req, overlay->primary_plane_id,
+                                           overlay->primary_ckey_mask_prop_id,
+                                           0xFFFFFFFFFFFFFFFF);
+    }
+
+    if (overlay->color_key != color_key || init) {
+        if (ret >= 0)
+            ret = drmModeAtomicAddProperty(req, overlay->primary_plane_id,
+                                           overlay->primary_ckey_min_prop_id,
+                                           ckey);
+        if (ret >= 0)
+            ret = drmModeAtomicAddProperty(req, overlay->primary_plane_id,
+                                           overlay->primary_ckey_max_prop_id,
+                                           ckey);
+    }
+
+    if (ret < 0) {
+        ErrorMsg("drmModeAtomicAddProperty failed: %d (%s)\n",
+                 ret, strerror(-ret));
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
 static void TegraVideoDestroyFramebuffer(ScrnInfoPtr scrn,
                                          drm_overlay_fb **fb)
 {
@@ -372,6 +588,78 @@ static void TegraVideoOverlayClose(TegraVideoPtr priv, ScrnInfoPtr scrn,
 
     TegraVideoDestroyFramebuffer(scrn, &overlay->fb_rotated);
     TegraVideoDestroyFramebuffer(scrn, &overlay->old_fb_rotated);
+}
+
+static Bool TegraVideoOverlaySetPlaneCSC(TegraVideoPtr priv,
+                                         ScrnInfoPtr scrn,
+                                         drmModeAtomicReqPtr req,
+                                         int overlay_id,
+                                         uint32_t csc_blob_id,
+                                         Bool init)
+{
+    TegraOverlayPtr overlay = &priv->overlay[overlay_id];
+    int ret = 0;
+
+    if (!init && memcmp(&overlay->csc_blob, &priv->csc_blob,
+                        sizeof(overlay->csc_blob) == 0))
+        return TRUE;
+
+    if (ret >= 0)
+        ret = drmModeAtomicAddProperty(req, overlay->plane_id,
+                                       overlay->csc_prop_id,
+                                       csc_blob_id);
+
+    if (ret < 0) {
+        ErrorMsg("drmModeAtomicAddProperty failed: %d (%s)\n",
+                 ret, strerror(-ret));
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+static Bool TegraVideoOverlaySetCSC(TegraVideoPtr priv,
+                                     ScrnInfoPtr scrn,
+                                     uint32_t csc_blob_id,
+                                     Bool init)
+{
+    TegraPtr tegra = TegraPTR(scrn);
+    drmModeAtomicReqPtr req;
+    int err;
+    int id;
+
+    if (!csc_blob_id)
+        return FALSE;
+
+    req = drmModeAtomicAlloc();
+    if (!req) {
+        ErrorMsg("drmModeAtomicAlloc() failed\n");
+        return FALSE;
+    }
+
+    for (id = 0; id < priv->overlays_num; id++) {
+        if (!TegraVideoOverlaySetPlaneCSC(priv, scrn, req, id,
+                                          csc_blob_id, init))
+        {
+            drmModeAtomicFree(req);
+            return FALSE;
+        }
+    }
+
+    err = TegraDrmModeAtomicCommit(tegra->fd, req, DRM_MODE_ATOMIC_NONBLOCK,
+                                   NULL);
+    drmModeAtomicFree(req);
+
+    if (err < 0) {
+        ErrorMsg("TegraDrmModeAtomicCommit failed: %d (%s)\n",
+                 err, strerror(-err));
+        return FALSE;
+    }
+
+    for (id = 0; id < priv->overlays_num; id++)
+        priv->overlay[id].csc_blob = priv->csc_blob;
+
+    return TRUE;
 }
 
 static Bool TegraCloseBo(ScrnInfoPtr scrn, uint32_t handle)
@@ -515,13 +803,198 @@ static void TegraVideoOverlayBestSize(ScrnInfoPtr scrn, Bool motion,
     *actual_h = dst_h;
 }
 
+static Bool TegraVideoOverlaySetColorKey(TegraVideoPtr priv,
+                                         ScrnInfoPtr scrn,
+                                         uint64_t color_key,
+                                         Bool enable,
+                                         Bool init)
+{
+    TegraPtr tegra = TegraPTR(scrn);
+    drmModeAtomicReqPtr req;
+    int err;
+    int id;
+
+    req = drmModeAtomicAlloc();
+    if (!req) {
+        ErrorMsg("drmModeAtomicAlloc() failed\n");
+        return FALSE;
+    }
+
+    for (id = 0; id < priv->overlays_num; id++) {
+        if (!TegraVideoOverlaySetPlaneColorKey(priv, scrn, req, id,
+                                               color_key, enable, init))
+        {
+            drmModeAtomicFree(req);
+            return FALSE;
+        }
+    }
+
+    err = TegraDrmModeAtomicCommit(tegra->fd, req, DRM_MODE_ATOMIC_NONBLOCK,
+                                   NULL);
+    drmModeAtomicFree(req);
+
+    if (err < 0) {
+        ErrorMsg("TegraDrmModeAtomicCommit failed: %d (%s)\n",
+                 err, strerror(-err));
+        return FALSE;
+    }
+
+    for (id = 0; id < priv->overlays_num; id++) {
+        priv->overlay[id].color_key = color_key;
+        priv->overlay[id].ckey_enb = enable;
+    }
+
+    return TRUE;
+}
+
 static int TegraVideoOverlaySetAttribute(ScrnInfoPtr scrn, Atom attribute,
                                          INT32 value, void *data)
 {
-    if (attribute != xvColorKey)
-        return BadMatch;
+    TegraVideoPtr priv = data;
 
-    return Success;
+    if (attribute == xvColorKey) {
+        if (!TegraVideoOverlaySetColorKey(priv, scrn, value, TRUE, FALSE))
+            return BadImplementation;
+
+        priv->color_key = value;
+        priv->ckey_probed = TRUE;
+
+        return Success;
+    }
+
+    if (attribute == xvCSC_YOF_KYRGB) {
+        priv->csc_blob.yof = value & 0x0000ffff;
+        priv->csc_blob.kyrgb = value >> 16;
+        return Success;
+    }
+
+    if (attribute == xvCSC_KUR_KVR) {
+        priv->csc_blob.kur = value & 0x0000ffff;
+        priv->csc_blob.kvr = value >> 16;
+        return Success;
+    }
+
+    if (attribute == xvCSC_KUG_KVG) {
+        priv->csc_blob.kug = value & 0x0000ffff;
+        priv->csc_blob.kvg = value >> 16;
+        return Success;
+    }
+
+    if (attribute == xvCSC_KUB_KVB) {
+        priv->csc_blob.kub = value & 0x0000ffff;
+        priv->csc_blob.kvb = value >> 16;
+        return Success;
+    }
+
+    if (attribute == xvCSC_update ||
+        attribute == xvBrightness ||
+        attribute == xvContrast ||
+        attribute == xvSaturation ||
+        attribute == xvHue ||
+        attribute == xvBt709)
+    {
+        TegraPtr tegra = TegraPTR(scrn);
+        uint32_t csc_blob_id;
+        float cscmat[3][3];
+        float uvcos, uvsin;
+        float fvalue;
+        unsigned int i;
+        int ret = Success;
+        int err;
+
+        priv->csc_blob_set = FALSE;
+
+        if (attribute == xvBrightness) {
+            if (priv->brightness == value)
+                return Success;
+
+            priv->brightness = value;
+        } else if (attribute == xvContrast) {
+            fvalue = value / 100.0f + 1.0f;
+
+            if (priv->contrast == fvalue)
+                return Success;
+
+            priv->contrast = fvalue;
+        } else if (attribute == xvSaturation) {
+            fvalue = value / 100.0f + 1.0f;
+
+            if (priv->saturation == fvalue)
+                return Success;
+
+            priv->saturation = fvalue;
+        } else if (attribute == xvHue) {
+            fvalue = value / 100.0f;
+
+            if (priv->hue == fvalue)
+                return Success;
+
+            priv->hue = fvalue;
+        } else if (attribute == xvBt709) {
+            if (priv->bt709 == value)
+                return Success;
+
+            priv->bt709 = value;
+        } else if (attribute == xvCSC_update) {
+            goto apply_blob;
+        }
+
+        if (priv->bt709)
+            memcpy(cscmat, CSC_BT_709, sizeof(cscmat));
+        else
+            memcpy(cscmat, CSC_BT_601, sizeof(cscmat));
+
+        if (priv->hue != 0.0f ||
+                priv->saturation != 1.0f ||
+                    priv->contrast != 1.0f)
+        {
+            uvcos = priv->saturation * cosf(priv->hue * M_PI);
+            uvsin = priv->saturation * sinf(priv->hue * M_PI);
+
+            cscmat[0][0] *= priv->contrast;
+
+            for (i = 0; i < 3; i++) {
+                float u = cscmat[i][1] * uvcos + cscmat[i][2] * uvsin;
+                float v = cscmat[i][1] * uvsin + cscmat[i][2] * uvcos;
+                cscmat[i][1] = u * priv->contrast;
+                cscmat[i][2] = v * priv->contrast;
+            }
+        }
+
+        priv->csc_blob.yof = priv->brightness;
+        priv->csc_blob.kyrgb = FLOAT_TO_FIXED_s2_8( CLAMP(cscmat[0][0], 0.00f, 1.98f) );
+        priv->csc_blob.kur = FLOAT_TO_FIXED_s2_8( CLAMP(cscmat[0][1], -3.98f, 3.98f) );
+        priv->csc_blob.kvr = FLOAT_TO_FIXED_s2_8( CLAMP(cscmat[0][2], -3.98f, 3.98f) );
+        priv->csc_blob.kug = FLOAT_TO_FIXED_s1_8( CLAMP(cscmat[1][1], -1.98f, 1.98f) );
+        priv->csc_blob.kvg = FLOAT_TO_FIXED_s1_8( CLAMP(cscmat[1][2], -1.98f, 1.98f) );
+        priv->csc_blob.kub = FLOAT_TO_FIXED_s2_8( CLAMP(cscmat[2][1], -3.98f, 3.98f) );
+        priv->csc_blob.kvb = FLOAT_TO_FIXED_s2_8( CLAMP(cscmat[2][2], -3.98f, 3.98f) );
+
+apply_blob:
+        err = drmModeCreatePropertyBlob(tegra->fd, &priv->csc_blob,
+                                        sizeof(priv->csc_blob),
+                                        &csc_blob_id);
+        if (err < 0) {
+            ErrorMsg("drmModeCreatePropertyBlob() failed: %d (%s)\n",
+                     err, strerror(-err));
+            return BadImplementation;
+        }
+
+        if (!TegraVideoOverlaySetCSC(priv, scrn, csc_blob_id, FALSE))
+            ret = BadImplementation;
+        else
+            priv->csc_blob_set = TRUE;
+
+        err = drmModeDestroyPropertyBlob(tegra->fd, csc_blob_id);
+        if (err < 0) {
+            ErrorMsg("drmModeDestroyPropertyBlob() failed: %d (%s)\n",
+                     err, strerror(-err));
+        }
+
+        return ret;
+    }
+
+    return BadMatch;
 }
 
 static int TegraVideoOverlayGetAttribute(ScrnInfoPtr scrn, Atom attribute,
@@ -533,7 +1006,17 @@ static int TegraVideoOverlayGetAttribute(ScrnInfoPtr scrn, Atom attribute,
     int id;
 
     if (attribute == xvColorKey) {
-        *value = 0x000000;
+        *value = priv->color_key;
+
+        if (priv->ckey_probed)
+            return Success;
+
+        if (!TegraVideoOverlaySetColorKey(priv, scrn, priv->color_key,
+                                          TRUE, FALSE))
+            return BadImplementation;
+
+        priv->ckey_probed = TRUE;
+
         return Success;
     }
 
@@ -552,11 +1035,42 @@ static int TegraVideoOverlayGetAttribute(ScrnInfoPtr scrn, Atom attribute,
         return Success;
     }
 
+    if (attribute == xvBrightness) {
+        *value = priv->brightness;
+        return Success;
+    }
+
+    if (attribute == xvContrast) {
+        *value = (priv->contrast - 1.0f) * 100.0f;
+        return Success;
+    }
+
+    if (attribute == xvSaturation) {
+        *value = (priv->saturation - 1.0f) * 100.0f;
+        return Success;
+    }
+
+    if (attribute == xvHue) {
+        *value = priv->hue * 100.0f;
+        return Success;
+    }
+
+    if (attribute == xvBt709) {
+        *value = priv->bt709;
+        return Success;
+    }
+
+    if (attribute == xvCSC_update) {
+        *value = priv->csc_blob_set;
+        return Success;
+    }
+
     return BadMatch;
 }
 
 static void TegraVideoOverlayStop(ScrnInfoPtr scrn, void *data, Bool cleanup)
 {
+    TegraPtr tegra     = TegraPTR(scrn);
     TegraVideoPtr priv = data;
     int id;
 
@@ -567,6 +1081,16 @@ static void TegraVideoOverlayStop(ScrnInfoPtr scrn, void *data, Bool cleanup)
         TegraVideoDestroyFramebuffer(scrn, &priv->fb);
 
         TegraVideoCloseGPU(priv);
+
+        TegraVideoOverlaySetColorKey(priv, scrn, DEFAULT_COLOR_KEY,
+                                     FALSE, TRUE);
+
+        TegraVideoOverlaySetCSC(priv, scrn, csc_default_blob_id, TRUE);
+    }
+
+    if (tegra->xv_blocks_hw_cursor) {
+        tegra->xv_blocks_hw_cursor = FALSE;
+        xf86CursorResetCursor(scrn->pScreen);
     }
 }
 
@@ -576,6 +1100,7 @@ static Bool TegraVideoOverlayInitialize(TegraVideoPtr priv, ScrnInfoPtr scrn,
     TegraOverlayPtr overlay = &priv->overlay[overlay_id];
     TegraPtr tegra          = TegraPTR(scrn);
     drmModeResPtr res;
+    uint32_t primary_plane_id;
     uint32_t plane_id;
     Bool success = TRUE;
     int err;
@@ -600,8 +1125,15 @@ static Bool TegraVideoOverlayInitialize(TegraVideoPtr priv, ScrnInfoPtr scrn,
         goto end;
     }
 
-    overlay->crtc_id   = res->crtcs[overlay_id];
-    overlay->plane_id  = plane_id;
+    err = drm_get_primary_plane(tegra->fd, overlay_id, &primary_plane_id);
+    if (err) {
+        success = FALSE;
+        goto end;
+    }
+
+    overlay->crtc_id           = res->crtcs[overlay_id];
+    overlay->plane_id          = plane_id;
+    overlay->primary_plane_id  = primary_plane_id;
 
 end:
     free(res);
@@ -656,39 +1188,39 @@ static Bool TegraVideoCopyRotatedPlane(TegraVideoPtr priv,
         return FALSE;
     }
 
-    err = tegra_stream_begin(&priv->cmds, priv->gr2d);
+    err = tegra_stream_begin(priv->cmds, priv->gr2d);
     if (err)
         return FALSE;
 
-    tegra_stream_prep(&priv->cmds, 16);
+    tegra_stream_prep(priv->cmds, 16);
 
-    tegra_stream_push_setclass(&priv->cmds, HOST1X_CLASS_GR2D);
+    tegra_stream_push_setclass(priv->cmds, HOST1X_CLASS_GR2D);
 
-    tegra_stream_push(&priv->cmds, HOST1X_OPCODE_MASK(0x9, 0x9));
-    tegra_stream_push(&priv->cmds, 0x00000046); /* trigger 0 */
-    tegra_stream_push(&priv->cmds, 0x00000000); /* cmdsel */
+    tegra_stream_push(priv->cmds, HOST1X_OPCODE_MASK(0x9, 0x9));
+    tegra_stream_push(priv->cmds, 0x00000046); /* trigger 0 */
+    tegra_stream_push(priv->cmds, 0x00000000); /* cmdsel */
 
-    tegra_stream_push(&priv->cmds, HOST1X_OPCODE_MASK(0x01e, 0x3));
-    tegra_stream_push(&priv->cmds, /* controlsecond*/
+    tegra_stream_push(priv->cmds, HOST1X_OPCODE_MASK(0x01e, 0x3));
+    tegra_stream_push(priv->cmds, /* controlsecond*/
                       (fr_type << 26) | (1 << 24));
-    tegra_stream_push(&priv->cmds, /* controlmain */
+    tegra_stream_push(priv->cmds, /* controlmain */
                       (1 << 29) | (1 << 20) | ((bpp >> 4) << 16));
 
-    tegra_stream_push(&priv->cmds, HOST1X_OPCODE_MASK(0x2b, 0x1149));
-    tegra_stream_push_reloc(&priv->cmds, dst_bo, offset_dst);
-    tegra_stream_push(&priv->cmds, pitch_dst);
-    tegra_stream_push_reloc(&priv->cmds, src_bo, offset_src);
-    tegra_stream_push(&priv->cmds, pitch_src);
-    tegra_stream_push(&priv->cmds, src_height << 16 | src_width);
+    tegra_stream_push(priv->cmds, HOST1X_OPCODE_MASK(0x2b, 0x1149));
+    tegra_stream_push_reloc(priv->cmds, dst_bo, offset_dst);
+    tegra_stream_push(priv->cmds, pitch_dst);
+    tegra_stream_push_reloc(priv->cmds, src_bo, offset_src);
+    tegra_stream_push(priv->cmds, pitch_src);
+    tegra_stream_push(priv->cmds, src_height << 16 | src_width);
 
-    tegra_stream_push(&priv->cmds, HOST1X_OPCODE_NONINCR(0x046, 1));
-    tegra_stream_push(&priv->cmds, 0x00000000); /* tilemode */
+    tegra_stream_push(priv->cmds, HOST1X_OPCODE_NONINCR(0x046, 1));
+    tegra_stream_push(priv->cmds, 0x00000000); /* tilemode */
 
-    tegra_stream_sync(&priv->cmds, DRM_TEGRA_SYNCPT_COND_OP_DONE);
+    tegra_stream_sync(priv->cmds, DRM_TEGRA_SYNCPT_COND_OP_DONE, false);
 
-    tegra_stream_end(&priv->cmds);
+    tegra_stream_end(priv->cmds);
 
-    fence = tegra_stream_submit(&priv->cmds, true);
+    fence = tegra_stream_submit(priv->cmds, true);
     if (!fence)
         return FALSE;
 
@@ -800,7 +1332,7 @@ static Bool TegraVideoOverlayUpdateRotatedFb(TegraVideoPtr priv,
                                     rotation))
         goto err_destroy_fb;
 
-    tegra_stream_flush(&priv->cmds);
+    tegra_stream_flush(priv->cmds);
 
 done:
     TegraVideoDestroyFramebuffer(scrn, &overlay->old_fb_rotated);
@@ -811,7 +1343,7 @@ done:
     return TRUE;
 
 err_destroy_fb:
-    tegra_stream_flush(&priv->cmds);
+    tegra_stream_flush(priv->cmds);
 
     TegraVideoDestroyFramebuffer(scrn, &fb_rotated);
 
@@ -971,6 +1503,11 @@ static Bool TegraVideoOverlayPutImageOnOverlays(TegraVideoPtr priv,
         ErrorMsg("TegraDrmModeAtomicCommit failed: %d (%s)\n",
                  err, strerror(-err));
         return FALSE;
+    }
+
+    if (!tegra->xv_blocks_hw_cursor) {
+        tegra->xv_blocks_hw_cursor = TRUE;
+        xf86CursorResetCursor(scrn->pScreen);
     }
 
     return TRUE;
@@ -1270,6 +1807,61 @@ static Bool TegraXvGetDrmProps(ScrnInfoPtr scrn, TegraVideoPtr priv)
             goto err_free_props;
         }
 
+        if (!TegraXvGetDrmPlaneProperty(scrn, priv, properties, "zpos",
+                                        &overlay->zpos_prop_id)) {
+            /* colorkey optional */
+        }
+
+        if (!TegraXvGetDrmPlaneProperty(scrn, priv, properties, "colorkey.mode",
+                                        &overlay->ckey_mode_prop_id)) {
+            /* colorkey optional */
+        }
+
+        if (!TegraXvGetDrmPlaneProperty(scrn, priv, properties, "YUV to RGB CSC",
+                                        &overlay->csc_prop_id)) {
+            /* csc optional */
+        }
+
+        free(properties);
+
+        properties = drmModeObjectGetProperties(tegra->fd,
+                                                overlay->primary_plane_id,
+                                                DRM_MODE_OBJECT_PLANE);
+        if (!properties) {
+            ErrorMsg("drmModeObjectGetProperties() failed\n");
+            return FALSE;
+        }
+
+        if (!TegraXvGetDrmPlaneProperty(scrn, priv, properties, "zpos",
+                                        &overlay->primary_zpos_prop_id)) {
+            /* colorkey optional */
+        }
+
+        if (!TegraXvGetDrmPlaneProperty(scrn, priv, properties, "colorkey.mode",
+                                        &overlay->primary_ckey_mode_prop_id)) {
+            /* colorkey optional */
+        }
+
+        if (!TegraXvGetDrmPlaneProperty(scrn, priv, properties, "colorkey.min",
+                                        &overlay->primary_ckey_min_prop_id)) {
+            /* colorkey optional */
+        }
+
+        if (!TegraXvGetDrmPlaneProperty(scrn, priv, properties, "colorkey.max",
+                                        &overlay->primary_ckey_max_prop_id)) {
+            /* colorkey optional */
+        }
+
+        if (!TegraXvGetDrmPlaneProperty(scrn, priv, properties, "colorkey.plane_mask",
+                                        &overlay->primary_ckey_plane_mask_prop_id)) {
+            /* colorkey optional */
+        }
+
+        if (!TegraXvGetDrmPlaneProperty(scrn, priv, properties, "colorkey.mask",
+                                        &overlay->primary_ckey_mask_prop_id)) {
+            /* colorkey optional */
+        }
+
         free(properties);
     }
 
@@ -1286,11 +1878,18 @@ static void TegraXvInit(TegraVideoPtr priv, ScrnInfoPtr scrn)
     xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(scrn);
 
     priv->overlays_num = xf86_config->num_crtc;
+    priv->color_key    = DEFAULT_COLOR_KEY;
+    priv->brightness   = -16;
+    priv->contrast     = 1.0f;
+    priv->saturation   = 1.0f;
+    priv->hue          = 0.0f;
+    priv->bt709        = false;
 }
 
 Bool TegraXvScreenInit(ScreenPtr pScreen)
 {
     ScrnInfoPtr scrn = xf86ScreenToScrn(pScreen);
+    TegraPtr tegra   = TegraPTR(scrn);
     XF86VideoAdaptorPtr xvAdaptor;
     TegraXvAdaptorPtr adaptor;
     TegraVideoPtr priv;
@@ -1323,8 +1922,19 @@ Bool TegraXvScreenInit(ScreenPtr pScreen)
     adaptor->xv.pPortPrivates[0].ptr = &adaptor->private;
     adaptor->xv.flags                = VIDEO_OVERLAID_IMAGES;
 
-    xvColorKey = MAKE_ATOM("XV_COLORKEY");
-    xvVdpauInfo = MAKE_ATOM("XV_TEGRA_VDPAU_INFO");
+    xvColorKey      = MAKE_ATOM("XV_COLORKEY");
+    xvVdpauInfo     = MAKE_ATOM("XV_TEGRA_VDPAU_INFO");
+    xvCSC_YOF_KYRGB = MAKE_ATOM("XV_TEGRA_YOF_KYRGB");
+    xvCSC_KUR_KVR   = MAKE_ATOM("XV_TEGRA_KUR_KVR");
+    xvCSC_KUG_KVG   = MAKE_ATOM("XV_TEGRA_KUG_KVG");
+    xvCSC_KUB_KVB   = MAKE_ATOM("XV_TEGRA_KUB_KVB");
+    xvCSC_update    = MAKE_ATOM("XV_TEGRA_CSC_UPDATE");
+    xvBrightness    = MAKE_ATOM("XV_BRIGHTNESS");
+    xvContrast      = MAKE_ATOM("XV_CONTRAST");
+    xvSaturation    = MAKE_ATOM("XV_SATURATION");
+    xvHue           = MAKE_ATOM("XV_HUE");
+    xvBt709         = MAKE_ATOM("XV_ITURBT_709");
+
     xvAdaptor = &adaptor->xv;
     priv = &adaptor->private;
 
@@ -1343,6 +1953,14 @@ Bool TegraXvScreenInit(ScreenPtr pScreen)
         goto err_free_adaptor;
     }
 
+    TegraVideoOverlaySetColorKey(priv, scrn, DEFAULT_COLOR_KEY, FALSE, TRUE);
+
+    drmModeCreatePropertyBlob(tegra->fd, &csc_default_blob,
+                              sizeof(csc_default_blob),
+                              &csc_default_blob_id);
+
+    TegraVideoOverlaySetCSC(priv, scrn, csc_default_blob_id, TRUE);
+
     xf86DrvMsg(scrn->scrnIndex, X_INFO, "XV adaptor initialized\n");
 
     return TRUE;
@@ -1353,4 +1971,15 @@ err_free_adaptor:
     ErrorMsg("XV initialization failed\n");
 
     return FALSE;
+}
+
+void TegraXvScreenExit(ScreenPtr pScreen)
+{
+    ScrnInfoPtr scrn = xf86ScreenToScrn(pScreen);
+    TegraPtr tegra   = TegraPTR(scrn);
+
+    if (csc_default_blob_id) {
+        drmModeDestroyPropertyBlob(tegra->fd, csc_default_blob_id);
+        csc_default_blob_id = 0;
+    }
 }
