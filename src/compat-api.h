@@ -105,6 +105,7 @@
 #define xorg_list_first_entry		list_first_entry
 #define xorg_list_for_each_entry	list_for_each_entry
 #define xorg_list_for_each_entry_safe	list_for_each_entry_safe
+#define xorg_list_append		list_append
 #endif
 
 #if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,14,99,2,0)

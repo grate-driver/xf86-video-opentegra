@@ -80,7 +80,7 @@ AM_CONDITIONAL(HAVE_XEXTPROTO_71, [ test "$HAVE_XEXTPROTO_71" = "yes" ])
 
 AC_HEADER_STDC
 
-PKG_CHECK_MODULES(DRM, [libdrm >= 2.4.81])
+PKG_CHECK_MODULES(DRM, [libdrm >= 2.4.0])
 AM_CONDITIONAL(DRM, test "x$DRM" = xyes)
 
 PKG_CHECK_MODULES(UDEV, [libudev], [udev=yes], [udev=no])
@@ -103,23 +103,29 @@ PKG_CHECK_MODULES(PNG, [libpng >= 1.6.0],
 		  HAVE_PNG="no")
 AM_CONDITIONAL(HAVE_PNG, [ test "$HAVE_PNG" = "yes" ])
 
-SAVE_CFLAGS=$CFLAGS
-SAVE_LIBS=$LIBS
-CFLAGS=$DRM_CFLAGS
-LIBS=$DRM_LIBS
+SAVE_CPPFLAGS="$CPPFLAGS"
+CPPFLAGS="$CPPFLAGS $DRM_CFLAGS $XORG_CFLAGS"
 
-AC_CHECK_FUNCS(
-	[drmSyncobjCreate],
-	[
-		AC_MSG_RESULT([yes])
-		AC_DEFINE(HAVE_LIBDRM_SYNCOBJ_SUPPORT, [], [Does libdrm have drmSyncobjCreate])
-	],
-	[
-		AC_MSG_RESULT([no])
-	])
+AC_CHECK_DECL(xf86CursorResetCursor,
+	      [AC_DEFINE(HAVE_XF86_CURSOR_RESET_CURSOR, 1,
+	      [Have xf86CursorResetCursor API])], [],
+	      [#include <xorg-server.h>
+	       #include <xf86Cursor.h>])
 
-CFLAGS=$SAVE_CFLAGS
-LIBS=$SAVE_LIBS
+AC_CHECK_DECL(drmModeAtomicAlloc,
+	      [HAVE_DRM_ATOMIC="yes"; AC_DEFINE(HAVE_DRM_MODE_ATOMIC, 1,
+	                                       [Have drmModeAtomicAlloc API])],
+	      [HAVE_DRM_ATOMIC="no"],
+	      [#include <xf86drm.h>
+	       #include <xf86drmMode.h>])
+AM_CONDITIONAL([HAVE_DRM_ATOMIC], [ test "$HAVE_DRM_ATOMIC" = "yes" ])
+
+AC_CHECK_DECL(drmSyncobjCreate,
+	      [AC_DEFINE(HAVE_LIBDRM_SYNCOBJ_SUPPORT, 1,
+	      [Have drmSyncobjCreate API])], [],
+	      [#include <xf86drm.h>])
+
+CPPFLAGS="$SAVE_CPPFLAGS"
 
 DRIVER_NAME=opentegra
 AC_SUBST([DRIVER_NAME])

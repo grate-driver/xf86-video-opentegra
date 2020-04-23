@@ -453,11 +453,11 @@ SetMaster(ScrnInfoPtr pScrn)
     if (ret)
         xf86DrvMsg(pScrn->scrnIndex, X_ERROR, "drmSetMaster failed: %s\n",
                    strerror(errno));
-
+#ifdef HAVE_DRM_MODE_ATOMIC
     err = drmSetClientCap(tegra->fd, DRM_CLIENT_CAP_ATOMIC, 2);
     if (err < 0)
         err2 = drmSetClientCap(tegra->fd, DRM_CLIENT_CAP_ATOMIC, 1);
-
+#endif
     if (err < 0 && err2 < 0)
         xf86DrvMsg(pScrn->scrnIndex, X_ERROR, "drmSetClientCap failed: %s %s\n",
                    strerror(err), strerror(err2));
@@ -545,7 +545,9 @@ TegraCloseScreen(CLOSE_SCREEN_ARGS_DECL)
 
     xf86_cursors_fini(pScreen);
     TegraDRI2ScreenExit(pScreen);
+#ifdef HAVE_DRM_MODE_ATOMIC
     TegraXvScreenExit(pScreen);
+#endif
     TegraVBlankScreenExit(pScreen);
     TegraEXAScreenExit(pScreen);
 
@@ -679,7 +681,9 @@ TegraScreenInit(SCREEN_INIT_ARGS_DECL)
     if (!TegraScreenXf86Init(pScreen))
         return FALSE;
 
+#ifdef HAVE_DRM_MODE_ATOMIC
     TegraXvScreenInit(pScreen);
+#endif
     TegraVBlankScreenInit(pScreen);
     TegraDRI2ScreenInit(pScreen);
 

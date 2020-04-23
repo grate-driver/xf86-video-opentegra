@@ -1088,10 +1088,12 @@ static void TegraVideoOverlayStop(ScrnInfoPtr scrn, void *data, Bool cleanup)
         TegraVideoOverlaySetCSC(priv, scrn, csc_default_blob_id, TRUE);
     }
 
+#ifdef HAVE_XF86_CURSOR_RESET_CURSOR
     if (tegra->xv_blocks_hw_cursor) {
         tegra->xv_blocks_hw_cursor = FALSE;
         xf86CursorResetCursor(scrn->pScreen);
     }
+#endif
 }
 
 static Bool TegraVideoOverlayInitialize(TegraVideoPtr priv, ScrnInfoPtr scrn,
@@ -1505,10 +1507,12 @@ static Bool TegraVideoOverlayPutImageOnOverlays(TegraVideoPtr priv,
         return FALSE;
     }
 
+#ifdef HAVE_XF86_CURSOR_RESET_CURSOR
     if (!tegra->xv_blocks_hw_cursor) {
         tegra->xv_blocks_hw_cursor = TRUE;
         xf86CursorResetCursor(scrn->pScreen);
     }
+#endif
 
     return TRUE;
 }

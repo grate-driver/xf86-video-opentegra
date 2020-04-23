@@ -60,11 +60,9 @@ opentegra_drv_la_SOURCES = \
 	dri2.c \
 	driver.c \
 	driver.h \
-	drm_plane.c \
 	drmmode_display.c \
 	drmmode_display.h \
 	host1x.h \
-	xv.c \
 	xv.h \
 	exa.c \
 	exa.h \
@@ -78,6 +76,10 @@ opentegra_drv_la_SOURCES = \
 	tgr_3d.xml.h \
 	gr3d.h \
 	memcpy_vfp.c
+
+if HAVE_DRM_ATOMIC
+opentegra_drv_la_SOURCES += drm_plane.c xv.c
+endif
 
 opentegra_drv_la_SOURCES += \
 	tegradrm/atomic.h \
