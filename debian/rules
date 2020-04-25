@@ -1,6 +1,7 @@
 #!/usr/bin/make -f
 
 override_dh_auto_configure:
+	test -d m4 || mkdir m4
 	dh_auto_configure -- --libdir="\$${prefix}/lib"
 
 # Install in debian/tmp to retain control through dh_install:
