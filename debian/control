@@ -14,7 +14,7 @@ Build-Depends: debhelper (>=9), dh-autoreconf, pkg-config, xserver-xorg-dev,
 Package: xserver-xorg-video-opentegra
 Architecture: armhf
 Depends: ${shlibs:Depends}, ${misc:Depends}, ${xviddriver:Depends},
- libdrm-tegra0, liblz4-1, libturbojpeg (>= 1.5.0), libpng16-16,
+ libdrm2, liblz4-1, libturbojpeg (>= 1.5.0), libpng16-16,
 Provides: ${xviddriver:Provides}
 Description: X.Org X server -- Opensource driver for NVIDIA Tegra.
  This package provides HW-accelerated opensource driver for NVIDIA
