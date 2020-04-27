@@ -59,20 +59,37 @@
 
 #define PROFILE 0
 
+static inline float timespec_diff(const struct timespec *start,
+                                  const struct timespec *end)
+{
+    unsigned long seconds = end->tv_sec - start->tv_sec;
+    long ns = end->tv_nsec - start->tv_nsec;
+
+    if (ns < 0) {
+        ns += 1000000000;
+        seconds--;
+    }
+
+    return (seconds * 1000000000.0f + ns) / 1000;
+}
+
 #define PROFILE_DEF                                                 \
-    static clock_t profile_start;
+    static struct timespec profile_start;
 
 #define PROFILE_START                                               \
     if (PROFILE) {                                                  \
         printf("%s:%d: profile start\n", __func__, __LINE__);       \
-        profile_start = clock();                                    \
+        clock_gettime(CLOCK_MONOTONIC, &profile_start);             \
     }
 
 #define PROFILE_STOP                                                \
     if (PROFILE) {                                                  \
+        float profile_time;                                         \
+        static struct timespec profile_end;                         \
+        clock_gettime(CLOCK_MONOTONIC, &profile_end);               \
+        profile_time = timespec_diff(&profile_start, &profile_end); \
         printf("%s:%d: profile stop: %f us\n",                      \
-               __func__, __LINE__,                                  \
-               (double)(clock() - profile_start) / CLOCKS_PER_SEC); \
+               __func__, __LINE__, profile_time);                   \
     }
 
 struct tegra_pixmap;
