@@ -270,7 +270,10 @@ unsigned int TegraEXAPitch(unsigned int width, unsigned int height,
 
 static inline void TegraEXAWaitFence(struct tegra_fence *fence)
 {
+    PROFILE_DEF
+    PROFILE_START
     tegra_stream_wait_fence(fence);
+    PROFILE_STOP
 }
 
 unsigned TegraEXAHeightHwAligned(unsigned int height, unsigned int bpp);
