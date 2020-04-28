@@ -717,6 +717,8 @@ static Bool TegraVideoOverlayCreateFB(TegraVideoPtr priv, ScrnInfoPtr scrn,
     drm_overlay_fb *fb;
     int i = 0, k = 0;
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Waddress-of-packed-member"
     switch (passthrough) {
     case 1:
         data_size = PASSTHROUGH_DATA_SIZE;
@@ -735,6 +737,7 @@ static Bool TegraVideoOverlayCreateFB(TegraVideoPtr priv, ScrnInfoPtr scrn,
     default:
         break;
     }
+#pragma GCC diagnostic pop
 
     if (priv->fb &&
         priv->fb->format  == drm_format &&
