@@ -94,6 +94,7 @@ tegra_dri2_create_buffer(DrawablePtr drawable, unsigned int attachment,
     PixmapPtr pixmap;
     tegra_dri2_buffer_private_ptr private;
     TegraPixmapPtr tegra;
+    int err;
 
     if (!TegraPTR(scrn)->exa)
         return NULL;
@@ -172,18 +173,20 @@ tegra_dri2_create_buffer(DrawablePtr drawable, unsigned int attachment,
 
     tegra = exaGetPixmapDriverPrivate(pixmap);
 
-    drm_tegra_bo_get_name(tegra->bo, &buffer->name);
+    if (tegra->dri) {
+        err = drm_tegra_bo_get_name(tegra->bo, &buffer->name);
 
-    if (buffer->name == -1) {
-        xf86DrvMsg(scrn->scrnIndex, X_ERROR,
-                   "Failed to get DRI2 name for pixmap\n");
-        screen->DestroyPixmap(pixmap);
-        free(private);
-        free(buffer);
-        return NULL;
+        if (buffer->name == -1) {
+            xf86DrvMsg(scrn->scrnIndex, X_ERROR,
+                    "Failed to get DRI2 name for pixmap: %d\n", err);
+            screen->DestroyPixmap(pixmap);
+            free(private);
+            free(buffer);
+            return NULL;
+        }
+
+        drm_tegra_bo_forbid_caching(tegra->bo);
     }
-
-    drm_tegra_bo_forbid_caching(tegra->bo);
 
     buffer->pitch = pixmap->devKind;
     buffer->driverPrivate = private;
