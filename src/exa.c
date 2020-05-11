@@ -412,9 +412,10 @@ static void *TegraEXACreatePixmap2(ScreenPtr pScreen, int width, int height,
         *new_fb_pitch = 0;
     }
 
-    DebugMsg("priv %p type %u %d:%d:%d stride %d\n",
+    DebugMsg("priv %p type %u %d:%d:%d stride %d usage_hint 0x%x (%c%c%c%c)\n",
              pixmap, pixmap->type, width, height, bitsPerPixel,
-             *new_fb_pitch);
+             *new_fb_pitch, usage_hint,
+             usage_hint >> 24, usage_hint >> 16, usage_hint >> 8, usage_hint);
 
     return pixmap;
 }
