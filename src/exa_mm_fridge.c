@@ -715,30 +715,39 @@ static void TegraEXACoolPixmap(PixmapPtr pPixmap, Bool write)
     }
 }
 
+static void TegraEXAClearPixmapData(TegraPixmapPtr pixmap)
+{
+    unsigned int size = TegraPixmapSize(pixmap);
+    PixmapPtr pix = pixmap->pPixmap;
+    void *ptr;
+
+    if (TegraEXAPrepareCPUAccess(pix, EXA_PREPARE_DEST, &ptr)) {
+        /* always zero-fill allocated data for consistency */
+        memset(ptr, 0, size);
+
+        TegraEXAFinishCPUAccess(pix, EXA_PREPARE_DEST);
+    }
+}
+
 static void
 TegraEXAAllocatePixmapDataNoFail(TegraPtr tegra, TegraPixmapPtr pixmap,
                                  Bool accel)
 {
     unsigned int size = TegraPixmapSize(pixmap);
-    PixmapPtr pix = pixmap->pPixmap;
     unsigned int retries = 0;
-    void *ptr;
 
     while (1) {
         if (!accel) {
-            if (TegraEXAAllocateMem(pixmap, size))
+            if (TegraEXAAllocateMem(pixmap, size)) {
+                TegraEXAClearPixmapData(pixmap);
                 return;
+            }
         } else {
             if (TegraEXAAllocateDRMFromPool(tegra, pixmap, size) ||
                 TegraEXAAllocateDRM(tegra, pixmap, size) ||
                 TegraEXAAllocateMem(pixmap, size))
             {
-                if (TegraEXAPrepareCPUAccess(pix, EXA_PREPARE_DEST, &ptr)) {
-                    /* always zero-fill allocated data for consistency */
-                    memset(ptr, 0, size);
-
-                    TegraEXAFinishCPUAccess(pix, EXA_PREPARE_DEST);
-                }
+                TegraEXAClearPixmapData(pixmap);
                 return;
             }
         }
