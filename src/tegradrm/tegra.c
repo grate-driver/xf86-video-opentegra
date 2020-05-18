@@ -253,6 +253,9 @@ vg_free:
 	if (err < 0)
 		err = -errno;
 
+#ifndef NDEBUG
+	memset(bo, 0, sizeof(*bo));
+#endif
 	free(bo);
 
 	DBG_BO_STATS(drm);

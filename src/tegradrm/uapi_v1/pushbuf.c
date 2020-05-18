@@ -26,6 +26,7 @@
 #  include "config.h"
 #endif
 
+#include <assert.h>
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
@@ -106,7 +107,7 @@ int drm_tegra_pushbuf_free(struct drm_tegra_pushbuf *pushbuf)
 	drm_tegra_bo_unmap(priv->bo);
 
 	DRMLISTFOREACHENTRYSAFE(bo, tmp, &priv->bos, push_list) {
-		DRMLISTDEL(&bo->push_list);
+		DRMLISTDELINIT(&bo->push_list);
 		drm_tegra_bo_unref(bo);
 	}
 
@@ -127,6 +128,7 @@ int drm_tegra_pushbuf_prepare(struct drm_tegra_pushbuf *pushbuf,
 	struct drm_tegra_pushbuf_private *priv;
 	struct drm_tegra_channel *channel;
 	struct drm_tegra_bo *bo;
+	struct drm_tegra *drm;
 	void *ptr;
 	int err;
 
@@ -135,6 +137,7 @@ int drm_tegra_pushbuf_prepare(struct drm_tegra_pushbuf *pushbuf,
 
 	priv = drm_tegra_pushbuf(pushbuf);
 	channel = priv->job->channel;
+	drm = channel->drm;
 
 	if (priv->bo && (pushbuf->ptr + words < priv->end))
 		return 0;
@@ -145,7 +148,7 @@ int drm_tegra_pushbuf_prepare(struct drm_tegra_pushbuf *pushbuf,
 	 */
 	words = align(words, 1024);
 
-	err = drm_tegra_bo_new(&bo, channel->drm, 0, words * sizeof(uint32_t));
+	err = drm_tegra_bo_new(&bo, drm, 0, words * sizeof(uint32_t));
 	if (err < 0)
 		return err;
 
@@ -163,6 +166,10 @@ int drm_tegra_pushbuf_prepare(struct drm_tegra_pushbuf *pushbuf,
 		return err;
 	}
 
+#ifndef NDEBUG
+	if (drm->debug_bo)
+		assert(DRMLISTEMPTY(&bo->push_list));
+#endif
 	DRMLISTADD(&bo->push_list, &priv->bos);
 
 	priv->start = priv->base.ptr = ptr;

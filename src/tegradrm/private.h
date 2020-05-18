@@ -224,13 +224,16 @@ static void __attribute__((unused)) VG_BO_ALLOC(struct drm_tegra_bo *bo)
 		__drm_tegra_bo_map(bo, &bo->map_vg);
 		VALGRIND_MALLOCLIKE_BLOCK(bo->map_vg, bo->size, 0, 1);
 		VALGRIND_FREELIKE_BLOCK(bo->map_vg, 0);
+		DBG_BO(bo, "\n");
 	}
 }
 
 static void __attribute__((unused)) VG_BO_FREE(struct drm_tegra_bo *bo)
 {
-	if (RUNNING_ON_VALGRIND)
+	if (RUNNING_ON_VALGRIND) {
 		munmap(bo->map_vg, bo->size);
+		DBG_BO(bo, "\n");
+	}
 }
 
 /*
@@ -246,6 +249,8 @@ static void __attribute__((unused)) VG_BO_FREE(struct drm_tegra_bo *bo)
 static void __attribute__((unused)) VG_BO_RELEASE(struct drm_tegra_bo *bo)
 {
 	if (RUNNING_ON_VALGRIND) {
+		DBG_BO(bo, "\n");
+
 		/*
 		 * Disable access in case of an unbalanced BO mmappings to
 		 * simulate the unmap that we perform on BO freeing and
@@ -270,6 +275,8 @@ static void __attribute__((unused)) VG_BO_OBTAIN(struct drm_tegra_bo *bo)
 
 		if (bo->map)
 			VALGRIND_MALLOCLIKE_BLOCK(bo->map_vg, bo->size, 0, 1);
+
+		DBG_BO(bo, "\n");
 	}
 }
 

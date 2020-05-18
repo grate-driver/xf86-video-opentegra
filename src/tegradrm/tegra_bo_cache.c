@@ -286,6 +286,10 @@ int drm_tegra_bo_cache_free(struct drm_tegra_bo *bo)
 	struct drm_tegra *drm = bo->drm;
 	struct drm_tegra_bo_bucket *bucket;
 
+#ifndef NDEBUG
+	if (drm->debug_bo)
+		assert(DRMLISTEMPTY(&bo->bo_list));
+#endif
 	/* see if we can be green and recycle: */
 	bucket = drm_tegra_get_bucket(drm, bo->size);
 	if (bucket) {
@@ -335,7 +339,13 @@ drm_tegra_bo_mmap_cache_cleanup(struct drm_tegra *drm,
 			break;
 
 		if (time) {
+			if (!DRMLISTEMPTY(&bo->bo_list))
+				VG_BO_OBTAIN(bo);
+
 			bucket = bo_bucket(bo);
+
+			if (!DRMLISTEMPTY(&bo->bo_list))
+				VG_BO_RELEASE(bo);
 
 			if (bucket && !bucket_free_up(drm, bucket, true))
 				continue;
