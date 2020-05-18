@@ -43,6 +43,7 @@ struct tegra_command_buffer_v1 {
 struct tegra_fence_v1 {
     struct tegra_fence base;
     struct drm_tegra_fence *fence;
+    struct drm_tegra_job *job;
 };
 
 struct tegra_stream_v1 {
@@ -132,6 +133,7 @@ tegra_stream_submit_v1(struct tegra_stream *base_stream, bool gr2d)
 {
     struct tegra_stream_v1 *stream = to_stream_v1(base_stream);
     struct drm_tegra_fence *fence;
+    struct tegra_fence_v1 *f_v1;
     struct tegra_fence *f;
     int ret;
 
@@ -156,6 +158,11 @@ tegra_stream_submit_v1(struct tegra_stream *base_stream, bool gr2d)
         if (f) {
             tegra_stream_put_fence(stream->base.last_fence);
             stream->base.last_fence = f;
+
+            f_v1 = to_fence_v1(f);
+            f_v1->job = stream->job;
+
+            goto done;
         } else {
             drm_tegra_fence_wait_timeout(fence, 1000);
             drm_tegra_fence_free(fence);
@@ -165,6 +172,7 @@ tegra_stream_submit_v1(struct tegra_stream *base_stream, bool gr2d)
 cleanup:
     drm_tegra_job_free(stream->job);
 
+done:
     stream->job = NULL;
     stream->base.status = TEGRADRM_STREAM_FREE;
 
@@ -183,7 +191,9 @@ static bool tegra_stream_wait_fence_v1(struct tegra_fence *base_fence)
         }
 
         drm_tegra_fence_free(f->fence);
+        drm_tegra_job_free(f->job);
         f->fence = NULL;
+        f->job = NULL;
 
         return true;
     }
@@ -196,6 +206,7 @@ static void tegra_stream_free_fence_v1(struct tegra_fence *base_fence)
     struct tegra_fence_v1 *f = to_fence_v1(base_fence);
 
     drm_tegra_fence_free(f->fence);
+    drm_tegra_job_free(f->job);
     free(f);
 }
 
