@@ -28,6 +28,10 @@
     xf86DrvMsg(scrn->scrnIndex, X_ERROR, "%s:%d/%s(): " fmt, __FILE__, \
                __LINE__, __func__, ##args)
 
+#define InfoMsg(fmt, args...) \
+    xf86DrvMsg(scrn->scrnIndex, X_INFO, "%s:%d/%s(): " fmt, \
+               __FILE__, __LINE__, __func__, ##args)
+
 #define MAKE_ATOM(a) MakeAtom(a, sizeof(a) - 1, TRUE)
 
 #define DEFAULT_COLOR_KEY 0xFF4AF6
@@ -500,8 +504,13 @@ static Bool TegraVideoOverlaySetPlaneColorKey(TegraVideoPtr priv,
                                               Bool init)
 {
     TegraOverlayPtr overlay = &priv->overlay[overlay_id];
+    TegraPtr tegra = TegraPTR(scrn);
+    int drm_ver = drm_tegra_version(tegra->drm);
     uint64_t ckey = 0;
     int ret = 0;
+
+    if (drm_ver != GRATE_KERNEL_DRM_VERSION)
+        return FALSE;
 
     if (overlay->ckey_enb == enable &&
             overlay->color_key == color_key &&
@@ -598,7 +607,12 @@ static Bool TegraVideoOverlaySetPlaneCSC(TegraVideoPtr priv,
                                          Bool init)
 {
     TegraOverlayPtr overlay = &priv->overlay[overlay_id];
+    TegraPtr tegra = TegraPTR(scrn);
+    int drm_ver = drm_tegra_version(tegra->drm);
     int ret = 0;
+
+    if (drm_ver != GRATE_KERNEL_DRM_VERSION)
+        return FALSE;
 
     if (!init && memcmp(&overlay->csc_blob, &priv->csc_blob,
                         sizeof(overlay->csc_blob) == 0))
@@ -1752,7 +1766,15 @@ static Bool TegraXvGetDrmProps(ScrnInfoPtr scrn, TegraVideoPtr priv)
     TegraPtr tegra = TegraPTR(scrn);
     TegraOverlayPtr overlay;
     drmModeObjectPropertiesPtr properties;
+    int drm_ver = drm_tegra_version(tegra->drm);
     int id;
+
+    drm_ver = drm_tegra_version(tegra->drm);
+
+    if (drm_ver != GRATE_KERNEL_DRM_VERSION) {
+        InfoMsg("GRATE DRM API unsupported by kernel driver\n");
+        InfoMsg("https://github.com/grate-driver/linux\n");
+    }
 
     for (id = 0; id < priv->overlays_num; id++) {
         overlay = &priv->overlay[id];
@@ -1813,6 +1835,13 @@ static Bool TegraXvGetDrmProps(ScrnInfoPtr scrn, TegraVideoPtr priv)
                                         &overlay->crtc_h_prop_id)) {
             goto err_free_props;
         }
+
+        if (drm_ver != GRATE_KERNEL_DRM_VERSION) {
+            free(properties);
+            continue;
+        }
+
+        /* this is experimental grate-kernel UAPI version */
 
         if (!TegraXvGetDrmPlaneProperty(scrn, priv, properties, "zpos",
                                         &overlay->zpos_prop_id)) {

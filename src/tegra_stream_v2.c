@@ -413,7 +413,7 @@ int grate_stream_create_v2(struct tegra_stream **pstream,
     }
 
     /* this is experimental grate-kernel UAPI version */
-    if (ret != 99991) {
+    if (ret != GRATE_KERNEL_DRM_VERSION) {
         InfoMsg("GRATE DRM v2 API unsupported by kernel driver\n");
         InfoMsg("https://github.com/grate-driver/linux\n");
         return -1;

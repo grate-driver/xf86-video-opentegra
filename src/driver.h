@@ -149,6 +149,8 @@
         (type *)((char *)__mptr - TEGRA_CONTAINER_OFFSETOF(type, member));  \
     })
 
+#define GRATE_KERNEL_DRM_VERSION    99991
+
 typedef struct
 {
     int lastInstance;
