@@ -29,6 +29,8 @@
 #include <unistd.h>
 
 #include <sys/mman.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 
 #include <xf86drm.h>
 
@@ -358,6 +360,7 @@ int drm_tegra_bo_new(struct drm_tegra_bo **bop, struct drm_tegra *drm,
 {
 	struct drm_tegra_gem_create args;
 	struct drm_tegra_bo *bo;
+	bool retried = false;
 	int err;
 
 	if (!drm || size == 0 || !bop)
@@ -397,11 +400,37 @@ int drm_tegra_bo_new(struct drm_tegra_bo **bop, struct drm_tegra *drm,
 	if (drm->debug_bo_back_guard)
 		args.size += 4096;
 #endif
+retry:
 	err = drmCommandWriteRead(drm->fd, DRM_TEGRA_GEM_CREATE, &args,
 				  sizeof(args));
 	if (err < 0) {
+		int drop_caches_fd, dropped;
+		struct timespec time;
+
 		VDBG_DRM(drm, "failed size %u bytes flags 0x%08X err %d (%s)\n",
 			 size, flags, err, strerror(-err));
+
+		clock_gettime(CLOCK_MONOTONIC, &time);
+
+		if (err == -ENOMEM && !retried &&
+		    time.tv_sec - drm->drop_caches_time > 20) {
+			/* dropping caches may help CMA to succeed */
+			drop_caches_fd = open("/proc/sys/vm/drop_caches",
+					      O_WRONLY);
+			if (drop_caches_fd >= 0) {
+				dropped = write(drop_caches_fd, "1", 1) > 0;
+				close(drop_caches_fd);
+
+				if (dropped) {
+					VDBG_DRM(drm, "%s\n",
+						 "dropped caches, retrying");
+					drm->drop_caches_time = time.tv_sec;
+					retried = true;
+					goto retry;
+				}
+			}
+		}
+
 		free(bo);
 		return err;
 	}

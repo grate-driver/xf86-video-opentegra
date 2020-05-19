@@ -139,6 +139,7 @@ struct drm_tegra {
 
 	struct drm_tegra_bo_cache bo_cache;
 	struct drm_tegra_bo_mmap_cache mmap_cache;
+	time_t drop_caches_time;	/* time when dropped page caches */
 	bool close;
 	int fd;
 
