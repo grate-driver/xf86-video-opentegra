@@ -524,6 +524,7 @@ static int TegraEXAAllocateFromPool(TegraPtr tegra, size_t size,
 {
     TegraEXAPtr exa = tegra->exa;
     TegraPixmapPoolPtr pool;
+    Bool retried = FALSE;
     size_t pool_size;
     void *data;
     int err;
@@ -558,8 +559,9 @@ again:
     err = TegraEXACreatePool(tegra, &pool, 1, pool_size);
     if (err) {
         if (err == -ENOMEM) {
-            if (TegraEXACompactPoolsSlowAllowed(exa, 0)) {
+            if (!retried && TegraEXACompactPoolsSlowAllowed(exa, 0)) {
                 TegraEXACompactPoolsSlow(tegra);
+                retried = TRUE;
                 goto again;
             }
         }
