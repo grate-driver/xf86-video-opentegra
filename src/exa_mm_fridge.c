@@ -26,7 +26,8 @@
 
 #define TEGRA_EXA_FREEZE_ALLOWANCE_DELTA    1
 #define TEGRA_EXA_FREEZE_BOUNCE_DELTA       3
-#define TEGRA_EXA_FREEZE_DELTA              2
+#define TEGRA_EXA_FREEZE_MIN_DELTA          2
+#define TEGRA_EXA_FREEZE_MAX_DELTA          15
 #define TEGRA_EXA_COOLING_LIMIT_MIN         0x400000
 #define TEGRA_EXA_COOLING_LIMIT_MAX         0x1000000
 #define TEGRA_EXA_FREEZE_CHUNK              0x20000
@@ -641,7 +642,15 @@ static void TegraEXAFreezePixmaps(TegraPtr tegra, time_t time_sec)
     frost_size = 0;
 
     xorg_list_for_each_entry_safe(pix, tmp, &exa->cool_pixmaps, fridge_entry) {
-        if (time_sec / 8 - pix->last_use < TEGRA_EXA_FREEZE_DELTA)
+        if (time_sec / 8 - pix->last_use < TEGRA_EXA_FREEZE_MAX_DELTA)
+            break;
+
+        /* enforce freezing of staled pixmaps */
+        TegraEXAFreezePixmap(tegra, pix);
+    }
+
+    xorg_list_for_each_entry_safe(pix, tmp, &exa->cool_pixmaps, fridge_entry) {
+        if (time_sec / 8 - pix->last_use < TEGRA_EXA_FREEZE_MIN_DELTA)
             break;
 
         err = TegraEXAFreezePixmap(tegra, pix);
