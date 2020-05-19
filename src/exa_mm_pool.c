@@ -75,6 +75,8 @@ static int TegraEXACreatePool(TegraPtr tegra, TegraPixmapPoolPtr *ret,
         return err;
     }
 
+    xorg_list_init(&pool->entry);
+
     *ret = pool;
 
     return 0;
@@ -512,7 +514,7 @@ static void TegraEXAPoolFree(struct mem_pool_entry *pool_entry)
 
     mem_pool_free(pool_entry);
 
-    if (mem_pool_empty(&pool->pool))
+    if (!pool->persitent && mem_pool_empty(&pool->pool))
         TegraEXADestroyPool(pool);
 
     pool_entry->pool = NULL;
@@ -581,28 +583,40 @@ success:
     return 0;
 }
 
+static int TegraEXAAllocateDRMFromLargePool(TegraPtr tegra,
+                                            TegraPixmapPtr pixmap,
+                                            unsigned int size)
+{
+    TegraEXAPtr exa = tegra->exa;
+
+    if (!exa->large_pool)
+        return -EINVAL;
+
+    if (!mem_pool_alloc(&exa->large_pool->pool, size, &pixmap->pool_entry,
+                        FALSE))
+        return -ENOMEM;
+
+    return 0;
+}
+
 static Bool TegraEXAAllocateDRMFromPool(TegraPtr tegra,
                                         TegraPixmapPtr pixmap,
                                         unsigned int size)
 {
-    unsigned int size_masked = size & TEGRA_EXA_PAGE_MASK;
     int err;
 
     if (!pixmap->accel || pixmap->dri)
         return FALSE;
 
-    if (size_masked == 0)
-        return FALSE;
-
-    if (size > TEGRA_EXA_POOL_SIZE / 6) {
-        if (TEGRA_EXA_PAGE_SIZE - size_masked <= TEGRA_EXA_OFFSET_ALIGN)
-            return FALSE;
-    }
+    err = TegraEXAAllocateDRMFromLargePool(tegra, pixmap, size);
+    if (!err)
+        goto success;
 
     err = TegraEXAAllocateFromPool(tegra, size, &pixmap->pool_entry);
     if (err)
         return FALSE;
 
+success:
     pixmap->type = TEGRA_EXA_PIXMAP_TYPE_POOL;
 
     return TRUE;

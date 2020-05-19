@@ -180,6 +180,7 @@ typedef struct {
     void *ptr;
     Bool heavy : 1;
     Bool light : 1;
+    Bool persitent : 1;
 } TegraPixmapPool, *TegraPixmapPoolPtr;
 
 typedef struct _TegraEXARec{
@@ -187,6 +188,7 @@ typedef struct _TegraEXARec{
     struct drm_tegra_channel *gr3d;
     struct tegra_stream *cmds;
     TegraEXAScratch scratch;
+    TegraPixmapPoolPtr large_pool;
     struct xorg_list mem_pools;
     time_t pool_slow_compact_time;
     time_t pool_fast_compact_time;

@@ -736,6 +736,47 @@ Bool TegraEXAScreenInit(ScreenPtr pScreen)
 
     priv->scratch.drm = tegra->drm;
 
+    /*
+     * CMA doesn't guarantee contiguous allocations. We should do our best
+     * in order to avoid fragmentation because even if CMA area is quite
+     * large, the accidental pinned memory pages may ruin the day (or Xorg
+     * session at least).
+     */
+    if (tegra->exa_pool_alloc) {
+        unsigned int size;
+        err = -ENOMEM;
+
+        if (err) {
+            size = 24 * 1024 * 1024;
+            err = TegraEXACreatePool(tegra, &priv->large_pool, 4, size);
+            if (err)
+                ErrorMsg("failed to preallocate %uMB for a larger pool\n",
+                        size / (1024 * 1024));
+        }
+
+        if (err) {
+            size = 16 * 1024 * 1024;
+            err = TegraEXACreatePool(tegra, &priv->large_pool, 4, size);
+            if (err)
+                ErrorMsg("failed to preallocate %uMB for a larger pool\n",
+                        size / (1024 * 1024));
+        }
+
+        if (err) {
+            size = 8 * 1024 * 1024;
+            err = TegraEXACreatePool(tegra, &priv->large_pool, 4, size);
+            if (err)
+                ErrorMsg("failed to preallocate %uMB for a larger pool\n",
+                        size / (1024 * 1024));
+        }
+
+        if (!err) {
+            xf86DrvMsg(pScrn->scrnIndex, X_INFO,
+                       "EXA %uMB pool preallocated\n", size / (1024 * 1024));
+            priv->large_pool->persitent = TRUE;
+        }
+    }
+
     return TRUE;
 
 release_mm:
@@ -761,6 +802,15 @@ void TegraEXAScreenExit(ScreenPtr pScreen)
     TegraEXAPtr priv = tegra->exa;
 
     if (priv) {
+        if (priv->large_pool) {
+            priv->large_pool->persitent = FALSE;
+
+            if (mem_pool_empty(&priv->large_pool->pool)) {
+                TegraEXADestroyPool(priv->large_pool);
+                priv->large_pool = NULL;
+            }
+        }
+
         exaDriverFini(pScreen);
         TegraGR3DStateReset(&priv->gr3d_state);
         TegraEXAUnWrapProc(pScreen);
