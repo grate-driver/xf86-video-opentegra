@@ -463,6 +463,13 @@ int drm_tegra_bo_wrap(struct drm_tegra_bo **bop, struct drm_tegra *drm,
 
 	VG_BO_ALLOC(bo);
 
+#ifndef NDEBUG
+	if (drm->debug_bo) {
+		bo->debug_size = align(bo->size, 4096);
+		drm->debug_bos_total_size += bo->debug_size;
+		drm->debug_bos_allocated++;
+	}
+#endif
 	/* add ourselves into the handle table */
 	drmHashInsert(drm->handle_table, handle, bo);
 
