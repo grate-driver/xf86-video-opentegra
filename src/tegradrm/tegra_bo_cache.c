@@ -228,7 +228,7 @@ void drm_tegra_reset_bo(struct drm_tegra_bo *bo, uint32_t flags,
 
 	if (set_flags) {
 		/* XXX: Error handling? */
-		drm_tegra_bo_set_flags(bo, flags);
+		drm_tegra_bo_set_flags(bo, flags & DRM_TEGRA_GEM_FLAGS);
 	}
 
 	if (bo->custom_tiling) {
@@ -270,7 +270,9 @@ drm_tegra_bo_cache_alloc(struct drm_tegra *drm,
 		*size = bucket->size;
 		bo = find_in_bucket(bucket, flags);
 		if (bo) {
-			drm_tegra_reset_bo(bo, flags, true);
+			drm_tegra_reset_bo(bo, flags,
+					   (flags     & DRM_TEGRA_GEM_FLAGS) !=
+					   (bo->flags & DRM_TEGRA_GEM_FLAGS));
 #ifndef NDEBUG
 			if (drm->debug_bo)
 				drm->debug_bos_cached--;
