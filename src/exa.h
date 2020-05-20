@@ -197,6 +197,7 @@ typedef struct _TegraEXARec{
     time_t last_resurrect_time;
     time_t last_freezing_time;
     unsigned release_count;
+    unsigned long default_drm_bo_flags;
     CreatePictureProcPtr CreatePicture;
     ScreenBlockHandlerProcPtr BlockHandler;
 #ifdef HAVE_JPEG

@@ -509,7 +509,7 @@ static Bool TegraVideoOverlaySetPlaneColorKey(TegraVideoPtr priv,
     uint64_t ckey = 0;
     int ret = 0;
 
-    if (drm_ver != GRATE_KERNEL_DRM_VERSION)
+    if (drm_ver < GRATE_KERNEL_DRM_VERSION)
         return FALSE;
 
     if (overlay->ckey_enb == enable &&
@@ -611,7 +611,7 @@ static Bool TegraVideoOverlaySetPlaneCSC(TegraVideoPtr priv,
     int drm_ver = drm_tegra_version(tegra->drm);
     int ret = 0;
 
-    if (drm_ver != GRATE_KERNEL_DRM_VERSION)
+    if (drm_ver < GRATE_KERNEL_DRM_VERSION)
         return FALSE;
 
     if (!init && memcmp(&overlay->csc_blob, &priv->csc_blob,
@@ -1771,7 +1771,7 @@ static Bool TegraXvGetDrmProps(ScrnInfoPtr scrn, TegraVideoPtr priv)
 
     drm_ver = drm_tegra_version(tegra->drm);
 
-    if (drm_ver != GRATE_KERNEL_DRM_VERSION) {
+    if (drm_ver < GRATE_KERNEL_DRM_VERSION) {
         InfoMsg("GRATE DRM API unsupported by kernel driver\n");
         InfoMsg("https://github.com/grate-driver/linux\n");
     }
@@ -1836,7 +1836,7 @@ static Bool TegraXvGetDrmProps(ScrnInfoPtr scrn, TegraVideoPtr priv)
             goto err_free_props;
         }
 
-        if (drm_ver != GRATE_KERNEL_DRM_VERSION) {
+        if (drm_ver < GRATE_KERNEL_DRM_VERSION) {
             free(properties);
             continue;
         }

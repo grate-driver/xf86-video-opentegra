@@ -43,6 +43,7 @@ static void TegraEXADestroyPool(TegraPixmapPoolPtr pool)
 static int TegraEXACreatePool(TegraPtr tegra, TegraPixmapPoolPtr *ret,
                               unsigned int bitmap_size, unsigned long size)
 {
+    TegraEXAPtr exa = tegra->exa;
     TegraPixmapPoolPtr pool;
     int err;
 
@@ -52,7 +53,8 @@ static int TegraEXACreatePool(TegraPtr tegra, TegraPixmapPoolPtr *ret,
         return -ENOMEM;
     }
 
-    err = drm_tegra_bo_new(&pool->bo, tegra->drm, 0, size);
+    err = drm_tegra_bo_new(&pool->bo, tegra->drm, exa->default_drm_bo_flags,
+                           size);
     if (err) {
         ErrorMsg("failed to allocate pools BO: %d\n", err);
         free(pool);

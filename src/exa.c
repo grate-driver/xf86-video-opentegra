@@ -642,7 +642,13 @@ Bool TegraEXAScreenInit(ScreenPtr pScreen)
     TegraPtr tegra = TegraPTR(pScrn);
     ExaDriverPtr exa;
     TegraEXAPtr priv;
+    int drm_ver;
     int err;
+
+    drm_ver = drm_tegra_version(tegra->drm);
+
+    xf86DrvMsg(pScrn->scrnIndex, X_INFO, "Tegra DRM kernel version %d\n",
+               drm_ver);
 
     if (!tegra->exa_enabled)
         return TRUE;
@@ -735,6 +741,18 @@ Bool TegraEXAScreenInit(ScreenPtr pScreen)
     TegraGR3DStateReset(&priv->gr3d_state);
 
     priv->scratch.drm = tegra->drm;
+
+    if (drm_ver >= GRATE_KERNEL_DRM_VERSION) {
+        priv->default_drm_bo_flags = DRM_TEGRA_GEM_CREATE_DONT_KMAP;
+        xf86DrvMsg(pScrn->scrnIndex, X_INFO, "EXA using GEM DONT_KMAP\n");
+    }
+    if (drm_ver >= GRATE_KERNEL_DRM_VERSION + 1) {
+        /*
+         * Just print message without using sparse allocation for the large
+         * pool because it will hog most of GART aperture.
+         */
+        xf86DrvMsg(pScrn->scrnIndex, X_INFO, "EXA using GEM CREATE_SPARSE\n");
+    }
 
     /*
      * CMA doesn't guarantee contiguous allocations. We should do our best

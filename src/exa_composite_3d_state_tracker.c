@@ -22,7 +22,8 @@
 
 #include "gr3d.c"
 
-static Bool TegraAllocateAttribBuffer(TegraGR3DStatePtr state)
+static Bool TegraAllocateAttribBuffer(TegraGR3DStatePtr state,
+                                      TegraEXAPtr exa)
 {
     struct tegra_exa_scratch *scratch = state->scratch;
     int err;
@@ -30,7 +31,8 @@ static Bool TegraAllocateAttribBuffer(TegraGR3DStatePtr state)
     if (scratch->attribs.bo)
         return TRUE;
 
-    err = drm_tegra_bo_new(&scratch->attribs.bo, scratch->drm, 0,
+    err = drm_tegra_bo_new(&scratch->attribs.bo, scratch->drm,
+                           exa->default_drm_bo_flags,
                            TEGRA_ATTRIB_BUFFER_SIZE);
     if (err) {
         scratch->attribs.bo = NULL;
@@ -583,7 +585,7 @@ static Bool TegraGR3DStateAppend(TegraGR3DStatePtr state, TegraEXAPtr tegra,
         return FALSE;
     }
 
-    if (!TegraAllocateAttribBuffer(state)) {
+    if (!TegraAllocateAttribBuffer(state, tegra)) {
         TegraGR3DStateReset(state);
         return FALSE;
     }

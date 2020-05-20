@@ -33,7 +33,9 @@ dumb_bo_create(struct drm_tegra *drm,
                const unsigned bpp)
 {
     struct dumb_bo *bo;
+    unsigned long flags = 0;
     unsigned int size;
+    int drm_ver;
     void *ptr;
     int ret;
 
@@ -44,7 +46,11 @@ dumb_bo_create(struct drm_tegra *drm,
     bo->pitch = TegraEXAPitch(width, height, bpp);
     size = bo->pitch * TegraEXAHeightHwAligned(height, bpp);
 
-    ret = drm_tegra_bo_new(&bo->bo, drm, 0, size);
+    drm_ver = drm_tegra_version(drm);
+    if (drm_ver >= GRATE_KERNEL_DRM_VERSION)
+        flags = DRM_TEGRA_GEM_CREATE_DONT_KMAP;
+
+    ret = drm_tegra_bo_new(&bo->bo, drm, flags, size);
     if (ret)
         goto err_free;
 
