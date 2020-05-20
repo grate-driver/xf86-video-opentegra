@@ -26,13 +26,13 @@
 
 #define TEGRA_EXA_FREEZE_ALLOWANCE_DELTA    1
 #define TEGRA_EXA_FREEZE_BOUNCE_DELTA       3
-#define TEGRA_EXA_FREEZE_MIN_DELTA          2
-#define TEGRA_EXA_FREEZE_MAX_DELTA          15
-#define TEGRA_EXA_COOLING_LIMIT_MIN         0x400000
-#define TEGRA_EXA_COOLING_LIMIT_MAX         0x1000000
-#define TEGRA_EXA_FREEZE_CHUNK              0x20000
+#define TEGRA_EXA_FREEZE_MIN_DELTA          16
+#define TEGRA_EXA_FREEZE_MAX_DELTA          120
+#define TEGRA_EXA_COOLING_LIMIT_MIN         (4 * 1024 * 1024)
+#define TEGRA_EXA_COOLING_LIMIT_MAX         (16 * 1024 * 1024)
+#define TEGRA_EXA_FREEZE_CHUNK              (128 * 1024)
 #define TEGRA_EXA_COMPRESS_RATIO_LIMIT      85 / 100
-#define TEGRA_EXA_COMPRESS_SMALL_SIZE       0x10000
+#define TEGRA_EXA_COMPRESS_SMALL_SIZE       (64 * 1024)
 #define TEGRA_EXA_RESURRECT_DELTA           2
 
 struct compression_arg {
@@ -642,7 +642,7 @@ static void TegraEXAFreezePixmaps(TegraPtr tegra, time_t time_sec)
     frost_size = 0;
 
     xorg_list_for_each_entry_safe(pix, tmp, &exa->cool_pixmaps, fridge_entry) {
-        if (time_sec / 8 - pix->last_use < TEGRA_EXA_FREEZE_MAX_DELTA)
+        if (time_sec - pix->last_use < TEGRA_EXA_FREEZE_MAX_DELTA)
             break;
 
         /* enforce freezing of staled pixmaps */
@@ -650,7 +650,7 @@ static void TegraEXAFreezePixmaps(TegraPtr tegra, time_t time_sec)
     }
 
     xorg_list_for_each_entry_safe(pix, tmp, &exa->cool_pixmaps, fridge_entry) {
-        if (time_sec / 8 - pix->last_use < TEGRA_EXA_FREEZE_MIN_DELTA)
+        if (time_sec - pix->last_use < TEGRA_EXA_FREEZE_MIN_DELTA)
             break;
 
         err = TegraEXAFreezePixmap(tegra, pix);
@@ -683,7 +683,6 @@ out:
 static void TegraEXACoolTegraPixmap(TegraPtr tegra, TegraPixmapPtr pix)
 {
     TegraEXAPtr exa = tegra->exa;
-    unsigned int current_sec8;
     struct timespec time;
 
     if (pix->frozen || pix->cold || pix->scanout || pix->dri ||
@@ -695,10 +694,9 @@ static void TegraEXACoolTegraPixmap(TegraPtr tegra, TegraPixmapPtr pix)
         return;
 
     clock_gettime(CLOCK_THREAD_CPUTIME_ID, &time);
-    current_sec8 = time.tv_sec / 8;
 
     xorg_list_append(&pix->fridge_entry, &exa->cool_pixmaps);
-    pix->last_use = current_sec8;
+    pix->last_use = time.tv_sec;
     pix->cold = TRUE;
 
     exa->cooling_size += TegraPixmapSize(pix);

@@ -252,7 +252,7 @@ typedef struct tegra_pixmap {
                 void *fallback;
             };
 
-            time_t last_use; /* 8 seconds per unit */
+            time_t last_use; /* in seconds */
             struct xorg_list fridge_entry;
         };
 

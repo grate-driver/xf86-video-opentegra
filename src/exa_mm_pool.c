@@ -26,11 +26,11 @@
 
 #include "pool_alloc.c"
 
-#define TEGRA_EXA_POOL_SIZE             0x10000
-#define TEGRA_EXA_PAGE_SIZE             0x1000
+#define TEGRA_EXA_POOL_SIZE             (64 * 1024)
+#define TEGRA_EXA_PAGE_SIZE             4096
 #define TEGRA_EXA_PAGE_MASK             (TEGRA_EXA_PAGE_SIZE - 1)
 #define TEGRA_EXA_POOL_SIZE_MAX         (TEGRA_EXA_POOL_SIZE * 3 / 2)
-#define TEGRA_EXA_POOL_SIZE_MERGED_MAX  0x100000
+#define TEGRA_EXA_POOL_SIZE_MERGED_MAX  (1 * 1024 * 1024)
 
 static void TegraEXADestroyPool(TegraPixmapPoolPtr pool)
 {
