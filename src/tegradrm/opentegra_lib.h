@@ -80,6 +80,8 @@ int drm_tegra_bo_forbid_caching(struct drm_tegra_bo *bo);
 int drm_tegra_bo_cpu_prep(struct drm_tegra_bo *bo,
 			  uint32_t flags, uint32_t timeout_us);
 
+void drm_tegra_bo_cache_cleanup(struct drm_tegra *drm, time_t time);
+
 struct drm_tegra_channel;
 struct drm_tegra_job;
 

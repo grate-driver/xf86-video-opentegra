@@ -199,7 +199,6 @@ int drm_tegra_bo_free(struct drm_tegra_bo *bo);
 int __drm_tegra_bo_map(struct drm_tegra_bo *bo, void **ptr);
 
 void drm_tegra_bo_cache_init(struct drm_tegra_bo_cache *cache, bool coarse);
-void drm_tegra_bo_cache_cleanup(struct drm_tegra *drm, time_t time);
 struct drm_tegra_bo * drm_tegra_bo_cache_alloc(struct drm_tegra *drm,
 					       uint32_t *size, uint32_t flags);
 int drm_tegra_bo_cache_free(struct drm_tegra_bo *bo);
