@@ -207,6 +207,8 @@ int drm_tegra_pushbuf_relocate(struct drm_tegra_pushbuf *pushbuf,
 	if (err < 0)
 		return err;
 
+	drm_tegra_bo_ref(target);
+
 	*pushbuf->ptr++ = 0xdeadbeef;
 
 	return 0;

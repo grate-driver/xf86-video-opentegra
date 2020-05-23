@@ -103,18 +103,43 @@ int drm_tegra_job_free(struct drm_tegra_job *job)
 {
 	struct drm_tegra_pushbuf_private *pushbuf;
 	struct drm_tegra_pushbuf_private *temp;
+	struct drm_tegra_bo *bo;
+	struct drm_tegra *drm;
+	uint32_t handle;
+	int err, ret = 0;
 
 	if (!job)
 		return -EINVAL;
 
+	drm = job->channel->drm;
+
 	DRMLISTFOREACHENTRYSAFE(pushbuf, temp, &job->pushbufs, list)
 		drm_tegra_pushbuf_free(&pushbuf->base);
+
+	while (job->num_relocs--) {
+		handle = job->relocs[job->num_relocs++].target.handle;
+
+		err = drm_tegra_bo_from_handle(&bo, drm, handle);
+		if (err) {
+			VDBG_DRM(drm, "invalid handle %u\n", handle);
+			ret = err;
+			continue;
+		}
+
+		/*
+		 * BO was referenced by drm_tegra_pushbuf_relocate() and it's
+		 * also referenced by drm_tegra_bo_from_handle(), so it needs
+		 * to be unreferenced twice in order to be released.
+		 */
+		drm_tegra_bo_unref(bo);
+		drm_tegra_bo_unref(bo);
+	}
 
 	free(job->cmdbufs);
 	free(job->relocs);
 	free(job);
 
-	return 0;
+	return ret;
 }
 
 int drm_tegra_job_submit(struct drm_tegra_job *job,

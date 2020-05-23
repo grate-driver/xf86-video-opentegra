@@ -1023,3 +1023,23 @@ int drm_tegra_bo_cpu_prep(struct drm_tegra_bo *bo,
 
 	return ret;
 }
+
+int drm_tegra_bo_from_handle(struct drm_tegra_bo **bop, struct drm_tegra *drm,
+			     uint32_t handle)
+{
+	struct drm_tegra_bo *bo;
+
+	if (!drm || !bop)
+		return -EINVAL;
+
+	pthread_mutex_lock(&table_lock);
+	bo = lookup_bo(drm->handle_table, handle);
+	pthread_mutex_unlock(&table_lock);
+
+	if (!bo)
+		return -EINVAL;
+
+	*bop = bo;
+
+	return 0;
+}
