@@ -38,16 +38,23 @@ int drm_tegra_job_add_reloc(struct drm_tegra_job *job,
 			    const struct drm_tegra_reloc *reloc)
 {
 	struct drm_tegra_reloc *relocs;
+	unsigned int num_prealloc = 8;
 	size_t size;
 
+	if (job->num_relocs && job->num_relocs < num_prealloc)
+		goto add_reloc;
+
 	size = (job->num_relocs + 1) * sizeof(*reloc);
+
+	if (!job->num_relocs)
+		size *= num_prealloc;
 
 	relocs = realloc(job->relocs, size);
 	if (!relocs)
 		return -ENOMEM;
 
 	job->relocs = relocs;
-
+add_reloc:
 	job->relocs[job->num_relocs++] = *reloc;
 
 	return 0;
