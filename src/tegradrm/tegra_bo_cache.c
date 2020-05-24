@@ -270,9 +270,14 @@ drm_tegra_bo_cache_alloc(struct drm_tegra *drm,
 		*size = bucket->size;
 		bo = find_in_bucket(bucket, flags);
 		if (bo) {
-			drm_tegra_reset_bo(bo, flags,
-					   (flags     & DRM_TEGRA_GEM_FLAGS) !=
-					   (bo->flags & DRM_TEGRA_GEM_FLAGS));
+			drm_tegra_reset_bo(bo, flags, false);
+
+			if ((flags     & DRM_TEGRA_GEM_FLAGS) !=
+			    (bo->flags & DRM_TEGRA_GEM_FLAGS))
+			{
+				flags &= DRM_TEGRA_GEM_FLAGS;
+				drm_tegra_bo_set_flags(bo, flags);
+			}
 #ifndef NDEBUG
 			if (drm->debug_bo)
 				drm->debug_bos_cached--;
