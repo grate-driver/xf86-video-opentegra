@@ -117,7 +117,7 @@ int drm_tegra_job_free(struct drm_tegra_job *job)
 		drm_tegra_pushbuf_free(&pushbuf->base);
 
 	while (job->num_relocs--) {
-		handle = job->relocs[job->num_relocs++].target.handle;
+		handle = job->relocs[job->num_relocs].target.handle;
 
 		err = drm_tegra_bo_from_handle(&bo, drm, handle);
 		if (err) {
