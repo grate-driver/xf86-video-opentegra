@@ -595,6 +595,8 @@ static Bool TegraGR3DStateAppend(TegraGR3DStatePtr state, TegraEXAPtr tegra,
 
 static struct tegra_fence * TegraGR3DStateSubmit(TegraGR3DStatePtr state)
 {
+    struct tegra_fence *fence = NULL;
+
     if (state->clean)
         return NULL;
 
@@ -606,9 +608,13 @@ static struct tegra_fence * TegraGR3DStateSubmit(TegraGR3DStatePtr state)
      * expose controls for explicit CDMA synchronization.
      */
     tegra_stream_end(state->cmds);
+#if PROFILE
     tegra_stream_flush(state->cmds);
+#else
+    fence = tegra_stream_submit(state->cmds, false);
+#endif
 
     TegraGR3DStateReset(state);
 
-    return NULL;
+    return fence;
 }
