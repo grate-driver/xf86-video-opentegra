@@ -177,13 +177,19 @@ static void TegraEXADoneSolid(PixmapPtr pPixmap)
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pPixmap->drawable.pScreen);
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
     struct tegra_fence *fence = NULL;
+    int drm_ver;
+
+    drm_ver = drm_tegra_version(TegraPTR(pScrn)->drm);
 
     if (tegra->scratch.ops && tegra->cmds->status == TEGRADRM_STREAM_CONSTRUCT) {
-        if (priv->fence_write && !priv->fence_write->gr2d)
-            TegraEXAWaitFence(priv->fence_write);
 
-        if (priv->fence_read && !priv->fence_read->gr2d)
-            TegraEXAWaitFence(priv->fence_read);
+        if (drm_ver < GRATE_KERNEL_DRM_VERSION + 2) {
+            if (priv->fence_write && !priv->fence_write->gr2d)
+                TegraEXAWaitFence(priv->fence_write);
+
+            if (priv->fence_read && !priv->fence_read->gr2d)
+                TegraEXAWaitFence(priv->fence_read);
+        }
 
         tegra_stream_end(tegra->cmds);
 #if PROFILE
@@ -536,9 +542,12 @@ static void TegraEXADoneCopy(PixmapPtr pDstPixmap)
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
     struct tegra_fence *fence = NULL;
     TegraPixmapPtr priv;
+    int drm_ver;
+
+    drm_ver = drm_tegra_version(TegraPTR(pScrn)->drm);
 
     if (tegra->scratch.ops && tegra->cmds->status == TEGRADRM_STREAM_CONSTRUCT) {
-        if (tegra->scratch.pSrc) {
+        if (tegra->scratch.pSrc && drm_ver < GRATE_KERNEL_DRM_VERSION + 2) {
             priv = exaGetPixmapDriverPrivate(tegra->scratch.pSrc);
 
             if (priv->fence_write && !priv->fence_write->gr2d) {
@@ -550,11 +559,14 @@ static void TegraEXADoneCopy(PixmapPtr pDstPixmap)
         }
 
         priv = exaGetPixmapDriverPrivate(pDstPixmap);
-        if (priv->fence_write && !priv->fence_write->gr2d)
-            TegraEXAWaitFence(priv->fence_write);
 
-        if (priv->fence_read && !priv->fence_read->gr2d)
-            TegraEXAWaitFence(priv->fence_read);
+        if (drm_ver < GRATE_KERNEL_DRM_VERSION + 2) {
+            if (priv->fence_write && !priv->fence_write->gr2d)
+                TegraEXAWaitFence(priv->fence_write);
+
+            if (priv->fence_read && !priv->fence_read->gr2d)
+                TegraEXAWaitFence(priv->fence_read);
+        }
 
         tegra_stream_end(tegra->cmds);
 #if PROFILE

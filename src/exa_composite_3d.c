@@ -871,9 +871,12 @@ static void TegraEXADoneComposite3D(PixmapPtr pDst)
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
     struct tegra_fence *fence = NULL;
     TegraPixmapPtr priv;
+    int drm_ver;
+
+    drm_ver = drm_tegra_version(TegraPTR(pScrn)->drm);
 
     if (tegra->scratch.ops && tegra->cmds->status == TEGRADRM_STREAM_CONSTRUCT) {
-        if (tegra->scratch.pSrc) {
+        if (tegra->scratch.pSrc && drm_ver < GRATE_KERNEL_DRM_VERSION + 2) {
             priv = exaGetPixmapDriverPrivate(tegra->scratch.pSrc);
 
             if (priv->fence_write && priv->fence_write->gr2d) {
@@ -884,7 +887,7 @@ static void TegraEXADoneComposite3D(PixmapPtr pDst)
             }
         }
 
-        if (tegra->scratch.pMask) {
+        if (tegra->scratch.pMask && drm_ver < GRATE_KERNEL_DRM_VERSION + 2) {
             priv = exaGetPixmapDriverPrivate(tegra->scratch.pMask);
 
             if (priv->fence_write && priv->fence_write->gr2d) {
@@ -896,11 +899,14 @@ static void TegraEXADoneComposite3D(PixmapPtr pDst)
         }
 
         priv = exaGetPixmapDriverPrivate(pDst);
-        if (priv->fence_write && priv->fence_write->gr2d)
-            TegraEXAWaitFence(priv->fence_write);
 
-        if (priv->fence_read && priv->fence_read->gr2d)
-            TegraEXAWaitFence(priv->fence_read);
+        if (drm_ver < GRATE_KERNEL_DRM_VERSION + 2) {
+            if (priv->fence_write && priv->fence_write->gr2d)
+                TegraEXAWaitFence(priv->fence_write);
+
+            if (priv->fence_read && priv->fence_read->gr2d)
+                TegraEXAWaitFence(priv->fence_read);
+        }
 
         fence = TegraGR3DStateSubmit(&tegra->gr3d_state);
 
