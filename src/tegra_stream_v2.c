@@ -193,6 +193,9 @@ static bool tegra_stream_wait_fence_v2(struct tegra_fence *base_fence)
     struct tegra_fence_v2 *f = to_fence_v2(base_fence);
     int ret;
 
+    if (!f->syncobj_handle)
+        return true;
+
     ret = drmSyncobjWait(f->drm_fd, &f->syncobj_handle, 1,
                             gettime_ns() + 1000000000,
                             DRM_SYNCOBJ_WAIT_FLAGS_WAIT_FOR_SUBMIT,
@@ -201,6 +204,9 @@ static bool tegra_stream_wait_fence_v2(struct tegra_fence *base_fence)
         ErrorMsg("drmSyncobjWait() failed %d\n", ret);
         return false;
     }
+
+    drmSyncobjDestroy(f->drm_fd, f->syncobj_handle);
+    f->syncobj_handle = 0;
 #endif
 
     return true;
@@ -211,7 +217,8 @@ static void tegra_stream_free_fence_v2(struct tegra_fence *base_fence)
 #ifdef HAVE_LIBDRM_SYNCOBJ_SUPPORT
     struct tegra_fence_v2 *f = to_fence_v2(base_fence);
 
-    drmSyncobjDestroy(f->drm_fd, f->syncobj_handle);
+    if (f->syncobj_handle)
+        drmSyncobjDestroy(f->drm_fd, f->syncobj_handle);
     free(f);
 #endif
 }
