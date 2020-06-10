@@ -197,6 +197,8 @@ typedef struct _TegraRec
     Bool exa_pool_alloc;
     Bool exa_compositing;
     Bool exa_enabled;
+
+    void *xv_priv;
 } TegraRec, *TegraPtr;
 
 #define TegraPTR(p) ((TegraPtr)((p)->driverPrivate))

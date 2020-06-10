@@ -1155,7 +1155,7 @@ static Bool TegraVideoOverlayInitialize(TegraVideoPtr priv, ScrnInfoPtr scrn,
     overlay->primary_plane_id  = primary_plane_id;
 
 end:
-    free(res);
+    drmModeFreeResources(res);
 
     if (!success) {
         ErrorMsg("failed to initialize overlay %d\n", overlay_id);
@@ -1737,11 +1737,11 @@ TegraXvGetDrmPlaneProperty(ScrnInfoPtr scrn,
 
         if (!strcmp(property->name, prop_name)) {
             *prop_id = property->prop_id;
-            free(property);
+            drmModeFreeProperty(property);
             return TRUE;
         }
 
-        free(property);
+        drmModeFreeProperty(property);
     }
 
     ErrorMsg("Failed to get \"%s\" property\n", prop_name);
@@ -1753,7 +1753,7 @@ TegraXvGetDrmPlaneProperty(ScrnInfoPtr scrn,
             continue;
 
         ErrorMsg("\t\"%s\"\n", property->name);
-        free(property);
+        drmModeFreeProperty(property);
     }
 
     *prop_id = 0;
@@ -1837,7 +1837,7 @@ static Bool TegraXvGetDrmProps(ScrnInfoPtr scrn, TegraVideoPtr priv)
         }
 
         if (drm_ver < GRATE_KERNEL_DRM_VERSION) {
-            free(properties);
+            drmModeFreeObjectProperties(properties);
             continue;
         }
 
@@ -1858,7 +1858,7 @@ static Bool TegraXvGetDrmProps(ScrnInfoPtr scrn, TegraVideoPtr priv)
             /* csc optional */
         }
 
-        free(properties);
+        drmModeFreeObjectProperties(properties);
 
         properties = drmModeObjectGetProperties(tegra->fd,
                                                 overlay->primary_plane_id,
@@ -1898,13 +1898,13 @@ static Bool TegraXvGetDrmProps(ScrnInfoPtr scrn, TegraVideoPtr priv)
             /* colorkey optional */
         }
 
-        free(properties);
+        drmModeFreeObjectProperties(properties);
     }
 
     return TRUE;
 
 err_free_props:
-    free(properties);
+    drmModeFreeObjectProperties(properties);
 
     return FALSE;
 }
@@ -1999,6 +1999,8 @@ Bool TegraXvScreenInit(ScreenPtr pScreen)
 
     xf86DrvMsg(scrn->scrnIndex, X_INFO, "XV adaptor initialized\n");
 
+    tegra->xv_priv = adaptor;
+
     return TRUE;
 
 err_free_adaptor:
@@ -2018,4 +2020,7 @@ void TegraXvScreenExit(ScreenPtr pScreen)
         drmModeDestroyPropertyBlob(tegra->fd, csc_default_blob_id);
         csc_default_blob_id = 0;
     }
+
+    free(tegra->xv_priv);
+    tegra->xv_priv = NULL;
 }

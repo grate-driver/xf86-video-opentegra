@@ -632,9 +632,9 @@ drmmode_output_get_modes(xf86OutputPtr output)
 
                 drmmode_output->edid_blob = drmModeGetPropertyBlob(drmmode->fd, koutput->prop_values[i]);
             }
-
-            drmModeFreeProperty(props);
         }
+
+        drmModeFreeProperty(props);
     }
 
     if (drmmode_output->edid_blob) {
@@ -992,9 +992,9 @@ drmmode_output_init(ScrnInfoPtr pScrn, drmmode_ptr drmmode, int num, int *num_dv
                 drmModeFreeProperty(props);
                 break;
             }
-
-            drmModeFreeProperty(props);
         }
+
+        drmModeFreeProperty(props);
     }
 
     return;

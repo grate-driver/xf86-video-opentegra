@@ -645,10 +645,8 @@ int drm_get_primary_plane(int drm_fd, int crtc_pipe, uint32_t *plane_id)
             continue;
 
         if (p->possible_crtcs & (1 << crtc_pipe)) {
-            if (drm_plane_type(drm_fd, p->plane_id) == DRM_PLANE_TYPE_PRIMARY) {
+            if (drm_plane_type(drm_fd, p->plane_id) == DRM_PLANE_TYPE_PRIMARY)
                 id = p->plane_id;
-                break;
-            }
         }
 
         drmModeFreePlane(p);
