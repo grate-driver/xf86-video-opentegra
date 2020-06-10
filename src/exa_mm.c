@@ -72,11 +72,61 @@ static int TegraEXAInitMM(TegraPtr tegra, TegraEXAPtr exa)
     }
 #endif
 
+    /*
+     * CMA doesn't guarantee contiguous allocations. We should do our best
+     * in order to avoid fragmentation because even if CMA area is quite
+     * large, the accidental pinned memory pages may ruin the day (or Xorg
+     * session at least).
+     */
+    if (tegra->exa_pool_alloc) {
+        unsigned int size;
+        int err = -ENOMEM;
+
+        if (err) {
+            size = 24 * 1024 * 1024;
+            err = TegraEXACreatePool(tegra, &exa->large_pool, 4, size);
+            if (err)
+                ErrorMsg("failed to preallocate %uMB for a larger pool\n",
+                        size / (1024 * 1024));
+        }
+
+        if (err) {
+            size = 16 * 1024 * 1024;
+            err = TegraEXACreatePool(tegra, &exa->large_pool, 4, size);
+            if (err)
+                ErrorMsg("failed to preallocate %uMB for a larger pool\n",
+                        size / (1024 * 1024));
+        }
+
+        if (err) {
+            size = 8 * 1024 * 1024;
+            err = TegraEXACreatePool(tegra, &exa->large_pool, 4, size);
+            if (err)
+                ErrorMsg("failed to preallocate %uMB for a larger pool\n",
+                        size / (1024 * 1024));
+        }
+
+        if (!err) {
+            xf86DrvMsg(-1, X_INFO,
+                       "EXA %uMB pool preallocated\n", size / (1024 * 1024));
+            exa->large_pool->persitent = TRUE;
+        }
+    }
+
     return 0;
 }
 
 static void TegraEXAReleaseMM(TegraPtr tegra, TegraEXAPtr exa)
 {
+    if (exa->large_pool) {
+        exa->large_pool->persitent = FALSE;
+
+        if (mem_pool_empty(&exa->large_pool->pool)) {
+            TegraEXADestroyPool(exa->large_pool);
+            exa->large_pool = NULL;
+        }
+    }
+
 #ifdef HAVE_JPEG
     if (tegra->exa_compress_jpeg) {
         tjDestroy(exa->jpegDecompressor);
