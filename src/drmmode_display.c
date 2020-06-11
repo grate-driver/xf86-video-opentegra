@@ -297,9 +297,12 @@ drmmode_set_cursor_colors(xf86CrtcPtr crtc, int bg, int fg)
 static void
 drmmode_set_cursor_position(xf86CrtcPtr crtc, int x, int y)
 {
+    TegraPtr tegra = TegraPTR(crtc->scrn);
     drmmode_crtc_private_ptr drmmode_crtc = crtc->driver_private;
     drmmode_ptr drmmode = drmmode_crtc->drmmode;
 
+    drmmode_adjust_crtc_coords(crtc, &x, &y,
+                               tegra->cursor_width, tegra->cursor_height);
     drmModeMoveCursor(drmmode->fd, drmmode_crtc->mode_crtc->crtc_id, x, y);
 }
 
@@ -661,9 +664,17 @@ drmmode_output_get_modes(xf86OutputPtr output)
 static void
 drmmode_output_destroy(xf86OutputPtr output)
 {
+    xf86CrtcPtr crtc = output->crtc;
+    drmmode_crtc_private_ptr drmmode_crtc = crtc->driver_private;
     drmmode_output_private_ptr drmmode_output = output->driver_private;
+    drmmode_ptr drmmode = drmmode_output->drmmode;
     int i;
 
+#ifdef HAVE_DRM_MODE_ATOMIC
+    drm_set_planes_rotation(drmmode->fd, drmmode_crtc->crtc_pipe,
+                            DRM_MODE_ROTATE_0);
+    drmmode->upside_down = FALSE;
+#endif
     if (drmmode_output->edid_blob)
         drmModeFreePropertyBlob(drmmode_output->edid_blob);
 
@@ -810,6 +821,35 @@ drmmode_output_create_resources(xf86OutputPtr output)
                 xf86DrvMsg(output->scrn->scrnIndex, X_ERROR,
                            "RRChangeOutputProperty error, %d\n", err);
         }
+
+#ifdef HAVE_DRM_MODE_ATOMIC
+        if (!strcmp(drmmode_prop->name, "panel orientation")) {
+            TegraPtr tegra = TegraPTR(output->scrn);
+            unsigned int orientation_id = drmmode_output->props[i].value;
+            const char *orientation_name = drmmode_prop->enums[orientation_id].name;
+            int drm_ver;
+
+            xf86DrvMsg(output->scrn->scrnIndex, X_INFO,
+                       "panel orientation: %s\n", orientation_name);
+
+            drm_ver = drm_tegra_version(tegra->drm);
+
+            if (!strcmp(orientation_name, "Upside Down") &&
+                /*
+                 * Older grate-kernel had a transparent rotation done within
+                 * kernel driver. It's less applicable to a vanilla upstream
+                 * kernel, so we reverted to userspace-controlled rotation
+                 * since the v3.
+                 */
+                (drm_ver <  GRATE_KERNEL_DRM_VERSION ||
+                 drm_ver >= GRATE_KERNEL_DRM_VERSION + 3))
+            {
+                drm_set_planes_rotation(drmmode->fd, output->possible_crtcs,
+                                        DRM_MODE_ROTATE_180);
+                drmmode->upside_down = TRUE;
+            }
+        }
+#endif
     }
 }
 
@@ -1611,6 +1651,17 @@ void drmmode_get_default_bpp(ScrnInfoPtr pScrn, drmmode_ptr drmmode, int *depth,
 out:
     drmModeFreeResources(mode_res);
     return;
+}
+
+void drmmode_adjust_crtc_coords(xf86CrtcPtr crtc, int *x, int *y, int w, int h)
+{
+    drmmode_crtc_private_ptr drmmode_crtc = crtc->driver_private;
+    drmmode_ptr drmmode = drmmode_crtc->drmmode;
+
+    if (drmmode->upside_down) {
+        *x = crtc->mode.HDisplay - w - *x;
+        *y = crtc->mode.VDisplay - h - *y;
+    }
 }
 
 /* vim: set et sts=4 sw=4 ts=4: */

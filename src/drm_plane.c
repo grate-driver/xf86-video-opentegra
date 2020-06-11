@@ -710,3 +710,68 @@ void drm_copy_data_to_fb(drm_overlay_fb *fb, uint8_t *data, int swap)
                     swap ? fb->pitch_cr : fb->pitch_cb,
                     fb_pitch_c(fb->format, fb->width));
 }
+
+static int drm_set_plane_rotation(int drm_fd, int plane_id, int mode)
+{
+    drmModeObjectPropertiesPtr props;
+    drmModePropertyPtr prop;
+    Bool done = false;
+    int ret = -EINVAL;
+    int i;
+
+    props = drmModeObjectGetProperties(drm_fd, plane_id, DRM_MODE_OBJECT_PLANE);
+    if (!props)
+        return -ENODEV;
+
+    for (i = 0; i < props->count_props && !done; i++) {
+        prop = drmModeGetProperty(drm_fd, props->props[i]);
+        if (prop) {
+            if (strcmp(prop->name, "rotation") == 0) {
+                ret = drmModeObjectSetProperty(drm_fd, plane_id,
+                                               DRM_MODE_OBJECT_PLANE,
+                                               prop->prop_id, mode);
+                if (ret < 0)
+                    ErrorMsg("Failed to set rotation property for plane id %d\n",
+                             plane_id);
+                done = true;
+            }
+
+            drmModeFreeProperty(prop);
+        }
+    }
+
+    drmModeFreeObjectProperties(props);
+
+    return ret;
+}
+
+int drm_set_planes_rotation(int drm_fd, uint32_t crtc_mask, uint32_t mode)
+{
+    drmModePlaneRes *res;
+    drmModePlane *p;
+    int i;
+
+    if (drmSetClientCap(drm_fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1)) {
+        ErrorMsg("Failed to set universal planes CAP\n");
+        return -EFAULT;
+    }
+
+    res = drmModeGetPlaneResources(drm_fd);
+    if (!res)
+        return -EFAULT;
+
+    for (i = 0; i < res->count_planes; i++) {
+        p = drmModeGetPlane(drm_fd, res->planes[i]);
+        if (!p)
+            continue;
+
+        if (p->possible_crtcs & crtc_mask)
+            drm_set_plane_rotation(drm_fd, p->plane_id, mode);
+
+        drmModeFreePlane(p);
+    }
+
+    drmModeFreePlaneResources(res);
+
+    return 0;
+}

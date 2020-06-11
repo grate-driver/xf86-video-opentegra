@@ -28,6 +28,13 @@
 #ifndef DRMMODE_DISPLAY_H
 #define DRMMODE_DISPLAY_H
 
+#ifndef DRM_MODE_ROTATE_0
+#define DRM_MODE_ROTATE_0       (1 << 0)
+#endif
+#ifndef DRM_MODE_ROTATE_180
+#define DRM_MODE_ROTATE_180     (1 << 2)
+#endif
+
 struct dumb_bo {
     struct drm_tegra_bo *bo;
     uint32_t handle;
@@ -53,6 +60,8 @@ typedef struct {
 #ifdef HAVE_SCREEN_SPECIFIC_PRIVATE_KEYS
     DevPrivateKeyRec pixmapPrivateKeyRec;
 #endif
+
+    Bool upside_down;
 } drmmode_rec, *drmmode_ptr;
 
 typedef struct {
@@ -120,6 +129,7 @@ void drmmode_get_default_bpp(ScrnInfoPtr pScrn, drmmode_ptr drmmmode, int *depth
 void *drmmode_crtc_map_rotate_bo(ScrnInfoPtr scrn, int crtc_num);
 struct drm_tegra_bo *
 drmmode_crtc_get_rotate_bo(ScrnInfoPtr scrn, int crtc_num);
+void drmmode_adjust_crtc_coords(xf86CrtcPtr crtc, int *x, int *y, int w, int h);
 
 #ifndef DRM_CAP_DUMB_PREFERRED_DEPTH
 #define DRM_CAP_DUMB_PREFERRED_DEPTH 3

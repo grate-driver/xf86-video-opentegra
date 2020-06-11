@@ -1373,10 +1373,10 @@ static Bool TegraVideoOverlayPutImageOnOverlay(TegraVideoPtr priv,
                                                ScrnInfoPtr scrn,
                                                int overlay_id,
                                                drmModeAtomicReqPtr req,
-                                               short src_x, short src_y,
-                                               short dst_x, short dst_y,
-                                               short src_w, short src_h,
-                                               short dst_w, short dst_h,
+                                               int src_x, int src_y,
+                                               int dst_x, int dst_y,
+                                               int src_w, int src_h,
+                                               int dst_w, int dst_h,
                                                DrawablePtr draw)
 {
     TegraOverlayPtr sibling       = &priv->overlay[!overlay_id];
@@ -1439,6 +1439,8 @@ static Bool TegraVideoOverlayPutImageOnOverlay(TegraVideoPtr priv,
     default:
         return FALSE;
     }
+
+    drmmode_adjust_crtc_coords(crtc, &dst_x, &dst_y, dst_w, dst_h);
 
     if (overlay->fb != fb || overlay->rotation != rotation) {
         if (!TegraVideoOverlayUpdateRotatedFb(priv, scrn, sibling, overlay,
