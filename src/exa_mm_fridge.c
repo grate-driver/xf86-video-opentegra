@@ -24,12 +24,12 @@
 #include "driver.h"
 #include "exa_mm.h"
 
-#define TEGRA_EXA_FREEZE_ALLOWANCE_DELTA    1
-#define TEGRA_EXA_FREEZE_BOUNCE_DELTA       3
-#define TEGRA_EXA_FREEZE_MIN_DELTA          16
-#define TEGRA_EXA_FREEZE_MAX_DELTA          120
-#define TEGRA_EXA_COOLING_LIMIT_MIN         (4 * 1024 * 1024)
-#define TEGRA_EXA_COOLING_LIMIT_MAX         (16 * 1024 * 1024)
+#define TEGRA_EXA_FREEZE_ALLOWANCE_DELTA    3
+#define TEGRA_EXA_FREEZE_BOUNCE_DELTA       5
+#define TEGRA_EXA_FREEZE_MIN_DELTA          (60 * 1)
+#define TEGRA_EXA_FREEZE_MAX_DELTA          (60 * 5)
+#define TEGRA_EXA_COOLING_LIMIT_MIN         (24 * 1024 * 1024)
+#define TEGRA_EXA_COOLING_LIMIT_MAX         (32 * 1024 * 1024)
 #define TEGRA_EXA_FREEZE_CHUNK              (128 * 1024)
 #define TEGRA_EXA_COMPRESS_RATIO_LIMIT      85 / 100
 #define TEGRA_EXA_COMPRESS_SMALL_SIZE       (64 * 1024)
