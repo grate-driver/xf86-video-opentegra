@@ -262,6 +262,7 @@ typedef struct tegra_pixmap {
             void *compressed_data;
             unsigned compressed_size;
             unsigned compression_type;
+            unsigned compression_fmt;
         };
     };
 

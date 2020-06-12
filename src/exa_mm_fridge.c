@@ -447,8 +447,12 @@ static void TegraEXADecompressPixmap(TegraEXAPtr exa, TegraPixmapPtr pixmap,
         png.opaque = NULL;
         png.version = PNG_IMAGE_VERSION;
         png_image_begin_read_from_memory(&png, c->buf_in, c->in_size);
+        if (png.warning_or_error)
+            ErrorMsg("png error: %s\n", png.message);
         png.format = c->format;
         png_image_finish_read(&png, NULL, c->buf_out, c->pitch, NULL);
+        if (png.warning_or_error)
+            ErrorMsg("png error: %s\n", png.message);
         DebugMsg("priv %p decompressed: png\n", pixmap);
         break;
 #endif
@@ -530,7 +534,7 @@ static void TegraEXAThawPixmapData(TegraPtr tegra, TegraPixmapPtr pixmap,
     carg.compression_type   = pixmap->compression_type;
     carg.buf_in             = pixmap->compressed_data;
     carg.in_size            = pixmap->compressed_size;
-    carg.format             = pixmap->picture_format;
+    carg.format             = pixmap->compression_fmt;
 
     data_size = TegraPixmapSize(pixmap);
     pixmap->fence_write = NULL;
@@ -636,7 +640,7 @@ static int TegraEXAFreezePixmap(TegraPtr tegra, TegraPixmapPtr pixmap)
     pixmap->compression_type = carg.compression_type;
     pixmap->compressed_data  = carg.buf_out;
     pixmap->compressed_size  = carg.out_size;
-    pixmap->picture_format   = carg.format;
+    pixmap->compression_fmt  = carg.format;
     pixmap->type             = TEGRA_EXA_PIXMAP_TYPE_NONE;
     pixmap->frozen           = TRUE;
 
