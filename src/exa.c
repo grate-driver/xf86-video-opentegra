@@ -605,7 +605,7 @@ static void TegraEXABlockHandler(BLOCKHANDLER_ARGS_DECL)
     pScreen->BlockHandler(BLOCKHANDLER_ARGS);
     pScreen->BlockHandler = TegraEXABlockHandler;
 
-    clock_gettime(CLOCK_THREAD_CPUTIME_ID, &time);
+    clock_gettime(CLOCK_MONOTONIC, &time);
     TegraEXAFreezePixmaps(tegra, time.tv_sec);
 
     drm_tegra_bo_cache_cleanup(tegra->drm, time.tv_sec);
