@@ -198,6 +198,7 @@ static bool tegra_stream_wait_fence_v2(struct tegra_fence *base_fence)
 
     ret = drmSyncobjWait(f->drm_fd, &f->syncobj_handle, 1,
                             gettime_ns() + 1000000000,
+                            DRM_SYNCOBJ_WAIT_FLAGS_WAIT_ALL |
                             DRM_SYNCOBJ_WAIT_FLAGS_WAIT_FOR_SUBMIT,
                             NULL);
     if (ret) {
