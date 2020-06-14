@@ -664,14 +664,12 @@ drmmode_output_get_modes(xf86OutputPtr output)
 static void
 drmmode_output_destroy(xf86OutputPtr output)
 {
-    xf86CrtcPtr crtc = output->crtc;
-    drmmode_crtc_private_ptr drmmode_crtc = crtc->driver_private;
     drmmode_output_private_ptr drmmode_output = output->driver_private;
     drmmode_ptr drmmode = drmmode_output->drmmode;
     int i;
 
 #ifdef HAVE_DRM_MODE_ATOMIC
-    drm_set_planes_rotation(drmmode->fd, drmmode_crtc->crtc_pipe,
+    drm_set_planes_rotation(drmmode->fd, output->possible_crtcs,
                             DRM_MODE_ROTATE_0);
     drmmode->upside_down = FALSE;
 #endif
