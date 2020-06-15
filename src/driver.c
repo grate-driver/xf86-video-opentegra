@@ -109,9 +109,48 @@ TegraIdentify(int flags)
 }
 
 static int
+TegraCheckHardware(int fd)
+{
+    struct drm_tegra_channel *channel = NULL;
+    struct drm_tegra *drm = NULL;
+    static Bool verbose = TRUE;
+    int err;
+
+    err = drm_tegra_new(&drm, fd);
+    if (!err) {
+        /* 2D channel presents only on Tegra SoCs prior to TK1 */
+        err = drm_tegra_channel_open(&channel, drm, DRM_TEGRA_GR2D);
+        if (err) {
+            if (verbose) {
+                xf86DrvMsg(-1, X_ERROR, "%s: failed to open 2D channel: %d\n",
+                           __func__, err);
+
+                xf86DrvMsg(-1, X_ERROR,
+                           "%s: make sure that CONFIG_DRM_TEGRA_STAGING is enabled in the kernel config\n",
+                           __func__);
+            }
+        } else {
+            drm_tegra_channel_close(channel);
+        }
+
+        drm_tegra_close(drm);
+    }
+
+    if (verbose) {
+        xf86DrvMsg(-1, X_INFO, "%s: Tegra20/30 DRM support %s\n",
+                   __func__, err ? "undetected" : "detected");
+
+        /* print messages only once */
+        verbose = FALSE;
+    }
+
+    return err;
+}
+
+static int
 TegraOpenHardware(const char *dev)
 {
-    int fd;
+    int err, fd;
 
     if (dev)
         fd = open(dev, O_RDWR | O_CLOEXEC, 0);
@@ -122,8 +161,16 @@ TegraOpenHardware(const char *dev)
         }
     }
 
-    if (fd < 0)
-        xf86DrvMsg(-1, X_ERROR, "open %s: %s\n", dev, strerror(errno));
+    if (fd < 0) {
+        xf86DrvMsg(-1, X_ERROR, "%s: open %s: %s\n",
+                   dev, strerror(errno), __func__);
+    } else {
+        err = TegraCheckHardware(fd);
+        if (err) {
+            close(fd);
+            fd = -1;
+        }
+    }
 
     return fd;
 }
