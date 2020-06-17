@@ -231,6 +231,7 @@ static void TegraEXATrimHeap(TegraEXAPtr exa)
 static void TegraEXAReleasePixmapData(TegraPtr tegra, TegraPixmapPtr priv)
 {
     TegraEXAPtr exa = tegra->exa;
+    int drm_ver;
 
     if (priv->type == TEGRA_EXA_PIXMAP_TYPE_NONE) {
         if (priv->frozen) {
@@ -260,20 +261,24 @@ static void TegraEXAReleasePixmapData(TegraPtr tegra, TegraPixmapPtr priv)
         goto out_final;
     }
 
+    drm_ver = drm_tegra_version(tegra->drm);
+
     /*
      * We have to await the fence to avoid BO re-use while job is in progress,
      * this will be resolved by BO reservation that right now isn't supported
-     * by kernel driver.
+     * by vanilla upstream kernel driver.
      */
     if (priv->fence_read) {
-        TegraEXAWaitFence(priv->fence_read);
+        if (drm_ver < GRATE_KERNEL_DRM_VERSION)
+            TegraEXAWaitFence(priv->fence_read);
 
         tegra_stream_put_fence(priv->fence_read);
         priv->fence_read = NULL;
     }
 
     if (priv->fence_write) {
-        TegraEXAWaitFence(priv->fence_write);
+        if (drm_ver < GRATE_KERNEL_DRM_VERSION)
+            TegraEXAWaitFence(priv->fence_write);
 
         tegra_stream_put_fence(priv->fence_write);
         priv->fence_write = NULL;
