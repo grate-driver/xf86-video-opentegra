@@ -596,6 +596,7 @@ static Bool TegraGR3DStateAppend(TegraGR3DStatePtr state, TegraEXAPtr tegra,
 static struct tegra_fence * TegraGR3DStateSubmit(TegraGR3DStatePtr state)
 {
     struct tegra_fence *fence = NULL;
+    PROFILE_DEF(gr3d);
 
     if (state->clean)
         return NULL;
@@ -609,7 +610,9 @@ static struct tegra_fence * TegraGR3DStateSubmit(TegraGR3DStatePtr state)
      */
     tegra_stream_end(state->cmds);
 #if PROFILE
+    PROFILE_START(gr3d);
     tegra_stream_flush(state->cmds);
+    PROFILE_STOP(gr3d);
 #else
     fence = tegra_stream_submit(state->cmds, false);
 #endif

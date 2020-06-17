@@ -538,6 +538,8 @@ TegraEXADownloadFromScreen(PixmapPtr pSrc, int x, int y, int w, int h,
     const char *src;
     Bool ret;
 
+    PROFILE_DEF(download);
+
     if (!priv->accel || !priv->offscreen) {
         FallbackMsg("unaccelerateable dst pixmap %d:%d, %dx%d %d:%d\n",
                     pSrc->drawable.width, pSrc->drawable.height, x, y, w, h);
@@ -553,6 +555,8 @@ TegraEXADownloadFromScreen(PixmapPtr pSrc, int x, int y, int w, int h,
         goto finish;
     }
 
+    PROFILE_START(download);
+
     AccelMsg("%dx%d %d:%d\n", x, y, w, h);
 
     cpp        = pSrc->drawable.bitsPerPixel >> 3;
@@ -562,6 +566,8 @@ TegraEXADownloadFromScreen(PixmapPtr pSrc, int x, int y, int w, int h,
 
     ret = TegraEXACopyScreen(src + src_offset, src_pitch, h,
                              dst, dst_pitch, line_len);
+
+    PROFILE_STOP(download);
 
 finish:
     TegraEXAFinishCPUAccess(pSrc, EXA_PREPARE_SRC);

@@ -23,7 +23,7 @@
 
 #include "driver.h"
 
-PROFILE_DEF
+static PROFILE_DEF(composite);
 
 static __maybe_unused char const * op_name(int op)
 {
@@ -210,7 +210,7 @@ static Bool TegraEXACheckComposite(int op, PicturePtr pSrcPicture,
                                    PicturePtr pMaskPicture,
                                    PicturePtr pDstPicture)
 {
-    PROFILE_START
+    PROFILE_START(composite)
 
     if (TegraEXACheckComposite2D(op, pSrcPicture, pMaskPicture, pDstPicture))
         return TRUE;
@@ -237,8 +237,8 @@ static Bool TegraEXAPrepareComposite(int op, PicturePtr pSrcPicture,
     TegraPtr tegra = TegraPTR(pScrn);
     TegraPixmapPtr priv;
 
-    PROFILE_STOP
-    PROFILE_START
+    PROFILE_STOP(composite)
+    PROFILE_START(composite)
 
     AccelMsg("\n");
 
@@ -249,8 +249,8 @@ static Bool TegraEXAPrepareComposite(int op, PicturePtr pSrcPicture,
         dump_pict("GR2D: src", pSrcPicture, TRUE);
         dump_pict("GR2D: dst", pDstPicture, TRUE);
 
-        PROFILE_STOP
-        PROFILE_START
+        PROFILE_STOP(composite)
+        PROFILE_START(composite)
 
         return TRUE;
     }
@@ -265,8 +265,8 @@ static Bool TegraEXAPrepareComposite(int op, PicturePtr pSrcPicture,
         dump_pict("GR3D: mask", pMaskPicture, TRUE);
         dump_pict("GR3D: dst", pDstPicture, TRUE);
 
-        PROFILE_STOP
-        PROFILE_START
+        PROFILE_STOP(composite)
+        PROFILE_START(composite)
 
         return TRUE;
     }
@@ -322,9 +322,6 @@ static void TegraEXADoneComposite(PixmapPtr pDst)
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pDst->drawable.pScreen);
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
 
-    PROFILE_STOP
-    PROFILE_START
-
     if (tegra->scratch.op2d == TEGRA2D_SOLID)
         TegraEXADoneSolid(pDst);
     else if (tegra->scratch.op2d == TEGRA2D_COPY)
@@ -332,7 +329,7 @@ static void TegraEXADoneComposite(PixmapPtr pDst)
     else
         TegraEXADoneComposite3D(pDst);
 
-    PROFILE_STOP
+    PROFILE_STOP(composite)
 }
 
 /* vim: set et sts=4 sw=4 ts=4: */

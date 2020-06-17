@@ -75,22 +75,22 @@ static inline float timespec_diff(const struct timespec *start,
     return (seconds * 1000000000.0f + ns) / 1000;
 }
 
-#define PROFILE_DEF                                                 \
-    static struct timespec profile_start;
+#define PROFILE_DEF(PNAME)                                          \
+    struct timespec profile_##PNAME __attribute__((unused));
 
-#define PROFILE_START                                               \
+#define PROFILE_START(PNAME)                                        \
     if (PROFILE) {                                                  \
         printf("%s:%d: profile start\n", __func__, __LINE__);       \
-        clock_gettime(CLOCK_MONOTONIC, &profile_start);             \
+        clock_gettime(CLOCK_MONOTONIC, &profile_##PNAME);           \
     }
 
-#define PROFILE_STOP                                                \
+#define PROFILE_STOP(PNAME)                                         \
     if (PROFILE) {                                                  \
-        float profile_time;                                         \
+        unsigned profile_time;                                      \
         static struct timespec profile_end;                         \
         clock_gettime(CLOCK_MONOTONIC, &profile_end);               \
-        profile_time = timespec_diff(&profile_start, &profile_end); \
-        printf("%s:%d: profile stop: %f us\n",                      \
+        profile_time = timespec_diff(&profile_##PNAME, &profile_end);\
+        printf("%s:%d: profile stop: %u us\n",                      \
                __func__, __LINE__, profile_time);                   \
     }
 
@@ -276,10 +276,10 @@ unsigned int TegraEXAPitch(unsigned int width, unsigned int height,
 
 static inline void TegraEXAWaitFence(struct tegra_fence *fence)
 {
-    PROFILE_DEF
-    PROFILE_START
+    PROFILE_DEF(wait_fence)
+    PROFILE_START(wait_fence)
     tegra_stream_wait_fence(fence);
-    PROFILE_STOP
+    PROFILE_STOP(wait_fence)
 }
 
 unsigned TegraEXAHeightHwAligned(unsigned int height, unsigned int bpp);

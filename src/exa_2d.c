@@ -179,6 +179,8 @@ static void TegraEXADoneSolid(PixmapPtr pPixmap)
     struct tegra_fence *fence = NULL;
     int drm_ver;
 
+    PROFILE_DEF(solid);
+
     drm_ver = drm_tegra_version(TegraPTR(pScrn)->drm);
 
     if (tegra->scratch.ops && tegra->cmds->status == TEGRADRM_STREAM_CONSTRUCT) {
@@ -193,7 +195,9 @@ static void TegraEXADoneSolid(PixmapPtr pPixmap)
 
         tegra_stream_end(tegra->cmds);
 #if PROFILE
+        PROFILE_START(solid);
         tegra_stream_flush(tegra->cmds);
+        PROFILE_STOP(solid);
 #else
         fence = tegra_stream_submit(tegra->cmds, true);
 #endif
@@ -544,6 +548,8 @@ static void TegraEXADoneCopy(PixmapPtr pDstPixmap)
     TegraPixmapPtr priv;
     int drm_ver;
 
+    PROFILE_DEF(copy);
+
     drm_ver = drm_tegra_version(TegraPTR(pScrn)->drm);
 
     if (tegra->scratch.ops && tegra->cmds->status == TEGRADRM_STREAM_CONSTRUCT) {
@@ -570,7 +576,9 @@ static void TegraEXADoneCopy(PixmapPtr pDstPixmap)
 
         tegra_stream_end(tegra->cmds);
 #if PROFILE
+        PROFILE_START(copy);
         tegra_stream_flush(tegra->cmds);
+        PROFILE_STOP(copy);
 #else
         fence = tegra_stream_submit(tegra->cmds, true);
 #endif
