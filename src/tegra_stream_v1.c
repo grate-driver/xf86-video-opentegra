@@ -208,6 +208,18 @@ static void tegra_stream_free_fence_v1(struct tegra_fence *base_fence)
 {
     struct tegra_fence_v1 *f = to_fence_v1(base_fence);
 
+    /*
+     * All job's BOs are kept refcounted after the submission. Once job is
+     * released, job's BOs are unreferenced and we always releasing the old
+     * fence before new job is submitted, hence BOs may get erroneously
+     * re-used by a new job if we won't wait for a previous job to be finished.
+     *
+     * For example, once new 3d job is submitted, the attribute BOs of a
+     * previous job are released and then next 2d job could re-use the released
+     * BOs while 3d job isn't completed yet.
+     */
+    tegra_stream_wait_fence_v1(base_fence);
+
     drm_tegra_fence_free(f->fence);
     drm_tegra_job_free(f->job);
     free(f);
