@@ -164,7 +164,10 @@ tegra_stream_submit_v1(struct tegra_stream *base_stream, bool gr2d)
 
             goto done;
         } else {
-            drm_tegra_fence_wait_timeout(fence, 1000);
+            ret = drm_tegra_fence_wait_timeout(fence, 1000);
+            if (ret) {
+                ErrorMsg("drm_tegra_fence_wait_timeout() failed %d\n", ret);
+            }
             drm_tegra_fence_free(fence);
         }
     }
