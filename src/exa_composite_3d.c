@@ -882,7 +882,7 @@ static void TegraEXADoneComposite3D(PixmapPtr pDst)
             if (priv->fence_write && priv->fence_write->gr2d) {
                 TegraEXAWaitFence(priv->fence_write);
 
-                tegra_stream_put_fence(priv->fence_write);
+                TEGRA_STREAM_PUT_FENCE(priv->fence_write);
                 priv->fence_write = NULL;
             }
         }
@@ -893,7 +893,7 @@ static void TegraEXADoneComposite3D(PixmapPtr pDst)
             if (priv->fence_write && priv->fence_write->gr2d) {
                 TegraEXAWaitFence(priv->fence_write);
 
-                tegra_stream_put_fence(priv->fence_write);
+                TEGRA_STREAM_PUT_FENCE(priv->fence_write);
                 priv->fence_write = NULL;
             }
         }
@@ -904,14 +904,14 @@ static void TegraEXADoneComposite3D(PixmapPtr pDst)
             if (priv->fence_write && priv->fence_write->gr2d) {
                 TegraEXAWaitFence(priv->fence_write);
 
-                tegra_stream_put_fence(priv->fence_write);
+                TEGRA_STREAM_PUT_FENCE(priv->fence_write);
                 priv->fence_write = NULL;
             }
 
             if (priv->fence_read && priv->fence_read->gr2d) {
                 TegraEXAWaitFence(priv->fence_read);
 
-                tegra_stream_put_fence(priv->fence_read);
+                TEGRA_STREAM_PUT_FENCE(priv->fence_read);
                 priv->fence_read = NULL;
             }
         }
@@ -930,16 +930,16 @@ static void TegraEXADoneComposite3D(PixmapPtr pDst)
          *      See TegraGR3D_DrawPrimitives() in gr3d.c
          */
         if (priv->fence_write != fence) {
-            tegra_stream_put_fence(priv->fence_write);
-            priv->fence_write = tegra_stream_ref_fence(fence, &tegra->scratch);
+            TEGRA_STREAM_PUT_FENCE(priv->fence_write);
+            priv->fence_write = TEGRA_STREAM_REF_FENCE(fence, &tegra->scratch);
         }
 
         if (tegra->scratch.pSrc) {
             priv = exaGetPixmapDriverPrivate(tegra->scratch.pSrc);
 
             if (priv->fence_read != fence) {
-                tegra_stream_put_fence(priv->fence_read);
-                priv->fence_read = tegra_stream_ref_fence(fence, &tegra->scratch);
+                TEGRA_STREAM_PUT_FENCE(priv->fence_read);
+                priv->fence_read = TEGRA_STREAM_REF_FENCE(fence, &tegra->scratch);
             }
         }
 
@@ -947,8 +947,8 @@ static void TegraEXADoneComposite3D(PixmapPtr pDst)
             priv = exaGetPixmapDriverPrivate(tegra->scratch.pMask);
 
             if (priv->fence_read != fence) {
-                tegra_stream_put_fence(priv->fence_read);
-                priv->fence_read = tegra_stream_ref_fence(fence, &tegra->scratch);
+                TEGRA_STREAM_PUT_FENCE(priv->fence_read);
+                priv->fence_read = TEGRA_STREAM_REF_FENCE(fence, &tegra->scratch);
             }
         }
     } else {

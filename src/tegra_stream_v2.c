@@ -62,8 +62,8 @@ static void tegra_stream_destroy_v2(struct tegra_stream *base_stream)
 {
     struct tegra_stream_v2 *stream = to_stream_v2(base_stream);
 
-    tegra_stream_wait_fence(stream->base.last_fence);
-    tegra_stream_put_fence(stream->base.last_fence);
+    TEGRA_STREAM_WAIT_FENCE(stream->base.last_fence);
+    TEGRA_STREAM_PUT_FENCE(stream->base.last_fence);
     drm_tegra_job_free_v2(stream->job);
     free(stream);
 }
@@ -84,8 +84,8 @@ static int tegra_stream_flush_v2(struct tegra_stream *base_stream)
     struct tegra_fence *f;
     int ret;
 
-    tegra_stream_wait_fence(stream->base.last_fence);
-    tegra_stream_put_fence(stream->base.last_fence);
+    TEGRA_STREAM_WAIT_FENCE(stream->base.last_fence);
+    TEGRA_STREAM_PUT_FENCE(stream->base.last_fence);
     stream->base.last_fence = NULL;
 
     /* reflushing is fine */
@@ -111,10 +111,10 @@ static int tegra_stream_flush_v2(struct tegra_stream *base_stream)
                  ret, strerror(ret));
         ret = -1;
     } else {
-        tegra_stream_wait_fence(f);
+        TEGRA_STREAM_WAIT_FENCE(f);
     }
 
-    tegra_stream_put_fence(f);
+    TEGRA_STREAM_PUT_FENCE(f);
 
 cleanup:
     tegra_stream_cleanup_v2(base_stream);
@@ -147,12 +147,12 @@ tegra_stream_submit_v2(struct tegra_stream *base_stream, bool gr2d)
                                      to_fence_v2(f)->syncobj_handle, ~0ull);
     if (ret) {
         ErrorMsg("drm_tegra_job_submit_v2() failed %d\n", ret);
-        tegra_stream_put_fence(f);
-        tegra_stream_wait_fence(stream->base.last_fence);
-        tegra_stream_put_fence(stream->base.last_fence);
+        TEGRA_STREAM_PUT_FENCE(f);
+        TEGRA_STREAM_WAIT_FENCE(stream->base.last_fence);
+        TEGRA_STREAM_PUT_FENCE(stream->base.last_fence);
         stream->base.last_fence = f = NULL;
     } else {
-        tegra_stream_put_fence(stream->base.last_fence);
+        TEGRA_STREAM_PUT_FENCE(stream->base.last_fence);
         stream->base.last_fence = f;
     }
 

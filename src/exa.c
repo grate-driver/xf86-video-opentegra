@@ -91,13 +91,13 @@ static int TegraEXAMarkSync(ScreenPtr pScreen)
     } data;
 
     /* on 32bit ARM size of integer is equal to size of pointer */
-    data.fence = tegra_stream_get_last_fence(tegra->cmds);
+    data.fence = TEGRA_STREAM_GET_LAST_FENCE(tegra->cmds);
 
     /*
      * EXA may take marker multiple times, but it waits only for the
      * lastly taken marker, so we release the previous marker-fence here.
      */
-    tegra_stream_put_fence(tegra->scratch.marker);
+    TEGRA_STREAM_PUT_FENCE(tegra->scratch.marker);
     tegra->scratch.marker = data.fence;
 
     return data.marker;
@@ -115,7 +115,7 @@ static void TegraEXAWaitMarker(ScreenPtr pScreen, int marker)
     data.marker = marker;
 
     TegraEXAWaitFence(data.fence);
-    tegra_stream_put_fence(data.fence);
+    TEGRA_STREAM_PUT_FENCE(data.fence);
 
     /* if it was a lastly-taken marker, then we've just released it */
     if (data.fence == tegra->scratch.marker)
@@ -272,7 +272,7 @@ static void TegraEXAReleasePixmapData(TegraPtr tegra, TegraPixmapPtr priv)
         if (drm_ver < GRATE_KERNEL_DRM_VERSION)
             TegraEXAWaitFence(priv->fence_read);
 
-        tegra_stream_put_fence(priv->fence_read);
+        TEGRA_STREAM_PUT_FENCE(priv->fence_read);
         priv->fence_read = NULL;
     }
 
@@ -280,7 +280,7 @@ static void TegraEXAReleasePixmapData(TegraPtr tegra, TegraPixmapPtr priv)
         if (drm_ver < GRATE_KERNEL_DRM_VERSION)
             TegraEXAWaitFence(priv->fence_write);
 
-        tegra_stream_put_fence(priv->fence_write);
+        TEGRA_STREAM_PUT_FENCE(priv->fence_write);
         priv->fence_write = NULL;
     }
 

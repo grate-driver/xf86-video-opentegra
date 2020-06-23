@@ -26,6 +26,7 @@
 #define __TEGRA_EXA_H
 
 #include "pool_alloc.h"
+#include "tegra_stream.h"
 
 #define TEGRA_DRI_USAGE_HINT ('D' << 16 | 'R' << 8 | 'I')
 
@@ -274,13 +275,15 @@ typedef struct tegra_pixmap {
 unsigned int TegraEXAPitch(unsigned int width, unsigned int height,
                            unsigned int bpp);
 
-static inline void TegraEXAWaitFence(struct tegra_fence *fence)
+static inline void tegra_exa_wait_fence(struct tegra_fence *fence)
 {
     PROFILE_DEF(wait_fence)
     PROFILE_START(wait_fence)
     tegra_stream_wait_fence(fence);
     PROFILE_STOP(wait_fence)
 }
+#define TegraEXAWaitFence(F)    \
+    ({ TEGRA_STREAM_DBG_FENCE(F, "wait"); tegra_exa_wait_fence(F); })
 
 unsigned TegraEXAHeightHwAligned(unsigned int height, unsigned int bpp);
 

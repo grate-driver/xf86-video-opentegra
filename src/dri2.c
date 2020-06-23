@@ -280,7 +280,7 @@ tegra_dri2_copy_region(DrawablePtr drawable, RegionPtr pRegion,
 
     if (tegra && tegra->dri) {
         TegraEXAWaitFence(tegra->fence_read);
-        tegra_stream_put_fence(tegra->fence_read);
+        TEGRA_STREAM_PUT_FENCE(tegra->fence_read);
         tegra->fence_read = NULL;
     }
 
@@ -288,7 +288,7 @@ tegra_dri2_copy_region(DrawablePtr drawable, RegionPtr pRegion,
 
     if (tegra && tegra->dri) {
         TegraEXAWaitFence(tegra->fence_write);
-        tegra_stream_put_fence(tegra->fence_write);
+        TEGRA_STREAM_PUT_FENCE(tegra->fence_write);
         tegra->fence_write = NULL;
     }
 }

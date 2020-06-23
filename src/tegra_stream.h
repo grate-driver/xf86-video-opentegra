@@ -43,6 +43,15 @@
 #define FENCE_DEBUG
 #endif
 
+#define FENCE_DEBUG_VERBOSE     0
+
+#define TEGRA_STREAM_DBG_FENCE(F, FDSC)                                 \
+({                                                                      \
+    if (FENCE_DEBUG_VERBOSE && F)                                       \
+        printf("%s:%d: fdbg: %s: f=%p 2d=%d cnt=%d\n",                  \
+               __func__, __LINE__, FDSC, F, (F)->gr2d, (F)->refcnt);    \
+})
+
 struct _TegraRec;
 
 enum tegra_stream_status {
@@ -190,8 +199,10 @@ tegra_stream_submit(struct tegra_stream *stream, bool gr2d)
         return NULL;
 
     f = stream->submit(stream, gr2d);
-    if (f)
+    if (f) {
+        TEGRA_STREAM_DBG_FENCE(f, "submit");
         tegra_stream_check_fence(f);
+    }
 
     return f;
 }
@@ -207,16 +218,23 @@ tegra_stream_ref_fence(struct tegra_fence *f, void *opaque)
 
     return f;
 }
+#define TEGRA_STREAM_REF_FENCE(F, OPAQUE)       \
+    ({ TEGRA_STREAM_DBG_FENCE(F, "ref"); tegra_stream_ref_fence(F, OPAQUE); })
 
 static inline struct tegra_fence *
 tegra_stream_get_last_fence(struct tegra_stream *stream)
 {
     if (stream->last_fence)
-        return tegra_stream_ref_fence(stream->last_fence,
+        return TEGRA_STREAM_REF_FENCE(stream->last_fence,
                                       stream->last_fence->opaque);
 
     return NULL;
 }
+#define TEGRA_STREAM_GET_LAST_FENCE(STREAM)                     \
+({                                                              \
+    TEGRA_STREAM_DBG_FENCE(STREAM->last_fence, "get_last");     \
+    tegra_stream_get_last_fence(STREAM);                        \
+})
 
 static inline bool tegra_stream_wait_fence(struct tegra_fence *f)
 {
@@ -227,6 +245,8 @@ static inline bool tegra_stream_wait_fence(struct tegra_fence *f)
 
     return false;
 }
+#define TEGRA_STREAM_WAIT_FENCE(F)       \
+    ({ TEGRA_STREAM_DBG_FENCE(F, "wait"); tegra_stream_wait_fence(F); })
 
 static inline void tegra_stream_free_fence(struct tegra_fence *f)
 {
@@ -242,6 +262,8 @@ static inline void tegra_stream_free_fence(struct tegra_fence *f)
         }
     }
 }
+#define TEGRA_STREAM_FREE_FENCE(F)       \
+    ({ TEGRA_STREAM_DBG_FENCE(F, "free"); tegra_stream_free_fence(F); })
 
 static inline void tegra_stream_finish_fence(struct tegra_fence *f)
 {
@@ -249,9 +271,11 @@ static inline void tegra_stream_finish_fence(struct tegra_fence *f)
         tegra_stream_check_fence(f);
 
         if (f->refcnt == -1)
-            tegra_stream_free_fence(f);
+            TEGRA_STREAM_FREE_FENCE(f);
     }
 }
+#define TEGRA_STREAM_FINISH_FENCE(F)       \
+    ({ TEGRA_STREAM_DBG_FENCE(F, "finish"); tegra_stream_finish_fence(F); })
 
 static inline void tegra_stream_put_fence(struct tegra_fence *f)
 {
@@ -275,9 +299,11 @@ static inline void tegra_stream_put_fence(struct tegra_fence *f)
         }
 
         f->refcnt--;
-        tegra_stream_finish_fence(f);
+        TEGRA_STREAM_FINISH_FENCE(f);
     }
 }
+#define TEGRA_STREAM_PUT_FENCE(F)       \
+    ({ TEGRA_STREAM_DBG_FENCE(F, "put"); tegra_stream_put_fence(F); })
 
 static inline int
 tegra_stream_push_reloc(struct tegra_stream *stream,

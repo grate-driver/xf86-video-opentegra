@@ -74,12 +74,12 @@ static void tegra_stream_destroy_v1(struct tegra_stream *base_stream)
     struct tegra_fence_v1 *f, *tmp;
 
     xorg_list_for_each_entry_safe(f, tmp, &stream->held_fences, entry) {
-        tegra_stream_wait_fence(&f->base);
-        tegra_stream_finish_fence(&f->base);
+        TEGRA_STREAM_WAIT_FENCE(&f->base);
+        TEGRA_STREAM_FINISH_FENCE(&f->base);
     }
 
-    tegra_stream_wait_fence(stream->base.last_fence);
-    tegra_stream_put_fence(stream->base.last_fence);
+    TEGRA_STREAM_WAIT_FENCE(stream->base.last_fence);
+    TEGRA_STREAM_PUT_FENCE(stream->base.last_fence);
     drm_tegra_job_free(stream->job);
     free(stream);
 }
@@ -102,8 +102,8 @@ static int tegra_stream_flush_v1(struct tegra_stream *base_stream)
     struct drm_tegra_fence *fence;
     int ret;
 
-    tegra_stream_wait_fence(stream->base.last_fence);
-    tegra_stream_put_fence(stream->base.last_fence);
+    TEGRA_STREAM_WAIT_FENCE(stream->base.last_fence);
+    TEGRA_STREAM_PUT_FENCE(stream->base.last_fence);
     stream->base.last_fence = NULL;
 
     /* reflushing is fine */
@@ -160,19 +160,19 @@ tegra_stream_submit_v1(struct tegra_stream *base_stream, bool gr2d)
     ret = drm_tegra_job_submit(stream->job, &fence);
     if (ret) {
         ErrorMsg("drm_tegra_job_submit() failed %d\n", ret);
-        tegra_stream_wait_fence(stream->base.last_fence);
-        tegra_stream_put_fence(stream->base.last_fence);
+        TEGRA_STREAM_WAIT_FENCE(stream->base.last_fence);
+        TEGRA_STREAM_PUT_FENCE(stream->base.last_fence);
         stream->base.last_fence = f = NULL;
         ret = -1;
     } else {
         struct tegra_fence_v1 *f_v1, *tmp_v1;
 
         xorg_list_for_each_entry_safe(f_v1, tmp_v1, &stream->held_fences, entry)
-            tegra_stream_finish_fence(&f_v1->base);
+            TEGRA_STREAM_FINISH_FENCE(&f_v1->base);
 
         f = tegra_stream_create_fence_v1(stream, fence, gr2d);
         if (f) {
-            tegra_stream_put_fence(stream->base.last_fence);
+            TEGRA_STREAM_PUT_FENCE(stream->base.last_fence);
             stream->base.last_fence = f;
             goto done;
         } else {
