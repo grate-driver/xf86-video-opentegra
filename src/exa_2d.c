@@ -561,7 +561,7 @@ static void TegraEXADoneCopy(PixmapPtr pDstPixmap)
     drm_ver = drm_tegra_version(TegraPTR(pScrn)->drm);
 
     if (tegra->scratch.ops && tegra->cmds->status == TEGRADRM_STREAM_CONSTRUCT) {
-        if (tegra->scratch.pSrc && drm_ver < GRATE_KERNEL_DRM_VERSION + 2) {
+        if (drm_ver < GRATE_KERNEL_DRM_VERSION + 2) {
             priv = exaGetPixmapDriverPrivate(tegra->scratch.pSrc);
 
             if (priv->fence_write && !priv->fence_write->gr2d) {
@@ -604,13 +604,11 @@ static void TegraEXADoneCopy(PixmapPtr pDstPixmap)
             priv->fence_write = tegra_stream_ref_fence(fence, &tegra->scratch);
         }
 
-        if (tegra->scratch.pSrc) {
-            priv = exaGetPixmapDriverPrivate(tegra->scratch.pSrc);
+        priv = exaGetPixmapDriverPrivate(tegra->scratch.pSrc);
 
-            if (priv->fence_read != fence) {
-                tegra_stream_put_fence(priv->fence_read);
-                priv->fence_read = tegra_stream_ref_fence(fence, &tegra->scratch);
-            }
+        if (priv->fence_read != fence) {
+            tegra_stream_put_fence(priv->fence_read);
+            priv->fence_read = tegra_stream_ref_fence(fence, &tegra->scratch);
         }
     } else {
         tegra_stream_cleanup(tegra->cmds);
