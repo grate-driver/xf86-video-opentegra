@@ -268,6 +268,7 @@ tegra_stream_create_fence_v1(struct tegra_stream_v1 *stream,
 #ifdef FENCE_DEBUG
     f->base.bug0 = false;
     f->base.bug1 = true;
+    f->base.released = false;
 #endif
 
     xorg_list_append(&f->entry, &stream->held_fences);

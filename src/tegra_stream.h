@@ -79,6 +79,7 @@ struct tegra_fence {
 #ifdef FENCE_DEBUG
     bool bug0;
     bool bug1;
+    bool released;
 #endif
 };
 
@@ -184,7 +185,10 @@ static inline int tegra_stream_flush(struct tegra_stream *stream)
 static inline void tegra_stream_check_fence(struct tegra_fence *f)
 {
 #ifdef FENCE_DEBUG
-    assert(f->refcnt >= -1);
+    if (f->released)
+        assert(f->refcnt == -1);
+    else
+        assert(f->refcnt >= 0);
     assert(!f->bug0);
     assert(f->bug1);
 #endif
@@ -268,6 +272,10 @@ static inline void tegra_stream_free_fence(struct tegra_fence *f)
 static inline void tegra_stream_finish_fence(struct tegra_fence *f)
 {
     if (f) {
+#ifdef FENCE_DEBUG
+        if (f->refcnt == -1)
+            f->released = true;
+#endif
         tegra_stream_check_fence(f);
 
         if (f->refcnt == -1)

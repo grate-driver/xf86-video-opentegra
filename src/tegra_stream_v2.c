@@ -246,6 +246,7 @@ tegra_stream_create_fence_v2(struct tegra_stream_v2 *stream, bool gr2d)
 #ifdef FENCE_DEBUG
     f->base.bug0 = false;
     f->base.bug1 = true;
+    f->base.released = false;
 #endif
 
     return &f->base;
