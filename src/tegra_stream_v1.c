@@ -160,6 +160,9 @@ tegra_stream_submit_v1(struct tegra_stream *base_stream, bool gr2d)
     ret = drm_tegra_job_submit(stream->job, &fence);
     if (ret) {
         ErrorMsg("drm_tegra_job_submit() failed %d\n", ret);
+        tegra_stream_wait_fence(stream->base.last_fence);
+        tegra_stream_put_fence(stream->base.last_fence);
+        stream->base.last_fence = f = NULL;
         ret = -1;
     } else {
         struct tegra_fence_v1 *f_v1, *tmp_v1;

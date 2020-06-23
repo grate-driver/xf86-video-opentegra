@@ -147,11 +147,10 @@ tegra_stream_submit_v2(struct tegra_stream *base_stream, bool gr2d)
                                      to_fence_v2(f)->syncobj_handle, ~0ull);
     if (ret) {
         ErrorMsg("drm_tegra_job_submit_v2() failed %d\n", ret);
-#ifdef HAVE_LIBDRM_SYNCOBJ_SUPPORT
-        drmSyncobjDestroy(to_fence_v2(f)->drm_fd,
-                          to_fence_v2(f)->syncobj_handle);
-#endif
-        to_fence_v2(f)->syncobj_handle = 0;
+        tegra_stream_put_fence(f);
+        tegra_stream_wait_fence(stream->base.last_fence);
+        tegra_stream_put_fence(stream->base.last_fence);
+        stream->base.last_fence = f = NULL;
     } else {
         tegra_stream_put_fence(stream->base.last_fence);
         stream->base.last_fence = f;
