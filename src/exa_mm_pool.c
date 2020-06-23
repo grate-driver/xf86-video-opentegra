@@ -596,7 +596,7 @@ static int TegraEXAAllocateDRMFromLargePool(TegraPtr tegra,
 {
     TegraEXAPtr exa = tegra->exa;
 
-    if (!exa->large_pool)
+    if (!exa->large_pool || size <= TEGRA_EXA_POOL_SIZE_MAX)
         return -EINVAL;
 
     if (!mem_pool_alloc(&exa->large_pool->pool, size, &pixmap->pool_entry,
