@@ -45,6 +45,7 @@ static int TegraEXACreatePool(TegraPtr tegra, TegraPixmapPoolPtr *ret,
 {
     TegraEXAPtr exa = tegra->exa;
     TegraPixmapPoolPtr pool;
+    unsigned long flags;
     int err;
 
     pool = calloc(1, sizeof(*pool));
@@ -53,8 +54,12 @@ static int TegraEXACreatePool(TegraPtr tegra, TegraPixmapPoolPtr *ret,
         return -ENOMEM;
     }
 
-    err = drm_tegra_bo_new(&pool->bo, tegra->drm, exa->default_drm_bo_flags,
-                           size);
+    flags = exa->default_drm_bo_flags;
+
+    if (size <= TEGRA_EXA_POOL_SIZE_MERGED_MAX)
+        flags |= DRM_TEGRA_GEM_CREATE_SPARSE;
+
+    err = drm_tegra_bo_new(&pool->bo, tegra->drm, flags, size);
     if (err) {
         ErrorMsg("failed to allocate pools BO: %d\n", err);
         free(pool);

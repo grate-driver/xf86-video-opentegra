@@ -29,13 +29,14 @@ static Bool TegraEXAAllocateDRM(TegraPtr tegra,
                                 unsigned int size)
 {
     TegraEXAPtr exa = tegra->exa;
+    unsigned long flags;
     int err;
 
     if (!pixmap->accel && !pixmap->dri)
         return FALSE;
 
-    err = drm_tegra_bo_new(&pixmap->bo, tegra->drm, exa->default_drm_bo_flags,
-                           size);
+    flags = exa->default_drm_bo_flags | DRM_TEGRA_GEM_CREATE_SPARSE;
+    err = drm_tegra_bo_new(&pixmap->bo, tegra->drm, flags, size);
     if (err)
         return FALSE;
 

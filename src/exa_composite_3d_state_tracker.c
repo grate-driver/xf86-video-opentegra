@@ -26,13 +26,14 @@ static Bool TegraAllocateAttribBuffer(TegraGR3DStatePtr state,
                                       TegraEXAPtr exa)
 {
     struct tegra_exa_scratch *scratch = state->scratch;
+    unsigned long flags;
     int err;
 
     if (scratch->attribs.bo)
         return TRUE;
 
-    err = drm_tegra_bo_new(&scratch->attribs.bo, scratch->drm,
-                           exa->default_drm_bo_flags,
+    flags = exa->default_drm_bo_flags | DRM_TEGRA_GEM_CREATE_SPARSE;
+    err = drm_tegra_bo_new(&scratch->attribs.bo, scratch->drm, flags,
                            TEGRA_ATTRIB_BUFFER_SIZE);
     if (err) {
         scratch->attribs.bo = NULL;
