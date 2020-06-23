@@ -24,6 +24,8 @@
 #include "driver.h"
 #include "exa_mm.h"
 
+#define TEST_FREEZER    0
+
 #define TEGRA_EXA_FREEZE_ALLOWANCE_DELTA    3
 #define TEGRA_EXA_FREEZE_BOUNCE_DELTA       5
 #define TEGRA_EXA_FREEZE_MIN_DELTA          (60 * 1)

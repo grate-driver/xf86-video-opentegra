@@ -58,8 +58,6 @@
 #define DebugMsg(fmt, args...) do {} while(0)
 #endif
 
-#define TEST_FREEZER    0
-
 #define PROFILE 0
 
 static inline float timespec_diff(const struct timespec *start,
