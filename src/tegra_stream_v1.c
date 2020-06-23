@@ -44,16 +44,19 @@ struct tegra_fence_v1 {
     struct tegra_fence base;
     struct drm_tegra_fence *fence;
     struct drm_tegra_job *job;
+    struct xorg_list entry;
 };
 
 struct tegra_stream_v1 {
     struct tegra_stream base;
     struct drm_tegra_job *job;
     struct tegra_command_buffer_v1 buffer;
+    struct xorg_list held_fences;
 };
 
 static struct tegra_fence *
-tegra_stream_create_fence_v1(struct drm_tegra_fence *fence, bool gr2d);
+tegra_stream_create_fence_v1(struct tegra_stream_v1 *stream,
+                             struct drm_tegra_fence *fence, bool gr2d);
 
 static inline struct tegra_stream_v1 *to_stream_v1(struct tegra_stream *base)
 {
@@ -68,6 +71,12 @@ static inline struct tegra_fence_v1 *to_fence_v1(struct tegra_fence *base)
 static void tegra_stream_destroy_v1(struct tegra_stream *base_stream)
 {
     struct tegra_stream_v1 *stream = to_stream_v1(base_stream);
+    struct tegra_fence_v1 *f, *tmp;
+
+    xorg_list_for_each_entry_safe(f, tmp, &stream->held_fences, entry) {
+        tegra_stream_wait_fence(&f->base);
+        tegra_stream_finish_fence(&f->base);
+    }
 
     tegra_stream_wait_fence(stream->base.last_fence);
     tegra_stream_put_fence(stream->base.last_fence);
@@ -133,7 +142,6 @@ tegra_stream_submit_v1(struct tegra_stream *base_stream, bool gr2d)
 {
     struct tegra_stream_v1 *stream = to_stream_v1(base_stream);
     struct drm_tegra_fence *fence;
-    struct tegra_fence_v1 *f_v1;
     struct tegra_fence *f;
     int ret;
 
@@ -154,14 +162,15 @@ tegra_stream_submit_v1(struct tegra_stream *base_stream, bool gr2d)
         ErrorMsg("drm_tegra_job_submit() failed %d\n", ret);
         ret = -1;
     } else {
-        f = tegra_stream_create_fence_v1(fence, gr2d);
+        struct tegra_fence_v1 *f_v1, *tmp_v1;
+
+        xorg_list_for_each_entry_safe(f_v1, tmp_v1, &stream->held_fences, entry)
+            tegra_stream_finish_fence(&f_v1->base);
+
+        f = tegra_stream_create_fence_v1(stream, fence, gr2d);
         if (f) {
             tegra_stream_put_fence(stream->base.last_fence);
             stream->base.last_fence = f;
-
-            f_v1 = to_fence_v1(f);
-            f_v1->job = stream->job;
-
             goto done;
         } else {
             ret = drm_tegra_fence_wait_timeout(fence, 1000);
@@ -207,6 +216,7 @@ static bool tegra_stream_wait_fence_v1(struct tegra_fence *base_fence)
 static void tegra_stream_free_fence_v1(struct tegra_fence *base_fence)
 {
     struct tegra_fence_v1 *f = to_fence_v1(base_fence);
+    int err = 0;
 
     /*
      * All job's BOs are kept refcounted after the submission. Once job is
@@ -217,16 +227,25 @@ static void tegra_stream_free_fence_v1(struct tegra_fence *base_fence)
      * For example, once new 3d job is submitted, the attribute BOs of a
      * previous job are released and then next 2d job could re-use the released
      * BOs while 3d job isn't completed yet.
+     *
+     * We're solving this trouble by holding fence until job that is
+     * associated with the fence is completed. The job is kept alive
+     * while fence is alive.
      */
-    tegra_stream_wait_fence_v1(base_fence);
+    if (f->fence)
+        err = drm_tegra_fence_check(f->fence);
 
-    drm_tegra_fence_free(f->fence);
-    drm_tegra_job_free(f->job);
-    free(f);
+    if (!err) {
+        drm_tegra_fence_free(f->fence);
+        drm_tegra_job_free(f->job);
+        xorg_list_del(&f->entry);
+        free(f);
+    }
 }
 
 static struct tegra_fence *
-tegra_stream_create_fence_v1(struct drm_tegra_fence *fence, bool gr2d)
+tegra_stream_create_fence_v1(struct tegra_stream_v1 *stream,
+                             struct drm_tegra_fence *fence, bool gr2d)
 {
     struct tegra_fence_v1 *f = calloc(1, sizeof(*f));
 
@@ -234,9 +253,12 @@ tegra_stream_create_fence_v1(struct drm_tegra_fence *fence, bool gr2d)
         return NULL;
 
     f->fence = fence;
+    f->job = stream->job;
     f->base.wait_fence = tegra_stream_wait_fence_v1;
     f->base.free_fence = tegra_stream_free_fence_v1;
     f->base.gr2d = gr2d;
+
+    xorg_list_append(&f->entry, &stream->held_fences);
 
     return &f->base;
 }
@@ -433,6 +455,8 @@ int tegra_stream_create_v1(struct tegra_stream **pstream,
     stream->push_words = tegra_stream_push_words_v1;
     stream->prep = tegra_stream_prep_v1;
     stream->sync = tegra_stream_sync_v1;
+
+    xorg_list_init(&stream_v1->held_fences);
 
     InfoMsg("success\n");
 

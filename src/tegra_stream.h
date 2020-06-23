@@ -200,6 +200,18 @@ static inline bool tegra_stream_wait_fence(struct tegra_fence *f)
     return false;
 }
 
+static inline void tegra_stream_free_fence(struct tegra_fence *f)
+{
+    if (f)
+        f->free_fence(f);
+}
+
+static inline void tegra_stream_finish_fence(struct tegra_fence *f)
+{
+    if (f && f->refcnt == -1)
+        tegra_stream_free_fence(f);
+}
+
 static inline void tegra_stream_put_fence(struct tegra_fence *f)
 {
     if (f) {
@@ -213,8 +225,8 @@ static inline void tegra_stream_put_fence(struct tegra_fence *f)
             return;
         }
 
-        if (--f->refcnt == -1)
-            f->free_fence(f);
+        f->refcnt--;
+        tegra_stream_finish_fence(f);
     }
 }
 
