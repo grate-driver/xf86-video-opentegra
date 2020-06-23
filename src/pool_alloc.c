@@ -611,6 +611,16 @@ static void mem_pool_destroy(struct mem_pool *pool)
 #endif
 }
 
+/*
+ * Transfer as many entries from "pool_from" to "pool_to" as possible.
+ *
+ * Before the transferring, the "pool_to" is defragmented to maximize
+ * the number of transferred entries. We take advantage of the defragmented
+ * pool in order to optimize the code a tad.
+ *
+ * Returns number of transferred entries. The "pool_to" is in defragmented
+ * state.
+ */
 static int mem_pool_transfer_entries(struct mem_pool * restrict pool_to,
                                      struct mem_pool * restrict pool_from)
 {
@@ -699,6 +709,11 @@ next_from:
     return transferred_entries;
 }
 
+/*
+ * Transfer as many entries from "pool_from" to "pool_to" as possible.
+ *
+ * Returns number of transferred entries.
+ */
 static int mem_pool_transfer_entries_fast(struct mem_pool * restrict pool_to,
                                           struct mem_pool * restrict pool_from)
 {
