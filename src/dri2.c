@@ -239,6 +239,7 @@ tegra_dri2_copy_region(DrawablePtr drawable, RegionPtr pRegion,
         ? drawable : &src_pixmap->drawable;
     DrawablePtr dst = (destBuffer->attachment == DRI2BufferFrontLeft)
         ? drawable : &dst_pixmap->drawable;
+    TegraPixmapPtr tegra;
     RegionPtr pCopyClip;
     GCPtr gc;
 
@@ -266,6 +267,30 @@ tegra_dri2_copy_region(DrawablePtr drawable, RegionPtr pRegion,
                       0, 0);
 
     FreeScratchGC(gc);
+
+    /*
+     * We need to wait for the copying completion here because UAPI v1
+     * doesn't support BO reservation, and thus, implicit fencing won't
+     * be available, resulting in asynchronous usage of the DRI surface
+     * (very visible flickering). Previously we didn't support the
+     * asynchronous rendering in our EXA driver, so it wasn't a problem
+     * back then.
+     */
+    tegra = exaGetPixmapDriverPrivate(src_pixmap);
+
+    if (tegra && tegra->dri) {
+        TegraEXAWaitFence(tegra->fence_read);
+        tegra_stream_put_fence(tegra->fence_read);
+        tegra->fence_read = NULL;
+    }
+
+    tegra = exaGetPixmapDriverPrivate(dst_pixmap);
+
+    if (tegra && tegra->dri) {
+        TegraEXAWaitFence(tegra->fence_write);
+        tegra_stream_put_fence(tegra->fence_write);
+        tegra->fence_write = NULL;
+    }
 }
 
 static uint64_t
