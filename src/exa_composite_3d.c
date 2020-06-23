@@ -901,11 +901,19 @@ static void TegraEXADoneComposite3D(PixmapPtr pDst)
         priv = exaGetPixmapDriverPrivate(pDst);
 
         if (drm_ver < GRATE_KERNEL_DRM_VERSION + 2) {
-            if (priv->fence_write && priv->fence_write->gr2d)
+            if (priv->fence_write && priv->fence_write->gr2d) {
                 TegraEXAWaitFence(priv->fence_write);
 
-            if (priv->fence_read && priv->fence_read->gr2d)
+                tegra_stream_put_fence(priv->fence_write);
+                priv->fence_write = NULL;
+            }
+
+            if (priv->fence_read && priv->fence_read->gr2d) {
                 TegraEXAWaitFence(priv->fence_read);
+
+                tegra_stream_put_fence(priv->fence_read);
+                priv->fence_read = NULL;
+            }
         }
 
         fence = TegraGR3DStateSubmit(&tegra->gr3d_state);
