@@ -213,7 +213,7 @@ static bool tegra_stream_wait_fence_v1(struct tegra_fence *base_fence)
     return false;
 }
 
-static void tegra_stream_free_fence_v1(struct tegra_fence *base_fence)
+static bool tegra_stream_free_fence_v1(struct tegra_fence *base_fence)
 {
     struct tegra_fence_v1 *f = to_fence_v1(base_fence);
     int err = 0;
@@ -240,7 +240,11 @@ static void tegra_stream_free_fence_v1(struct tegra_fence *base_fence)
         drm_tegra_job_free(f->job);
         xorg_list_del(&f->entry);
         free(f);
+
+        return true;
     }
+
+    return false;
 }
 
 static struct tegra_fence *
@@ -257,6 +261,11 @@ tegra_stream_create_fence_v1(struct tegra_stream_v1 *stream,
     f->base.wait_fence = tegra_stream_wait_fence_v1;
     f->base.free_fence = tegra_stream_free_fence_v1;
     f->base.gr2d = gr2d;
+
+#ifdef FENCE_DEBUG
+    f->base.bug0 = false;
+    f->base.bug1 = true;
+#endif
 
     xorg_list_append(&f->entry, &stream->held_fences);
 

@@ -213,7 +213,7 @@ static bool tegra_stream_wait_fence_v2(struct tegra_fence *base_fence)
     return true;
 }
 
-static void tegra_stream_free_fence_v2(struct tegra_fence *base_fence)
+static bool tegra_stream_free_fence_v2(struct tegra_fence *base_fence)
 {
 #ifdef HAVE_LIBDRM_SYNCOBJ_SUPPORT
     struct tegra_fence_v2 *f = to_fence_v2(base_fence);
@@ -222,6 +222,7 @@ static void tegra_stream_free_fence_v2(struct tegra_fence *base_fence)
         drmSyncobjDestroy(f->drm_fd, f->syncobj_handle);
     free(f);
 #endif
+    return true;
 }
 
 static struct tegra_fence *
@@ -242,6 +243,11 @@ tegra_stream_create_fence_v2(struct tegra_stream_v2 *stream, bool gr2d)
     f->base.wait_fence = tegra_stream_wait_fence_v2;
     f->base.free_fence = tegra_stream_free_fence_v2;
     f->base.gr2d = gr2d;
+
+#ifdef FENCE_DEBUG
+    f->base.bug0 = false;
+    f->base.bug1 = true;
+#endif
 
     return &f->base;
 }

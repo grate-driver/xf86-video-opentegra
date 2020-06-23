@@ -28,6 +28,7 @@
 #ifndef TEGRA_STREAM_H_
 #define TEGRA_STREAM_H_
 
+#include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -37,6 +38,10 @@
 
 #define TGR_STRM_ERROR_MSG(fmt, args...) \
     fprintf(stderr, "%s:%d/%s(): " fmt, __FILE__, __LINE__, __func__, ##args)
+
+#ifdef DEBUG
+#define FENCE_DEBUG
+#endif
 
 struct _TegraRec;
 
@@ -60,7 +65,12 @@ struct tegra_fence {
     bool gr2d;
 
     bool (*wait_fence)(struct tegra_fence *f);
-    void (*free_fence)(struct tegra_fence *f);
+    bool (*free_fence)(struct tegra_fence *f);
+
+#ifdef FENCE_DEBUG
+    bool bug0;
+    bool bug1;
+#endif
 };
 
 struct tegra_stream {
@@ -162,19 +172,35 @@ static inline int tegra_stream_flush(struct tegra_stream *stream)
     return stream->flush(stream);
 }
 
+static inline void tegra_stream_check_fence(struct tegra_fence *f)
+{
+#ifdef FENCE_DEBUG
+    assert(f->refcnt >= -1);
+    assert(!f->bug0);
+    assert(f->bug1);
+#endif
+}
+
 static inline struct tegra_fence *
 tegra_stream_submit(struct tegra_stream *stream, bool gr2d)
 {
+    struct tegra_fence *f;
+
     if (!stream)
         return NULL;
 
-    return stream->submit(stream, gr2d);
+    f = stream->submit(stream, gr2d);
+    if (f)
+        tegra_stream_check_fence(f);
+
+    return f;
 }
 
 static inline struct tegra_fence *
 tegra_stream_ref_fence(struct tegra_fence *f, void *opaque)
 {
     if (f) {
+        tegra_stream_check_fence(f);
         f->opaque = opaque;
         f->refcnt++;
     }
@@ -194,34 +220,57 @@ tegra_stream_get_last_fence(struct tegra_stream *stream)
 
 static inline bool tegra_stream_wait_fence(struct tegra_fence *f)
 {
-    if (f)
+    if (f) {
+        tegra_stream_check_fence(f);
         return f->wait_fence(f);
+    }
 
     return false;
 }
 
 static inline void tegra_stream_free_fence(struct tegra_fence *f)
 {
-    if (f)
-        f->free_fence(f);
+    if (f) {
+        tegra_stream_check_fence(f);
+#ifdef FENCE_DEBUG
+        f->refcnt = -100;
+#endif
+        if (!f->free_fence(f)) {
+#ifdef FENCE_DEBUG
+            f->refcnt = -1;
+#endif
+        }
+    }
 }
 
 static inline void tegra_stream_finish_fence(struct tegra_fence *f)
 {
-    if (f && f->refcnt == -1)
-        tegra_stream_free_fence(f);
+    if (f) {
+        tegra_stream_check_fence(f);
+
+        if (f->refcnt == -1)
+            tegra_stream_free_fence(f);
+    }
 }
 
 static inline void tegra_stream_put_fence(struct tegra_fence *f)
 {
     if (f) {
+        tegra_stream_check_fence(f);
+
         if (f->refcnt < 0) {
             TGR_STRM_ERROR_MSG("BUG: fence refcount underflow\n");
+#ifdef FENCE_DEBUG
+            assert(0);
+#endif
             return;
         }
 
         if (f->refcnt > 10) {
             TGR_STRM_ERROR_MSG("BUG: fence refcount overflow\n");
+#ifdef FENCE_DEBUG
+            assert(0);
+#endif
             return;
         }
 
