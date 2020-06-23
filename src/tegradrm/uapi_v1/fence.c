@@ -28,10 +28,36 @@
 
 #include <errno.h>
 #include <string.h>
+#include <sys/ioctl.h>
 
 #include <xf86drm.h>
 
 #include "uapi_v1.h"
+
+int drm_tegra_fence_check(struct drm_tegra_fence *fence)
+{
+	struct drm_tegra_syncpt_wait args;
+	unsigned long request;
+
+	if (!fence)
+		return -EINVAL;
+
+	memset(&args, 0, sizeof(args));
+	args.id = fence->syncpt;
+	args.thresh = fence->value;
+
+	/*
+	 * Kernel driver returns -EAGAIN if timeout=0 and fence
+	 * isn't reached, so we can't use drmCommandWriteRead()
+	 * since it will spin until fence is reached and this
+	 * is not what we want here.
+	 */
+	request = DRM_IOC(DRM_IOC_READ | DRM_IOC_WRITE, DRM_IOCTL_BASE,
+			  DRM_COMMAND_BASE + DRM_TEGRA_SYNCPT_WAIT,
+			  sizeof(args));
+
+	return ioctl(fence->drm->fd, request, &args);
+}
 
 int drm_tegra_fence_wait_timeout(struct drm_tegra_fence *fence,
 				 unsigned long timeout)
