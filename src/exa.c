@@ -231,6 +231,7 @@ static void TegraEXATrimHeap(TegraEXAPtr exa)
 static void TegraEXAReleasePixmapData(TegraPtr tegra, TegraPixmapPtr priv)
 {
     TegraEXAPtr exa = tegra->exa;
+    Bool force_fencing = false;
     int drm_ver;
 
     if (priv->type == TEGRA_EXA_PIXMAP_TYPE_NONE) {
@@ -261,6 +262,19 @@ static void TegraEXAReleasePixmapData(TegraPtr tegra, TegraPixmapPtr priv)
         goto out_final;
     }
 
+#ifdef POOL_DEBUG_CANARY
+    /*
+     * Pool allocation data is sprayed with 0x88 if canary-debugging is
+     * enabled, see mem_pool_free(). In this case we need to enforce
+     * the fence-waiting, otherwise there will be visible glitches if
+     * pixmap is released before GPU rendering is finished.
+     *
+     * One example where problem is visible is a "magnus" application of
+     * MATE DE, click on the magnus itself to see the corrupted image of
+     * the checkerboard background that app draws.
+     */
+    force_fencing = (priv->type == TEGRA_EXA_PIXMAP_TYPE_POOL);
+#endif
     drm_ver = drm_tegra_version(tegra->drm);
 
     /*
@@ -269,7 +283,7 @@ static void TegraEXAReleasePixmapData(TegraPtr tegra, TegraPixmapPtr priv)
      * by vanilla upstream kernel driver.
      */
     if (priv->fence_read) {
-        if (drm_ver < GRATE_KERNEL_DRM_VERSION)
+        if (force_fencing || drm_ver < GRATE_KERNEL_DRM_VERSION)
             TegraEXAWaitFence(priv->fence_read);
 
         TEGRA_STREAM_PUT_FENCE(priv->fence_read);
@@ -277,7 +291,7 @@ static void TegraEXAReleasePixmapData(TegraPtr tegra, TegraPixmapPtr priv)
     }
 
     if (priv->fence_write) {
-        if (drm_ver < GRATE_KERNEL_DRM_VERSION)
+        if (force_fencing || drm_ver < GRATE_KERNEL_DRM_VERSION)
             TegraEXAWaitFence(priv->fence_write);
 
         TEGRA_STREAM_PUT_FENCE(priv->fence_write);
