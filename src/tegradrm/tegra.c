@@ -671,6 +671,21 @@ unlock:
 	return 0;
 }
 
+int drm_tegra_bo_mapped(struct drm_tegra_bo *bo)
+{
+	if (!bo)
+		return -EINVAL;
+
+	/*
+	 * The -1 means that BO was unmapped, but mapping still resides in a
+	 * cache.
+	 */
+	if (bo->map_cached)
+		return -1;
+
+	return bo->mmap_ref;
+}
+
 int drm_tegra_bo_get_flags(struct drm_tegra_bo *bo, uint32_t *flags)
 {
 	struct drm_tegra_gem_get_flags args;
