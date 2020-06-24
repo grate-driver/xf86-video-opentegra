@@ -421,6 +421,8 @@ static void TegraEXADecompressPixmap(TegraEXAPtr exa, TegraPixmapPtr pixmap,
         tegra_memcpy_vfp_aligned_src_cached(c->buf_out, c->buf_in, c->out_size);
         DebugMsg("priv %p decompressed: uncompressed\n", pixmap);
 
+        /* clear released data for privacy protection */
+        memset(c->buf_in, TEST_FREEZER ? 0xffffffff : 0, c->out_size);
         free(c->buf_in);
         break;
 
@@ -633,6 +635,11 @@ static int TegraEXAFreezePixmap(TegraPtr tegra, TegraPixmapPtr pixmap)
     if (err < 0) {
         ErrorMsg("failed to freeze pixmap\n");
         goto fail_unmap;
+    }
+
+    if (!err && !carg.keep_fallback) {
+        /* clear released data for privacy protection */
+        memset(pixmap_data, TEST_FREEZER ? 0xffffffff : 0, data_size);
     }
 
     pixmap->no_compress = err;
@@ -862,18 +869,13 @@ TegraEXAAllocatePixmapDataNoFail(TegraPtr tegra, TegraPixmapPtr pixmap,
 
     while (1) {
         if (!accel) {
-            if (TegraEXAAllocateMem(pixmap, size)) {
-                TegraEXAClearPixmapData(pixmap, FALSE);
+            if (TegraEXAAllocateMem(pixmap, size))
                 return;
-            }
         } else {
             if (TegraEXAAllocateDRMFromPool(tegra, pixmap, size) ||
                 TegraEXAAllocateDRM(tegra, pixmap, size) ||
                 TegraEXAAllocateMem(pixmap, size))
-            {
-                TegraEXAClearPixmapData(pixmap, accel);
                 return;
-            }
         }
 
         if (retries++ > 100)
