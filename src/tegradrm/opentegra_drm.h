@@ -75,7 +75,7 @@ struct drm_tegra_gem_create {
 	 *   precedence when both flags are set.
 	 *
 	 * DRM_TEGRA_GEM_CREATE_DONT_KMAP
-	 *   Hint to the driver that there is no need to map BO into kernel
+	 *   Hint to the driver that there is no need to map GEM into kernel
 	 *   space.
 	 */
 	__u32 flags;
@@ -628,7 +628,6 @@ struct drm_tegra_gem_get_tiling {
 
 #define DRM_TEGRA_GEM_BOTTOM_UP		(1 << 0)
 #define DRM_TEGRA_GEM_SPARSE		(1 << 1)
-#define DRM_TEGRA_GEM_CONTIGUOUS	(1 << 2)
 #define DRM_TEGRA_GEM_FLAGS		(DRM_TEGRA_GEM_BOTTOM_UP)
 
 /**
@@ -690,7 +689,8 @@ struct drm_tegra_gem_cpu_prep {
 	 * A bitmask of flags that specifies how CPU access shall be prepared.
 	 *
 	 * DRM_TEGRA_CPU_PREP_WRITE
-	 *   Wait for all in-flight writes to the GEM's memory to be completed.
+	 *   Prepare GEM for writing by waiting for all writes and reads to
+	 *   be completed.
 	 */
 	__u32 flags;
 
