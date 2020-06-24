@@ -527,19 +527,9 @@ static Bool TegraGR3DStateAppend(TegraGR3DStatePtr state, TegraEXAPtr tegra,
 {
     struct tegra_exa_scratch *scratch = &tegra->scratch;
     struct tegra_stream *cmds = tegra->cmds;
+    Bool begin = state->clean;
     TegraPixmapPtr priv;
     int err;
-
-    if (state->clean) {
-        err = tegra_stream_begin(cmds, tegra->gr3d);
-        if (err)
-            return FALSE;
-    }
-
-    if (cmds->status != TEGRADRM_STREAM_CONSTRUCT) {
-        TegraGR3DStateReset(state);
-        return FALSE;
-    }
 
     state->new = *draw_state;
     state->scratch = scratch;
@@ -582,6 +572,19 @@ static Bool TegraGR3DStateAppend(TegraGR3DStatePtr state, TegraEXAPtr tegra,
                         state->new.dst.pPix->drawable.width,
                         state->new.dst.pPix->drawable.height,
                         state->new.dst.pPix->drawable.bitsPerPixel);
+        TegraGR3DStateReset(state);
+        return FALSE;
+    }
+
+    if (begin) {
+        err = tegra_stream_begin(cmds, tegra->gr3d);
+        if (err) {
+            TegraGR3DStateReset(state);
+            return FALSE;
+        }
+    }
+
+    if (cmds->status != TEGRADRM_STREAM_CONSTRUCT) {
         TegraGR3DStateReset(state);
         return FALSE;
     }

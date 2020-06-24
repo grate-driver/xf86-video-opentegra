@@ -783,7 +783,7 @@ static void TegraEXACoolPixmap(PixmapPtr pPixmap, Bool write)
     }
 }
 
-static void TegraEXAClearPixmapData(TegraPixmapPtr pixmap)
+static void TegraEXAClearPixmapDataCPU(TegraPixmapPtr pixmap)
 {
     unsigned int size = TegraPixmapSize(pixmap);
     PixmapPtr pix = pixmap->pPixmap;
@@ -801,6 +801,58 @@ static void TegraEXAClearPixmapData(TegraPixmapPtr pixmap)
     }
 }
 
+static Bool TegraEXAClearPixmapDataGPU(TegraPixmapPtr pixmap)
+{
+    if (TegraEXAPrepareSolid(pixmap->pPixmap, GXcopy, FB_ALLONES,
+                             TEST_FREEZER ? 0xffffffff : 0)) {
+        TegraEXASolid(pixmap->pPixmap, 0, 0,
+                      pixmap->pPixmap->drawable.width,
+                      pixmap->pPixmap->drawable.height);
+        TegraEXADoneSolid(pixmap->pPixmap);
+
+        return TRUE;
+    }
+
+    return FALSE;
+}
+
+static Bool TegraEXAClearPixmapDataOnGPU(TegraPixmapPtr pixmap, Bool accel)
+{
+    struct drm_tegra_bo *bo = NULL;
+    TegraPixmapPoolPtr pool;
+
+    if (pixmap->type == TEGRA_EXA_PIXMAP_TYPE_FALLBACK)
+        return FALSE;
+
+    if (pixmap->type == TEGRA_EXA_PIXMAP_TYPE_BO)
+        bo = pixmap->bo;
+
+    if (pixmap->type == TEGRA_EXA_PIXMAP_TYPE_POOL) {
+        pool = TEGRA_CONTAINER_OF(pixmap->pool_entry.pool, TegraPixmapPool,
+                                  pool);
+        bo = pool->bo;
+    }
+
+    /*
+     * HW job execution overhead is bigger for small pixmaps than clearing
+     * on CPU, so we prefer CPU for a such pixmaps.
+     */
+    if (pixmap->pPixmap->drawable.width *
+        pixmap->pPixmap->drawable.height *
+        pixmap->pPixmap->drawable.bitsPerPixel / 8 < 128 * 1024 &&
+        (!accel || drm_tegra_bo_mapped(bo)))
+        return FALSE;
+
+    return TRUE;
+}
+
+static void TegraEXAClearPixmapData(TegraPixmapPtr pixmap, Bool accel)
+{
+    if (!TegraEXAClearPixmapDataOnGPU(pixmap, accel) ||
+        !TegraEXAClearPixmapDataGPU(pixmap))
+            TegraEXAClearPixmapDataCPU(pixmap);
+}
+
 static void
 TegraEXAAllocatePixmapDataNoFail(TegraPtr tegra, TegraPixmapPtr pixmap,
                                  Bool accel)
@@ -811,7 +863,7 @@ TegraEXAAllocatePixmapDataNoFail(TegraPtr tegra, TegraPixmapPtr pixmap,
     while (1) {
         if (!accel) {
             if (TegraEXAAllocateMem(pixmap, size)) {
-                TegraEXAClearPixmapData(pixmap);
+                TegraEXAClearPixmapData(pixmap, FALSE);
                 return;
             }
         } else {
@@ -819,7 +871,7 @@ TegraEXAAllocatePixmapDataNoFail(TegraPtr tegra, TegraPixmapPtr pixmap,
                 TegraEXAAllocateDRM(tegra, pixmap, size) ||
                 TegraEXAAllocateMem(pixmap, size))
             {
-                TegraEXAClearPixmapData(pixmap);
+                TegraEXAClearPixmapData(pixmap, accel);
                 return;
             }
         }
