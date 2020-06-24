@@ -66,6 +66,7 @@ struct tegra_reloc {
     struct drm_tegra_bo *bo;
     uint32_t offset;
     unsigned var_offset;
+    bool write;
 };
 
 struct tegra_fence {
@@ -99,7 +100,8 @@ struct tegra_stream {
     struct tegra_fence * (*submit)(struct tegra_stream *stream, bool gr2d);
     int (*push_reloc)(struct tegra_stream *stream,
                       struct drm_tegra_bo *bo,
-                      unsigned offset);
+                      unsigned offset,
+                      bool write);
     int (*push_words)(struct tegra_stream *stream, const void *addr,
                       unsigned words, int num_relocs, ...);
     int (*prep)(struct tegra_stream *stream, uint32_t words);
@@ -316,14 +318,15 @@ static inline void tegra_stream_put_fence(struct tegra_fence *f)
 static inline int
 tegra_stream_push_reloc(struct tegra_stream *stream,
                         struct drm_tegra_bo *bo,
-                        unsigned offset)
+                        unsigned offset,
+                        bool write)
 {
     if (!(stream && stream->status == TEGRADRM_STREAM_CONSTRUCT)) {
         TGR_STRM_ERROR_MSG("Stream status isn't CONSTRUCT\n");
         return -1;
     }
 
-    return stream->push_reloc(stream, bo, offset);
+    return stream->push_reloc(stream, bo, offset, write);
 }
 
 static inline int tegra_stream_push_words(struct tegra_stream *stream,

@@ -349,7 +349,7 @@ void TegraGR3D_SetupAttribute(struct tegra_stream *cmds,
     value |= TGR3D_VAL(ATTRIB_MODE, STRIDE, stride);
 
     tegra_stream_push(cmds, HOST1X_OPCODE_INCR(TGR3D_ATTRIB_PTR(index), 2));
-    tegra_stream_push_reloc(cmds, bo, offset);
+    tegra_stream_push_reloc(cmds, bo, offset, false);
     tegra_stream_push(cmds, value);
 }
 
@@ -382,7 +382,7 @@ void TegraGR3D_SetupRenderTarget(struct tegra_stream *cmds,
     tegra_stream_push(cmds, value);
 
     tegra_stream_push(cmds, HOST1X_OPCODE_INCR(TGR3D_RT_PTR(index), 1));
-    tegra_stream_push_reloc(cmds, bo, offset);
+    tegra_stream_push_reloc(cmds, bo, offset, true);
 }
 
 static
@@ -436,7 +436,7 @@ void TegraGR3D_SetupTextureDesc(struct tegra_stream *cmds,
     tegra_stream_push(cmds, value);
 
     tegra_stream_push(cmds, HOST1X_OPCODE_INCR(TGR3D_TEXTURE_POINTER(index), 1));
-    tegra_stream_push_reloc(cmds, bo, offset);
+    tegra_stream_push_reloc(cmds, bo, offset, false);
 }
 
 static

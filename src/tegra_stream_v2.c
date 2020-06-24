@@ -267,13 +267,19 @@ static int tegra_stream_begin_v2(struct tegra_stream *base_stream,
 
 static int tegra_stream_push_reloc_v2(struct tegra_stream *base_stream,
                                       struct drm_tegra_bo *bo,
-                                      unsigned offset)
+                                      unsigned offset,
+                                      bool write)
 {
     struct tegra_stream_v2 *stream = to_stream_v2(base_stream);
+    uint32_t flags;
     int ret;
 
-    ret = drm_tegra_job_push_reloc_v2(stream->job, bo, offset,
-                                      DRM_TEGRA_BO_TABLE_WRITE);
+    if (write)
+        flags = DRM_TEGRA_BO_TABLE_WRITE;
+    else
+        flags = 0;
+
+    ret = drm_tegra_job_push_reloc_v2(stream->job, bo, offset, flags);
     if (ret) {
         stream->base.status = TEGRADRM_STREAM_CONSTRUCTION_FAILED;
         ErrorMsg("drm_tegra_job_push_reloc_v2() failed %d\n", ret);
@@ -334,6 +340,7 @@ tegra_stream_push_words_v2(struct tegra_stream *base_stream, const void *addr,
     struct tegra_stream_v2 *stream = to_stream_v2(base_stream);
     struct tegra_reloc reloc_arg;
     uint32_t *pushbuf_ptr;
+    uint32_t flags;
     va_list ap;
     int ret;
 
@@ -360,10 +367,15 @@ tegra_stream_push_words_v2(struct tegra_stream *base_stream, const void *addr,
         stream->job->ptr  = pushbuf_ptr;
         stream->job->ptr += reloc_arg.var_offset / sizeof(uint32_t);
 
+        if (reloc_arg.write)
+            flags = DRM_TEGRA_BO_TABLE_WRITE;
+        else
+            flags = 0;
+
         ret = drm_tegra_job_push_reloc_v2(stream->job,
                                           reloc_arg.bo,
                                           reloc_arg.offset,
-                                          DRM_TEGRA_BO_TABLE_WRITE);
+                                          flags);
         if (ret) {
             stream->base.status = TEGRADRM_STREAM_CONSTRUCTION_FAILED;
             ErrorMsg("drm_tegra_job_push_reloc_v2() failed %d\n", ret);

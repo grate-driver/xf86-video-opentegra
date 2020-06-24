@@ -304,7 +304,8 @@ static int tegra_stream_begin_v1(struct tegra_stream *base_stream,
 
 static int tegra_stream_push_reloc_v1(struct tegra_stream *base_stream,
                                       struct drm_tegra_bo *bo,
-                                      unsigned offset)
+                                      unsigned offset,
+                                      bool write)
 {
     struct tegra_stream_v1 *stream = to_stream_v1(base_stream);
     int ret;

@@ -1226,9 +1226,9 @@ static Bool TegraVideoCopyRotatedPlane(TegraVideoPtr priv,
                       (1 << 29) | (1 << 20) | ((bpp >> 4) << 16));
 
     tegra_stream_push(priv->cmds, HOST1X_OPCODE_MASK(0x2b, 0x1149));
-    tegra_stream_push_reloc(priv->cmds, dst_bo, offset_dst);
+    tegra_stream_push_reloc(priv->cmds, dst_bo, offset_dst, true);
     tegra_stream_push(priv->cmds, pitch_dst);
-    tegra_stream_push_reloc(priv->cmds, src_bo, offset_src);
+    tegra_stream_push_reloc(priv->cmds, src_bo, offset_src, false);
     tegra_stream_push(priv->cmds, pitch_src);
     tegra_stream_push(priv->cmds, src_height << 16 | src_width);
 

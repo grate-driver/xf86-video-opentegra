@@ -130,7 +130,7 @@ static Bool TegraEXAPrepareSolid(PixmapPtr pPixmap, int op, Pixel planemask,
     tegra_stream_push(tegra->cmds, rop3[op]); /* ropfade */
     tegra_stream_push(tegra->cmds, HOST1X_OPCODE_MASK(0x2b, 0x9));
     tegra_stream_push_reloc(tegra->cmds, TegraEXAPixmapBO(pPixmap),
-                            TegraEXAPixmapOffset(pPixmap));
+                            TegraEXAPixmapOffset(pPixmap), true);
     tegra_stream_push(tegra->cmds, exaGetPixmapPitch(pPixmap));
     tegra_stream_push(tegra->cmds, HOST1X_OPCODE_NONINCR(0x46, 1));
     tegra_stream_push(tegra->cmds, 0); /* non-tiled */
@@ -334,12 +334,12 @@ static Bool TegraEXAPrepareCopyExt(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
         tegra_stream_push(tegra->cmds, HOST1X_OPCODE_MASK(0x2b, 0x149));
 
         tegra_stream_push_reloc(tegra->cmds, TegraEXAPixmapBO(pDstPixmap),
-                                TegraEXAPixmapOffset(pDstPixmap));
+                                TegraEXAPixmapOffset(pDstPixmap), true);
         tegra_stream_push(tegra->cmds,
                           exaGetPixmapPitch(pDstPixmap)); /* dstst */
 
         tegra_stream_push_reloc(tegra->cmds, TegraEXAPixmapBO(pSrcPixmap),
-                                TegraEXAPixmapOffset(pSrcPixmap));
+                                TegraEXAPixmapOffset(pSrcPixmap), false);
         tegra_stream_push(tegra->cmds,
                           exaGetPixmapPitch(pSrcPixmap)); /* srcst */
     } else {
@@ -473,7 +473,7 @@ static void TegraEXACopyExt(PixmapPtr pDstPixmap, int srcX, int srcY, int dstX,
         tegra_stream_push(tegra->cmds, HOST1X_OPCODE_NONINCR(0x2b, 1));
 
         tegra_stream_push_reloc(tegra->cmds, dst_bo,
-                                sb_offset(pDstPixmap, dstX, dstY));
+                                sb_offset(pDstPixmap, dstX, dstY), true);
 
         tegra->scratch.dstX = dstX;
         tegra->scratch.dstY = dstY;
@@ -483,7 +483,7 @@ static void TegraEXACopyExt(PixmapPtr pDstPixmap, int srcX, int srcY, int dstX,
         tegra_stream_push(tegra->cmds, HOST1X_OPCODE_NONINCR(0x31, 1));
 
         tegra_stream_push_reloc(tegra->cmds, src_bo,
-                                sb_offset(pSrcPixmap, srcX, srcY));
+                                sb_offset(pSrcPixmap, srcX, srcY), false);
 
         tegra->scratch.srcX = srcX;
         tegra->scratch.srcY = srcY;
