@@ -637,7 +637,7 @@ static int TegraEXAFreezePixmap(TegraPtr tegra, TegraPixmapPtr pixmap)
         goto fail_unmap;
     }
 
-    if (!err && !carg.keep_fallback) {
+    if (!err || !carg.keep_fallback) {
         /* clear released data for privacy protection */
         memset(pixmap_data, TEST_FREEZER ? 0xffffffff : 0, data_size);
     }
