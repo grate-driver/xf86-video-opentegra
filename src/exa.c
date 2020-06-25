@@ -265,7 +265,6 @@ static void TegraEXAReleasePixmapData(TegraPtr tegra, TegraPixmapPtr priv)
         goto out_final;
     }
 
-#ifdef POOL_DEBUG_CANARY
     /*
      * Pool allocation data is sprayed with 0x88 if canary-debugging is
      * enabled, see mem_pool_free(). In this case we need to enforce
@@ -275,9 +274,12 @@ static void TegraEXAReleasePixmapData(TegraPtr tegra, TegraPixmapPtr priv)
      * One example where problem is visible is a "magnus" application of
      * MATE DE, click on the magnus itself to see the corrupted image of
      * the checkerboard background that app draws.
+     *
+     * Secondly, we can't check the pool allocation HW usage status at
+     * allocation time, so we always need to fence a such allocation.
      */
     force_fencing = (priv->type == TEGRA_EXA_PIXMAP_TYPE_POOL);
-#endif
+
     drm_ver = drm_tegra_version(tegra->drm);
 
     /*
