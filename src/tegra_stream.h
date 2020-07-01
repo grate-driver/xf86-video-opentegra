@@ -36,7 +36,7 @@
 #include "host1x.h"
 #include "opentegra_lib.h"
 
-#define TGR_STRM_ERROR_MSG(fmt, args...) \
+#define TEGRA_STREAM_ERR_MSG(fmt, args...) \
     fprintf(stderr, "%s:%d/%s(): " fmt, __FILE__, __LINE__, __func__, ##args)
 
 #ifdef DEBUG
@@ -141,7 +141,7 @@ static inline int tegra_stream_begin(struct tegra_stream *stream,
                                      struct drm_tegra_channel *channel)
 {
     if (!(stream && stream->status == TEGRADRM_STREAM_FREE)) {
-        TGR_STRM_ERROR_MSG("Stream status isn't FREE\n");
+        TEGRA_STREAM_ERR_MSG("Stream status isn't FREE\n");
         return -1;
     }
 
@@ -153,7 +153,7 @@ static inline int tegra_stream_end(struct tegra_stream *stream)
     int ret;
 
     if (!(stream && stream->status == TEGRADRM_STREAM_CONSTRUCT)) {
-        TGR_STRM_ERROR_MSG("Stream status isn't CONSTRUCT\n");
+        TEGRA_STREAM_ERR_MSG("Stream status isn't CONSTRUCT\n");
         return -1;
     }
 
@@ -293,7 +293,7 @@ static inline void tegra_stream_put_fence(struct tegra_fence *f)
         tegra_stream_check_fence(f);
 
         if (f->refcnt < 0) {
-            TGR_STRM_ERROR_MSG("BUG: fence refcount underflow\n");
+            TEGRA_STREAM_ERR_MSG("BUG: fence refcount underflow\n");
 #ifdef FENCE_DEBUG
             assert(0);
 #endif
@@ -301,7 +301,7 @@ static inline void tegra_stream_put_fence(struct tegra_fence *f)
         }
 
         if (f->refcnt > 10) {
-            TGR_STRM_ERROR_MSG("BUG: fence refcount overflow\n");
+            TEGRA_STREAM_ERR_MSG("BUG: fence refcount overflow\n");
 #ifdef FENCE_DEBUG
             assert(0);
 #endif
@@ -322,7 +322,7 @@ tegra_stream_push_reloc(struct tegra_stream *stream,
                         bool write)
 {
     if (!(stream && stream->status == TEGRADRM_STREAM_CONSTRUCT)) {
-        TGR_STRM_ERROR_MSG("Stream status isn't CONSTRUCT\n");
+        TEGRA_STREAM_ERR_MSG("Stream status isn't CONSTRUCT\n");
         return -1;
     }
 
@@ -339,7 +339,7 @@ static inline int tegra_stream_push_words(struct tegra_stream *stream,
     int ret;
 
     if (!(stream && stream->status == TEGRADRM_STREAM_CONSTRUCT)) {
-        TGR_STRM_ERROR_MSG("Stream status isn't CONSTRUCT\n");
+        TEGRA_STREAM_ERR_MSG("Stream status isn't CONSTRUCT\n");
         return -1;
     }
 
@@ -354,7 +354,7 @@ static inline int
 tegra_stream_prep(struct tegra_stream *stream, uint32_t words)
 {
     if (!(stream && stream->status == TEGRADRM_STREAM_CONSTRUCT)) {
-        TGR_STRM_ERROR_MSG("Stream status isn't CONSTRUCT\n");
+        TEGRA_STREAM_ERR_MSG("Stream status isn't CONSTRUCT\n");
         return -1;
     }
 
@@ -366,7 +366,7 @@ static inline int tegra_stream_sync(struct tegra_stream *stream,
                                     bool keep_class)
 {
     if (!(stream && stream->status == TEGRADRM_STREAM_CONSTRUCT)) {
-        TGR_STRM_ERROR_MSG("Stream status isn't CONSTRUCT\n");
+        TEGRA_STREAM_ERR_MSG("Stream status isn't CONSTRUCT\n");
         return -1;
     }
 
