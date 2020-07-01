@@ -63,6 +63,11 @@ static Bool TegraEXAAllocateMem(TegraPixmapPtr pixmap, unsigned int size)
 
 static int TegraEXAInitMM(TegraPtr tegra, TegraEXAPtr exa)
 {
+    Bool has_iommu = FALSE;
+    int drm_ver;
+
+    drm_ver = drm_tegra_version(tegra->drm);
+
     xorg_list_init(&exa->cool_pixmaps);
     xorg_list_init(&exa->mem_pools);
 
@@ -73,13 +78,21 @@ static int TegraEXAInitMM(TegraPtr tegra, TegraEXAPtr exa)
     }
 #endif
 
+    if (drm_ver >= GRATE_KERNEL_DRM_VERSION + 4) {
+        has_iommu = drm_tegra_channel_has_iommu(exa->gr2d) &&
+                    drm_tegra_channel_has_iommu(exa->gr3d);
+
+        xf86DrvMsg(-1, X_INFO, "Tegra DRM uses IOMMU: %s\n",
+                   has_iommu ? "YES" : "NO");
+    }
+
     /*
      * CMA doesn't guarantee contiguous allocations. We should do our best
      * in order to avoid fragmentation because even if CMA area is quite
      * large, the accidental pinned memory pages may ruin the day (or Xorg
      * session at least).
      */
-    if (tegra->exa_pool_alloc) {
+    if (tegra->exa_pool_alloc && !has_iommu) {
         unsigned int size;
         int err = -ENOMEM;
 
