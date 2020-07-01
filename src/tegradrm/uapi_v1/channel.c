@@ -96,6 +96,7 @@ int drm_tegra_channel_open(struct drm_tegra_channel **channelp,
 
 	channel->context = args.context;
 	channel->class = class;
+	channel->flags = args.flags_out;
 
 	err = drm_tegra_channel_setup(channel);
 	if (err < 0) {
@@ -130,4 +131,12 @@ int drm_tegra_channel_close(struct drm_tegra_channel *channel)
 	free(channel);
 
 	return 0;
+}
+
+bool drm_tegra_channel_has_iommu(struct drm_tegra_channel *channel)
+{
+	if (channel && (channel->flags & DRM_TEGRA_CHANNEL_USES_IOMMU))
+		return true;
+
+	return false;
 }

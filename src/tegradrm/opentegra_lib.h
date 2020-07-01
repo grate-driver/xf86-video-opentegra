@@ -107,6 +107,7 @@ int drm_tegra_channel_open(struct drm_tegra_channel **channelp,
 			   struct drm_tegra *drm,
 			   enum drm_tegra_class client);
 int drm_tegra_channel_close(struct drm_tegra_channel *channel);
+bool drm_tegra_channel_has_iommu(struct drm_tegra_channel *channel);
 
 int drm_tegra_job_new(struct drm_tegra_job **jobp,
 		      struct drm_tegra_channel *channel);

@@ -191,6 +191,9 @@ struct drm_tegra_syncpt_wait {
 
 #define DRM_TEGRA_NO_TIMEOUT	(0xffffffff)
 
+#define DRM_TEGRA_CHANNEL_USES_IOMMU		(1 << 0)
+#define DRM_TEGRA_CHANNEL_OUT_FLAGS		(DRM_TEGRA_CHANNEL_USES_IOMMU)
+
 /**
  * struct drm_tegra_open_channel - parameters for the open channel IOCTL
  */
@@ -203,11 +206,18 @@ struct drm_tegra_open_channel {
 	__u32 client;
 
 	/**
-	 * @pad:
+	 * @flags:
 	 *
-	 * Structure padding that may be used in the future. Must be 0.
+	 * The flags for this channel.
 	 */
-	__u32 pad;
+	union {
+		struct {
+			__u16 flags_in;
+			__u16 flags_out;
+		} __attribute__ ((packed));
+
+		__u32 flags;
+	};
 
 	/**
 	 * @context:

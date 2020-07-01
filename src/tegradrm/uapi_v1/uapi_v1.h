@@ -32,6 +32,7 @@ struct drm_tegra_channel {
 	enum host1x_class class;
 	uint64_t context;
 	uint32_t syncpt;
+	uint32_t flags;
 };
 
 struct drm_tegra_fence {
