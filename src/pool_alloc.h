@@ -103,4 +103,14 @@ static inline unsigned long mem_pool_entry_offset(struct mem_pool_entry *entry)
     return pool->entries[entry_id].base - pool->base;
 }
 
+int mem_pool_get_next_used_entry(struct mem_pool * restrict pool,
+                                 unsigned int start);
+
+#define MEM_POOL_FOR_EACH_ENTRY(POOL, ENTRY, ITR)               \
+    for (ITR = mem_pool_get_next_used_entry(POOL, 0),           \
+         ENTRY = (POOL)->entries[ITR < 0 ? 0 : ITR].owner;      \
+         ITR != -1;                                             \
+         ITR = mem_pool_get_next_used_entry(POOL, ITR + 1),     \
+         ENTRY = (POOL)->entries[ITR < 0 ? 0 : ITR].owner)
+
 #endif

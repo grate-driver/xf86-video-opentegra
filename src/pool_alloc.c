@@ -139,8 +139,8 @@ out:
     return -1;
 }
 
-static int get_next_used_entry(struct mem_pool * restrict pool,
-                               unsigned int start)
+int mem_pool_get_next_used_entry(struct mem_pool * restrict pool,
+                                 unsigned int start)
 {
     unsigned int bits_array = start / 32;
     unsigned long bitmap ;
@@ -234,7 +234,7 @@ static void validate_pool(struct mem_pool * restrict pool)
     int b = -1, b_prev = -1;
 
     do {
-        b = get_next_used_entry(pool, b + 1);
+        b = mem_pool_get_next_used_entry(pool, b + 1);
 
         if (b == 0) {
             busy = &pool->entries[b];
@@ -403,13 +403,13 @@ static int defrag_pool(struct mem_pool * restrict pool,
     }
 
     if (!(pool->bitmap[0] & 1)) {
-        b = get_next_used_entry(pool, 1);
+        b = mem_pool_get_next_used_entry(pool, 1);
         migrate_entry(pool, pool, b, 0, pool->base);
     }
 
     /* compress bitmap / data */
     while (1) {
-        b = get_next_used_entry(pool, p + 1);
+        b = mem_pool_get_next_used_entry(pool, p + 1);
 
         if (b == -1)
             break;
@@ -498,7 +498,7 @@ retry:
             start = busy->base + busy->size;
         }
 
-        b = get_next_used_entry(pool, e + 1);
+        b = mem_pool_get_next_used_entry(pool, e + 1);
 
         if (b < 0) {
             end = pool->base + pool->pool_size;
@@ -602,7 +602,7 @@ static void mem_pool_destroy(struct mem_pool *pool)
 #ifdef POOL_DEBUG
     PRINTF("%s: pool %p: size=%lu remain=%lu pools_num=%u\n",
            __func__, pool, pool->pool_size, pool->remain, stats.pools_num--);
-    assert(get_next_used_entry(pool, 0) == -1);
+    assert(mem_pool_get_next_used_entry(pool, 0) == -1);
     assert(get_next_unused_entry(pool, 0) == 0);
     assert(pool->remain == pool->pool_size);
     stats.total_remain -= pool->pool_size;
@@ -667,7 +667,7 @@ static int mem_pool_transfer_entries(struct mem_pool * restrict pool_to,
         }
 
 next_from:
-        b_from = get_next_used_entry(pool_from, b_from + 1);
+        b_from = mem_pool_get_next_used_entry(pool_from, b_from + 1);
 
         if (b_from == -1)
             break;
@@ -740,7 +740,7 @@ static int mem_pool_transfer_entries_fast(struct mem_pool * restrict pool_to,
     validate_pool(pool_from);
 
     while (1) {
-        b_from = get_next_used_entry(pool_from, b_from + 1);
+        b_from = mem_pool_get_next_used_entry(pool_from, b_from + 1);
 
         if (b_from == -1)
             break;
@@ -809,7 +809,7 @@ static __maybe_unused void mem_pool_debug_dump(struct mem_pool *pool)
            __func__, pool, pool->bitmap_full, pool->remain, pool->pool_size);
 
     while (1) {
-        b = get_next_used_entry(pool, b + 1);
+        b = mem_pool_get_next_used_entry(pool, b + 1);
 
         if (b == -1)
             break;
