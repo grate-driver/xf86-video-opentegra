@@ -68,6 +68,7 @@ opentegra_drv_la_SOURCES = \
 	exa.h \
 	vblank.c \
 	vblank.h \
+	tegra_fence.h \
 	tegra_stream_v1.c \
 	tegra_stream_v2.c \
 	tegra_stream.h \

@@ -150,7 +150,7 @@ static void * TegraEXAFridgeMapPixmap(TegraPixmapPtr pixmap)
     if (pixmap->fence_write) {
         TegraEXAWaitFence(pixmap->fence_write);
 
-        TEGRA_STREAM_PUT_FENCE(pixmap->fence_write);
+        TEGRA_FENCE_PUT(pixmap->fence_write);
         pixmap->fence_write = NULL;
     }
 
@@ -625,7 +625,7 @@ static int TegraEXAFreezePixmap(TegraPtr tegra, TegraPixmapPtr pixmap)
     if (pixmap->fence_read) {
         TegraEXAWaitFence(pixmap->fence_read);
 
-        TEGRA_STREAM_PUT_FENCE(pixmap->fence_read);
+        TEGRA_FENCE_PUT(pixmap->fence_read);
         pixmap->fence_read = NULL;
     }
 

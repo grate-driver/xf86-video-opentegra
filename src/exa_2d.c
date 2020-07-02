@@ -189,14 +189,14 @@ static void TegraEXADoneSolid(PixmapPtr pPixmap)
             if (priv->fence_write && !priv->fence_write->gr2d) {
                 TegraEXAWaitFence(priv->fence_write);
 
-                TEGRA_STREAM_PUT_FENCE(priv->fence_write);
+                TEGRA_FENCE_PUT(priv->fence_write);
                 priv->fence_write = NULL;
             }
 
             if (priv->fence_read && !priv->fence_read->gr2d) {
                 TegraEXAWaitFence(priv->fence_read);
 
-                TEGRA_STREAM_PUT_FENCE(priv->fence_read);
+                TEGRA_FENCE_PUT(priv->fence_read);
                 priv->fence_read = NULL;
             }
         }
@@ -211,8 +211,8 @@ static void TegraEXADoneSolid(PixmapPtr pPixmap)
 #endif
 
         if (priv->fence_write != fence) {
-            TEGRA_STREAM_PUT_FENCE(priv->fence_write);
-            priv->fence_write = TEGRA_STREAM_REF_FENCE(fence, &tegra->scratch);
+            TEGRA_FENCE_PUT(priv->fence_write);
+            priv->fence_write = TEGRA_FENCE_GET(fence, &tegra->scratch);
         }
     } else {
         tegra_stream_cleanup(tegra->cmds);
@@ -567,7 +567,7 @@ static void TegraEXADoneCopy(PixmapPtr pDstPixmap)
             if (priv->fence_write && !priv->fence_write->gr2d) {
                 TegraEXAWaitFence(priv->fence_write);
 
-                TEGRA_STREAM_PUT_FENCE(priv->fence_write);
+                TEGRA_FENCE_PUT(priv->fence_write);
                 priv->fence_write = NULL;
             }
         }
@@ -578,14 +578,14 @@ static void TegraEXADoneCopy(PixmapPtr pDstPixmap)
             if (priv->fence_write && !priv->fence_write->gr2d) {
                 TegraEXAWaitFence(priv->fence_write);
 
-                TEGRA_STREAM_PUT_FENCE(priv->fence_write);
+                TEGRA_FENCE_PUT(priv->fence_write);
                 priv->fence_write = NULL;
             }
 
             if (priv->fence_read && !priv->fence_read->gr2d) {
                 TegraEXAWaitFence(priv->fence_read);
 
-                TEGRA_STREAM_PUT_FENCE(priv->fence_read);
+                TEGRA_FENCE_PUT(priv->fence_read);
                 priv->fence_read = NULL;
             }
         }
@@ -600,15 +600,15 @@ static void TegraEXADoneCopy(PixmapPtr pDstPixmap)
 #endif
 
         if (priv->fence_write != fence) {
-            TEGRA_STREAM_PUT_FENCE(priv->fence_write);
-            priv->fence_write = TEGRA_STREAM_REF_FENCE(fence, &tegra->scratch);
+            TEGRA_FENCE_PUT(priv->fence_write);
+            priv->fence_write = TEGRA_FENCE_GET(fence, &tegra->scratch);
         }
 
         priv = exaGetPixmapDriverPrivate(tegra->scratch.pSrc);
 
         if (priv->fence_read != fence) {
-            TEGRA_STREAM_PUT_FENCE(priv->fence_read);
-            priv->fence_read = TEGRA_STREAM_REF_FENCE(fence, &tegra->scratch);
+            TEGRA_FENCE_PUT(priv->fence_read);
+            priv->fence_read = TEGRA_FENCE_GET(fence, &tegra->scratch);
         }
     } else {
         tegra_stream_cleanup(tegra->cmds);

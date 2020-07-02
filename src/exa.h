@@ -277,11 +277,11 @@ static inline void tegra_exa_wait_fence(struct tegra_fence *fence)
 {
     PROFILE_DEF(wait_fence)
     PROFILE_START(wait_fence)
-    tegra_stream_wait_fence(fence);
+    tegra_fence_wait(fence);
     PROFILE_STOP(wait_fence)
 }
 #define TegraEXAWaitFence(F)    \
-    ({ TEGRA_STREAM_DBG_FENCE(F, "wait"); tegra_exa_wait_fence(F); })
+    ({ TEGRA_FENCE_DEBUG_MSG(F, "wait"); tegra_exa_wait_fence(F); })
 
 unsigned TegraEXAHeightHwAligned(unsigned int height, unsigned int bpp);
 
