@@ -159,7 +159,7 @@ static Bool TegraEXAPrepareCPUAccess(PixmapPtr pPix, int idx, void **ptr)
     default:
     case EXA_PREPARE_DEST:
     case EXA_PREPARE_AUX_DEST:
-        TegraEXAWaitFence(priv->fence_read);
+        TEGRA_EXA_WAIT_AND_PUT_FENCE(priv->fence_read);
 
         /* fall through */
     case EXA_PREPARE_SRC:
@@ -167,7 +167,7 @@ static Bool TegraEXAPrepareCPUAccess(PixmapPtr pPix, int idx, void **ptr)
     case EXA_PREPARE_AUX_SRC:
     case EXA_PREPARE_AUX_MASK:
     case EXA_NUM_PREPARE_INDICES:
-        TegraEXAWaitFence(priv->fence_write);
+        TEGRA_EXA_WAIT_AND_PUT_FENCE(priv->fence_write);
     }
 
     if (priv->type == TEGRA_EXA_PIXMAP_TYPE_POOL) {

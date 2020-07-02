@@ -195,14 +195,10 @@ exa_helper_degenerate(struct tegra_box *b)
     return (b->x0 >= b->x1 || b->y0 >= b->y1);
 }
 
-#define WAIT_FENCE(FENCE, GR2D)             \
-{                                           \
-    if (FENCE && FENCE->gr2d != GR2D) {     \
-        TegraEXAWaitFence(FENCE);           \
-                                            \
-        TEGRA_FENCE_PUT(FENCE);             \
-        FENCE = NULL;                       \
-    }                                       \
+#define WAIT_FENCE(FENCE, GR2D)                 \
+{                                               \
+    if (FENCE && FENCE->gr2d != GR2D)           \
+        TEGRA_EXA_WAIT_AND_PUT_FENCE(FENCE);    \
 }
 
 static void

@@ -142,8 +142,8 @@ again:
             MEM_POOL_FOR_EACH_ENTRY(&pool_from->pool, pool_entry, pool_itr) {
                 TegraPixmapPtr pix = TEGRA_CONTAINER_OF(pool_entry, TegraPixmapRec,
                                                         pool_entry);
-                TegraEXAWaitFence(pix->fence_write);
-                TegraEXAWaitFence(pix->fence_read);
+                TEGRA_EXA_WAIT_AND_PUT_FENCE(pix->fence_write);
+                TEGRA_EXA_WAIT_AND_PUT_FENCE(pix->fence_read);
             }
 
             transferred = mem_pool_transfer_entries_fast(&pool_to->pool,
@@ -185,8 +185,8 @@ static int TegraEXAShrinkPool(TegraPtr tegra, TegraPixmapPoolPtr shrink_pool,
     MEM_POOL_FOR_EACH_ENTRY(&shrink_pool->pool, pool_entry, pool_itr) {
         TegraPixmapPtr pix = TEGRA_CONTAINER_OF(pool_entry, TegraPixmapRec,
                                                 pool_entry);
-        TegraEXAWaitFence(pix->fence_write);
-        TegraEXAWaitFence(pix->fence_read);
+        TEGRA_EXA_WAIT_AND_PUT_FENCE(pix->fence_write);
+        TEGRA_EXA_WAIT_AND_PUT_FENCE(pix->fence_read);
     }
 
     mem_pool_transfer_entries_fast(&new_pool->pool, &shrink_pool->pool);

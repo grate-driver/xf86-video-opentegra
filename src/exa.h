@@ -283,6 +283,15 @@ static inline void tegra_exa_wait_fence(struct tegra_fence *fence)
 #define TegraEXAWaitFence(F)    \
     ({ TEGRA_FENCE_DEBUG_MSG(F, "wait"); tegra_exa_wait_fence(F); })
 
+#define TEGRA_EXA_WAIT_AND_PUT_FENCE(F)     \
+({                                          \
+    if (F) {                                \
+        TegraEXAWaitFence(F);               \
+        TEGRA_FENCE_PUT(F);                 \
+        F = NULL;                           \
+    }                                       \
+})
+
 unsigned TegraEXAHeightHwAligned(unsigned int height, unsigned int bpp);
 
 static inline Pixel TegraPixelRGB565to888(Pixel pixel)
