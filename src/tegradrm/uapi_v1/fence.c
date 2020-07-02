@@ -34,7 +34,7 @@
 
 #include "uapi_v1.h"
 
-int drm_tegra_fence_check(struct drm_tegra_fence *fence)
+int drm_tegra_fence_is_busy(struct drm_tegra_fence *fence)
 {
 	struct drm_tegra_syncpt_wait args;
 	unsigned long request;

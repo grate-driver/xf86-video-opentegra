@@ -238,7 +238,7 @@ static bool tegra_stream_free_fence_v1(struct tegra_fence *base_fence)
      * while fence is alive.
      */
     if (f->fence)
-        err = drm_tegra_fence_check(f->fence);
+        err = drm_tegra_fence_is_busy(f->fence);
 
     if (!err) {
         drm_tegra_fence_free(f->fence);

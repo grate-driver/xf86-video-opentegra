@@ -127,7 +127,7 @@ int drm_tegra_pushbuf_relocate(struct drm_tegra_pushbuf *pushbuf,
 int drm_tegra_pushbuf_sync(struct drm_tegra_pushbuf *pushbuf,
 			   enum drm_tegra_syncpt_cond cond);
 
-int drm_tegra_fence_check(struct drm_tegra_fence *fence);
+int drm_tegra_fence_is_busy(struct drm_tegra_fence *fence);
 int drm_tegra_fence_wait_timeout(struct drm_tegra_fence *fence,
 				 unsigned long timeout);
 void drm_tegra_fence_free(struct drm_tegra_fence *fence);
