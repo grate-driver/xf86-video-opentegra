@@ -49,7 +49,7 @@ TegraEXA2DTransformIsSupported(int32_t dw, int32_t dh,
         !TEGRA_ALIGNED(sh * bpp / 8, 16))
         return FALSE;
 
-    /* FR limitation */
+    /* Fast Rotate hardware limitation */
     if (dw > 4096 || dh > 4096 || sw > 4096 || sh > 4096) {
         FallbackMsg("FR limitation\n");
         return FALSE;
