@@ -46,6 +46,7 @@
     fprintf(stderr, "%s:%d/%s(): " fmt, __FILE__, __LINE__, __func__, ##args)
 
 struct tegra_fence {
+    uint64_t seqno;
     void *opaque;
     int refcnt;
     bool gr2d;
@@ -63,12 +64,14 @@ struct tegra_fence {
 static inline void tegra_fence_check(struct tegra_fence *f)
 {
 #ifdef FENCE_DEBUG
-    if (f->released)
-        assert(f->refcnt == -1);
-    else
-        assert(f->refcnt >= 0);
-    assert(!f->bug0);
-    assert(f->bug1);
+    if (f) {
+        if (f->released)
+            assert(f->refcnt == -1);
+        else
+            assert(f->refcnt >= 0);
+        assert(!f->bug0);
+        assert(f->bug1);
+    }
 #endif
 }
 
@@ -77,7 +80,8 @@ tegra_fence_get(struct tegra_fence *f, void *opaque)
 {
     if (f) {
         tegra_fence_check(f);
-        f->opaque = opaque;
+        if (opaque)
+            f->opaque = opaque;
         f->refcnt++;
     }
 

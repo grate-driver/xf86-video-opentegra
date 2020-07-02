@@ -162,7 +162,8 @@ int drm_tegra_job_push_reloc_v2(struct drm_tegra_job_v2 *job,
 				unsigned long offset,
 				uint32_t flags);
 int drm_tegra_job_submit_v2(struct drm_tegra_job_v2 *job,
-			    uint32_t syncobj_handle,
+			    uint32_t syncobj_handle_in,
+			    uint32_t syncobj_handle_out,
 			    uint64_t pipes_mask);
 
 #endif /* __DRM_TEGRA_H__ */

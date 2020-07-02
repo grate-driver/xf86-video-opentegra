@@ -96,7 +96,8 @@ static int tegra_stream_cleanup_v1(struct tegra_stream *base_stream)
     return 0;
 }
 
-static int tegra_stream_flush_v1(struct tegra_stream *base_stream)
+static int tegra_stream_flush_v1(struct tegra_stream *base_stream,
+                                 struct tegra_fence *explicit_fence)
 {
     struct tegra_stream_v1 *stream = to_stream_v1(base_stream);
     struct drm_tegra_fence *fence;
@@ -138,7 +139,8 @@ cleanup:
 }
 
 static struct tegra_fence *
-tegra_stream_submit_v1(struct tegra_stream *base_stream, bool gr2d)
+tegra_stream_submit_v1(struct tegra_stream *base_stream, bool gr2d,
+                       struct tegra_fence *explicit_fence)
 {
     struct tegra_stream_v1 *stream = to_stream_v1(base_stream);
     struct drm_tegra_fence *fence;
@@ -305,7 +307,8 @@ static int tegra_stream_begin_v1(struct tegra_stream *base_stream,
 static int tegra_stream_push_reloc_v1(struct tegra_stream *base_stream,
                                       struct drm_tegra_bo *bo,
                                       unsigned offset,
-                                      bool write)
+                                      bool write,
+                                      bool explicit_fencing)
 {
     struct tegra_stream_v1 *stream = to_stream_v1(base_stream);
     int ret;

@@ -33,6 +33,7 @@ static unsigned long TegraEXAPixmapOffset(PixmapPtr pix);
 static struct drm_tegra_bo * TegraEXAPixmapBO(PixmapPtr pix);
 static Bool TegraEXAPrepareCPUAccess(PixmapPtr pPix, int idx, void **ptr);
 static void TegraEXAFinishCPUAccess(PixmapPtr pPix, int idx);
+static Bool TegraEXAIsPoolPixmap(PixmapPtr pix);
 
 #include "exa_mm_pool.c"
 #include "exa_mm.c"
@@ -44,6 +45,13 @@ static void TegraEXAFinishCPUAccess(PixmapPtr pPix, int idx);
 #include "exa_mm_fridge.c"
 
 #define TEGRA_MALLOC_TRIM_THRESHOLD     256
+
+static Bool TegraEXAIsPoolPixmap(PixmapPtr pix)
+{
+    TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pix);
+
+    return priv->type == TEGRA_EXA_PIXMAP_TYPE_POOL;
+}
 
 static unsigned long TegraEXAPixmapOffset(PixmapPtr pix)
 {

@@ -309,7 +309,7 @@ static void TegraGR3DStateFinalize(TegraGR3DStatePtr state)
 
     TegraGR3D_SetupAttribute(cmds, attrs_id, scratch->attribs.bo,
                              attribs_offset, TGR3D_ATTRIB_TYPE_FLOAT16,
-                             2, 4 * attrs_num);
+                             2, 4 * attrs_num, false);
 
     if (scratch->pSrc) {
         attribs_offset += 4;
@@ -317,7 +317,7 @@ static void TegraGR3DStateFinalize(TegraGR3DStatePtr state)
 
         TegraGR3D_SetupAttribute(cmds, attrs_id, scratch->attribs.bo,
                                  attribs_offset, TGR3D_ATTRIB_TYPE_FLOAT16,
-                                 2, 4 * attrs_num);
+                                 2, 4 * attrs_num, false);
     }
 
     if (scratch->pMask) {
@@ -326,7 +326,7 @@ static void TegraGR3DStateFinalize(TegraGR3DStatePtr state)
 
         TegraGR3D_SetupAttribute(cmds, attrs_id, scratch->attribs.bo,
                                  attribs_offset, TGR3D_ATTRIB_TYPE_FLOAT16,
-                                 2, 4 * attrs_num);
+                                 2, 4 * attrs_num, false);
     }
 
     tex = &state->new.src;
@@ -367,7 +367,8 @@ static void TegraGR3DStateFinalize(TegraGR3DStatePtr state)
                                        tex->format,
                                        tex->bilinear, false, tex->bilinear,
                                        wrap_clamp_to_edge,
-                                       wrap_mirrored_repeat);
+                                       wrap_mirrored_repeat,
+                                       TegraEXAIsPoolPixmap(tex->pPix));
         }
 
         /*
@@ -455,7 +456,8 @@ static void TegraGR3DStateFinalize(TegraGR3DStatePtr state)
                                        tex->format,
                                        tex->bilinear, false, tex->bilinear,
                                        wrap_clamp_to_edge,
-                                       wrap_mirrored_repeat);
+                                       wrap_mirrored_repeat,
+                                       TegraEXAIsPoolPixmap(tex->pPix));
         }
 
         TegraGR3D_UploadConstFP(cmds, 6, FX10x2(tex->component_alpha,
@@ -506,7 +508,8 @@ static void TegraGR3DStateFinalize(TegraGR3DStatePtr state)
     TegraGR3D_SetupRenderTarget(cmds, 1,
                                 TegraEXAPixmapBO(tex->pPix),
                                 TegraEXAPixmapOffset(tex->pPix),
-                                tex->format, exaGetPixmapPitch(tex->pPix));
+                                tex->format, exaGetPixmapPitch(tex->pPix),
+                                TegraEXAIsPoolPixmap(tex->pPix));
 
     TegraGR3D_EnableRenderTargets(cmds, 1 << 1);
 
@@ -599,6 +602,7 @@ static Bool TegraGR3DStateAppend(TegraGR3DStatePtr state, TegraEXAPtr tegra,
 
 static struct tegra_fence * TegraGR3DStateSubmit(TegraGR3DStatePtr state)
 {
+    struct tegra_fence *explicit_fence;
     struct tegra_fence *fence = NULL;
     PROFILE_DEF(gr3d);
 
@@ -613,13 +617,20 @@ static struct tegra_fence * TegraGR3DStateSubmit(TegraGR3DStatePtr state)
      * expose controls for explicit CDMA synchronization.
      */
     tegra_stream_end(state->cmds);
+
+    explicit_fence = exa_helper_get_explicit_fence(FALSE,
+                                                   state->new.dst.pPix, 2,
+                                                   state->new.src.pPix,
+                                                   state->new.mask.pPix);
 #if PROFILE
     PROFILE_START(gr3d);
-    tegra_stream_flush(state->cmds);
+    tegra_stream_flush(state->cmds, explicit_fence);
     PROFILE_STOP(gr3d);
 #else
-    fence = tegra_stream_submit(state->cmds, false);
+    fence = tegra_stream_submit(state->cmds, false, explicit_fence);
 #endif
+
+    TEGRA_FENCE_PUT(explicit_fence);
 
     TegraGR3DStateReset(state);
 

@@ -78,9 +78,11 @@ static int tegra_stream_cleanup_v2(struct tegra_stream *base_stream)
     return 0;
 }
 
-static int tegra_stream_flush_v2(struct tegra_stream *base_stream)
+static int tegra_stream_flush_v2(struct tegra_stream *base_stream,
+                                 struct tegra_fence *explicit_fence)
 {
     struct tegra_stream_v2 *stream = to_stream_v2(base_stream);
+    uint32_t syncobj_handle_in;
     struct tegra_fence *f;
     int ret;
 
@@ -104,8 +106,15 @@ static int tegra_stream_flush_v2(struct tegra_stream *base_stream)
         goto cleanup;
     }
 
+    if (explicit_fence)
+        syncobj_handle_in = to_fence_v2(explicit_fence)->syncobj_handle;
+    else
+        syncobj_handle_in = 0;
+
     ret = drm_tegra_job_submit_v2(stream->job,
-                                     to_fence_v2(f)->syncobj_handle, ~0ull);
+                                  syncobj_handle_in,
+                                  to_fence_v2(f)->syncobj_handle,
+                                  ~0ull);
     if (ret) {
         ErrorMsg("drm_tegra_job_submit_v2() failed %d (%s)\n",
                  ret, strerror(ret));
@@ -123,9 +132,11 @@ cleanup:
 }
 
 static struct tegra_fence *
-tegra_stream_submit_v2(struct tegra_stream *base_stream, bool gr2d)
+tegra_stream_submit_v2(struct tegra_stream *base_stream, bool gr2d,
+                       struct tegra_fence *explicit_fence)
 {
     struct tegra_stream_v2 *stream = to_stream_v2(base_stream);
+    uint32_t syncobj_handle_in;
     struct tegra_fence *f;
     int ret;
 
@@ -143,8 +154,15 @@ tegra_stream_submit_v2(struct tegra_stream *base_stream, bool gr2d)
     if (!f)
         goto cleanup;
 
+    if (explicit_fence)
+        syncobj_handle_in = to_fence_v2(explicit_fence)->syncobj_handle;
+    else
+        syncobj_handle_in = 0;
+
     ret = drm_tegra_job_submit_v2(stream->job,
-                                     to_fence_v2(f)->syncobj_handle, ~0ull);
+                                  syncobj_handle_in,
+                                  to_fence_v2(f)->syncobj_handle,
+                                  ~0ull);
     if (ret) {
         ErrorMsg("drm_tegra_job_submit_v2() failed %d\n", ret);
         TEGRA_FENCE_PUT(f);
@@ -268,16 +286,22 @@ static int tegra_stream_begin_v2(struct tegra_stream *base_stream,
 static int tegra_stream_push_reloc_v2(struct tegra_stream *base_stream,
                                       struct drm_tegra_bo *bo,
                                       unsigned offset,
-                                      bool write)
+                                      bool write,
+                                      bool explicit_fencing)
 {
     struct tegra_stream_v2 *stream = to_stream_v2(base_stream);
-    uint32_t flags;
+    uint32_t flags = 0;
+    int drm_ver;
     int ret;
 
+    drm_ver = drm_tegra_version(stream->drm);
+
     if (write)
-        flags = DRM_TEGRA_BO_TABLE_WRITE;
-    else
-        flags = 0;
+        flags |= DRM_TEGRA_BO_TABLE_WRITE;
+
+    /* explicit fencing is bugged on older kernel versions */
+    if (explicit_fencing && drm_ver >= GRATE_KERNEL_DRM_VERSION + 5)
+        flags |= DRM_TEGRA_BO_TABLE_EXPLICIT_FENCE;
 
     ret = drm_tegra_job_push_reloc_v2(stream->job, bo, offset, flags);
     if (ret) {
@@ -341,6 +365,7 @@ tegra_stream_push_words_v2(struct tegra_stream *base_stream, const void *addr,
     struct tegra_reloc reloc_arg;
     uint32_t *pushbuf_ptr;
     uint32_t flags;
+    int drm_ver;
     va_list ap;
     int ret;
 
@@ -355,6 +380,8 @@ tegra_stream_push_words_v2(struct tegra_stream *base_stream, const void *addr,
         return -1;
     }
 
+    drm_ver = drm_tegra_version(stream->drm);
+
     /* copy the contents */
     pushbuf_ptr = stream->job->ptr;
     memcpy(pushbuf_ptr, addr, words * sizeof(uint32_t));
@@ -367,10 +394,13 @@ tegra_stream_push_words_v2(struct tegra_stream *base_stream, const void *addr,
         stream->job->ptr  = pushbuf_ptr;
         stream->job->ptr += reloc_arg.var_offset / sizeof(uint32_t);
 
+        flags = 0;
         if (reloc_arg.write)
-            flags = DRM_TEGRA_BO_TABLE_WRITE;
-        else
-            flags = 0;
+            flags |= DRM_TEGRA_BO_TABLE_WRITE;
+
+        /* explicit fencing is bugged on older kernel versions */
+        if (reloc_arg.explicit_fencing && drm_ver >= GRATE_KERNEL_DRM_VERSION + 5)
+            flags |= DRM_TEGRA_BO_TABLE_EXPLICIT_FENCE;
 
         ret = drm_tegra_job_push_reloc_v2(stream->job,
                                           reloc_arg.bo,

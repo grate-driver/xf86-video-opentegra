@@ -200,7 +200,8 @@ int drm_tegra_job_push_reloc_v2(struct drm_tegra_job_v2 *job,
 }
 
 int drm_tegra_job_submit_v2(struct drm_tegra_job_v2 *job,
-			    uint32_t syncobj_handle,
+			    uint32_t syncobj_handle_in,
+			    uint32_t syncobj_handle_out,
 			    uint64_t pipes_mask)
 {
 	struct drm_tegra_submit_v2 args;
@@ -208,8 +209,8 @@ int drm_tegra_job_submit_v2(struct drm_tegra_job_v2 *job,
 	if (!job)
 		return -EINVAL;
 
-	args.in_fence			= 0;
-	args.out_fence			= syncobj_handle;
+	args.in_fence			= syncobj_handle_in;
+	args.out_fence			= syncobj_handle_out;
 	args.cmdstream_ptr		= (uintptr_t)job->start;
 	args.bo_table_ptr		= (uintptr_t)job->bo_table;
 	args.num_cmdstream_words	= (uint32_t)(job->ptr - job->start);

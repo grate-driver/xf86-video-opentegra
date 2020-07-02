@@ -130,7 +130,8 @@ static Bool TegraEXAPrepareSolid(PixmapPtr pPixmap, int op, Pixel planemask,
     tegra_stream_push(tegra->cmds, rop3[op]); /* ropfade */
     tegra_stream_push(tegra->cmds, HOST1X_OPCODE_MASK(0x2b, 0x9));
     tegra_stream_push_reloc(tegra->cmds, TegraEXAPixmapBO(pPixmap),
-                            TegraEXAPixmapOffset(pPixmap), true);
+                            TegraEXAPixmapOffset(pPixmap), true,
+                            TegraEXAIsPoolPixmap(pPixmap));
     tegra_stream_push(tegra->cmds, exaGetPixmapPitch(pPixmap));
     tegra_stream_push(tegra->cmds, HOST1X_OPCODE_NONINCR(0x46, 1));
     tegra_stream_push(tegra->cmds, 0); /* non-tiled */
@@ -175,6 +176,7 @@ static void TegraEXADoneSolid(PixmapPtr pPixmap)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pPixmap->drawable.pScreen);
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
+    struct tegra_fence *explicit_fence;
     struct tegra_fence *fence = NULL;
 
     PROFILE_DEF(solid);
@@ -183,13 +185,18 @@ static void TegraEXADoneSolid(PixmapPtr pPixmap)
         tegra_stream_end(tegra->cmds);
 
         exa_helper_wait_pixmaps(TRUE, pPixmap, 0);
+
+        explicit_fence = exa_helper_get_explicit_fence(TRUE, pPixmap, 0);
+
 #if PROFILE
         PROFILE_START(solid);
-        tegra_stream_flush(tegra->cmds);
+        tegra_stream_flush(tegra->cmds, explicit_fence);
         PROFILE_STOP(solid);
 #else
-        fence = tegra_stream_submit(tegra->cmds, true);
+        fence = tegra_stream_submit(tegra->cmds, true, explicit_fence);
 #endif
+        TEGRA_FENCE_PUT(explicit_fence);
+
         exa_helper_replace_pixmaps_fence(fence, &tegra->scratch, pPixmap, 0);
     } else {
         tegra_stream_cleanup(tegra->cmds);
@@ -311,12 +318,14 @@ static Bool TegraEXAPrepareCopyExt(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
         tegra_stream_push(tegra->cmds, HOST1X_OPCODE_MASK(0x2b, 0x149));
 
         tegra_stream_push_reloc(tegra->cmds, TegraEXAPixmapBO(pDstPixmap),
-                                TegraEXAPixmapOffset(pDstPixmap), true);
+                                TegraEXAPixmapOffset(pDstPixmap), true,
+                                TegraEXAIsPoolPixmap(pDstPixmap));
         tegra_stream_push(tegra->cmds,
                           exaGetPixmapPitch(pDstPixmap)); /* dstst */
 
         tegra_stream_push_reloc(tegra->cmds, TegraEXAPixmapBO(pSrcPixmap),
-                                TegraEXAPixmapOffset(pSrcPixmap), false);
+                                TegraEXAPixmapOffset(pSrcPixmap), false,
+                                TegraEXAIsPoolPixmap(pSrcPixmap));
         tegra_stream_push(tegra->cmds,
                           exaGetPixmapPitch(pSrcPixmap)); /* srcst */
     } else {
@@ -450,7 +459,8 @@ static void TegraEXACopyExt(PixmapPtr pDstPixmap, int srcX, int srcY, int dstX,
         tegra_stream_push(tegra->cmds, HOST1X_OPCODE_NONINCR(0x2b, 1));
 
         tegra_stream_push_reloc(tegra->cmds, dst_bo,
-                                sb_offset(pDstPixmap, dstX, dstY), true);
+                                sb_offset(pDstPixmap, dstX, dstY), true,
+                                TegraEXAIsPoolPixmap(pDstPixmap));
 
         tegra->scratch.dstX = dstX;
         tegra->scratch.dstY = dstY;
@@ -460,7 +470,8 @@ static void TegraEXACopyExt(PixmapPtr pDstPixmap, int srcX, int srcY, int dstX,
         tegra_stream_push(tegra->cmds, HOST1X_OPCODE_NONINCR(0x31, 1));
 
         tegra_stream_push_reloc(tegra->cmds, src_bo,
-                                sb_offset(pSrcPixmap, srcX, srcY), false);
+                                sb_offset(pSrcPixmap, srcX, srcY), false,
+                                TegraEXAIsPoolPixmap(pSrcPixmap));
 
         tegra->scratch.srcX = srcX;
         tegra->scratch.srcY = srcY;
@@ -529,6 +540,7 @@ static void TegraEXADoneCopy(PixmapPtr pDstPixmap)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pDstPixmap->drawable.pScreen);
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
+    struct tegra_fence *explicit_fence;
     struct tegra_fence *fence = NULL;
 
     PROFILE_DEF(copy);
@@ -537,13 +549,18 @@ static void TegraEXADoneCopy(PixmapPtr pDstPixmap)
         tegra_stream_end(tegra->cmds);
 
         exa_helper_wait_pixmaps(TRUE, pDstPixmap, 1, tegra->scratch.pSrc);
+
+        explicit_fence = exa_helper_get_explicit_fence(TRUE, pDstPixmap, 1,
+                                                       tegra->scratch.pSrc);
 #if PROFILE
         PROFILE_START(copy);
-        tegra_stream_flush(tegra->cmds);
+        tegra_stream_flush(tegra->cmds, explicit_fence);
         PROFILE_STOP(copy);
 #else
-        fence = tegra_stream_submit(tegra->cmds, true);
+        fence = tegra_stream_submit(tegra->cmds, true, explicit_fence);
 #endif
+        TEGRA_FENCE_PUT(explicit_fence);
+
         exa_helper_replace_pixmaps_fence(fence, &tegra->scratch, pDstPixmap, 1,
                                          tegra->scratch.pSrc);
     } else {

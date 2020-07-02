@@ -55,12 +55,14 @@ struct tegra_reloc {
     uint32_t offset;
     unsigned var_offset;
     bool write;
+    bool explicit_fencing;
 };
 
 struct tegra_stream {
     enum tegra_stream_status status;
     struct tegra_fence *last_fence;
     bool op_done_synced;
+    uint64_t fence_seqno;
     uint32_t **buf_ptr;
     uint32_t class_id;
 
@@ -69,12 +71,15 @@ struct tegra_stream {
                  struct drm_tegra_channel *channel);
     int (*end)(struct tegra_stream *stream);
     int (*cleanup)(struct tegra_stream *stream);
-    int (*flush)(struct tegra_stream *stream);
-    struct tegra_fence * (*submit)(struct tegra_stream *stream, bool gr2d);
+    int (*flush)(struct tegra_stream *stream,
+                 struct tegra_fence *explicit_fence);
+    struct tegra_fence * (*submit)(struct tegra_stream *stream, bool gr2d,
+                                   struct tegra_fence *explicit_fence);
     int (*push_reloc)(struct tegra_stream *stream,
                       struct drm_tegra_bo *bo,
                       unsigned offset,
-                      bool write);
+                      bool write,
+                      bool explicit_fencing);
     int (*push_words)(struct tegra_stream *stream, const void *addr,
                       unsigned words, int num_relocs, ...);
     int (*prep)(struct tegra_stream *stream, uint32_t words);
@@ -149,12 +154,13 @@ static inline int tegra_stream_cleanup(struct tegra_stream *stream)
     return ret;
 }
 
-static inline int tegra_stream_flush(struct tegra_stream *stream)
+static inline int tegra_stream_flush(struct tegra_stream *stream,
+                                     struct tegra_fence *explicit_fence)
 {
     if (!stream)
         return -1;
 
-    return stream->flush(stream);
+    return stream->flush(stream, explicit_fence);
 }
 
 static inline struct tegra_fence *
@@ -172,16 +178,20 @@ tegra_stream_get_last_fence(struct tegra_stream *stream)
 })
 
 static inline struct tegra_fence *
-tegra_stream_submit(struct tegra_stream *stream, bool gr2d)
+tegra_stream_submit(struct tegra_stream *stream, bool gr2d,
+                    struct tegra_fence *explicit_fence)
 {
     struct tegra_fence *f;
 
     if (!stream)
         return NULL;
 
-    f = stream->submit(stream, gr2d);
+    tegra_fence_check(explicit_fence);
+
+    f = stream->submit(stream, gr2d, explicit_fence);
     if (f) {
         TEGRA_FENCE_DEBUG_MSG(f, "submit");
+        f->seqno = stream->fence_seqno++;
         tegra_fence_check(f);
     }
 
@@ -192,14 +202,15 @@ static inline int
 tegra_stream_push_reloc(struct tegra_stream *stream,
                         struct drm_tegra_bo *bo,
                         unsigned offset,
-                        bool write)
+                        bool write,
+                        bool explicit_fencing)
 {
     if (!(stream && stream->status == TEGRADRM_STREAM_CONSTRUCT)) {
         TEGRA_STREAM_ERR_MSG("Stream status isn't CONSTRUCT\n");
         return -1;
     }
 
-    return stream->push_reloc(stream, bo, offset, write);
+    return stream->push_reloc(stream, bo, offset, write, explicit_fencing);
 }
 
 static inline int tegra_stream_push_words(struct tegra_stream *stream,

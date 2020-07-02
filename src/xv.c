@@ -1226,9 +1226,9 @@ static Bool TegraVideoCopyRotatedPlane(TegraVideoPtr priv,
                       (1 << 29) | (1 << 20) | ((bpp >> 4) << 16));
 
     tegra_stream_push(priv->cmds, HOST1X_OPCODE_MASK(0x2b, 0x1149));
-    tegra_stream_push_reloc(priv->cmds, dst_bo, offset_dst, true);
+    tegra_stream_push_reloc(priv->cmds, dst_bo, offset_dst, true, false);
     tegra_stream_push(priv->cmds, pitch_dst);
-    tegra_stream_push_reloc(priv->cmds, src_bo, offset_src, false);
+    tegra_stream_push_reloc(priv->cmds, src_bo, offset_src, false, false);
     tegra_stream_push(priv->cmds, pitch_src);
     tegra_stream_push(priv->cmds, src_height << 16 | src_width);
 
@@ -1239,7 +1239,7 @@ static Bool TegraVideoCopyRotatedPlane(TegraVideoPtr priv,
 
     tegra_stream_end(priv->cmds);
 
-    fence = tegra_stream_submit(priv->cmds, true);
+    fence = tegra_stream_submit(priv->cmds, true, NULL);
     if (!fence)
         return FALSE;
 
@@ -1351,7 +1351,7 @@ static Bool TegraVideoOverlayUpdateRotatedFb(TegraVideoPtr priv,
                                     rotation))
         goto err_destroy_fb;
 
-    tegra_stream_flush(priv->cmds);
+    tegra_stream_flush(priv->cmds, NULL);
 
 done:
     TegraVideoDestroyFramebuffer(scrn, &overlay->old_fb_rotated);
@@ -1362,7 +1362,7 @@ done:
     return TRUE;
 
 err_destroy_fb:
-    tegra_stream_flush(priv->cmds);
+    tegra_stream_flush(priv->cmds, NULL);
 
     TegraVideoDestroyFramebuffer(scrn, &fb_rotated);
 

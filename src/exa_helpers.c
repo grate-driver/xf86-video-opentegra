@@ -266,3 +266,67 @@ exa_helper_replace_pixmaps_fence(struct tegra_fence *fence, void *opaque,
     }
     va_end(ap);
 }
+
+#define SWAP_EXPLICIT_FENCE(EXPLICIT_FENCE, FENCE, GR2D, LAST_SEQNO)    \
+{                                                                       \
+    if (FENCE && FENCE->gr2d != GR2D && FENCE->seqno >= LAST_SEQNO) {   \
+        TEGRA_FENCE_PUT(EXPLICIT_FENCE);                                \
+        EXPLICIT_FENCE = TEGRA_FENCE_GET(FENCE, NULL);                  \
+        LAST_SEQNO = EXPLICIT_FENCE->seqno;                             \
+    }                                                                   \
+}
+
+/*
+ * This function returns the last fence (selected among pixmaps by highest
+ * sequential number of pixmap's fence) that needs to be waited before job
+ * could start execution on hardware. In particular this is needed in order
+ * to avoid unnecessary stalls on pool-allocated pixmaps that share the same
+ * BO.
+ *
+ * The returned explicit shall be put once done with it.
+ */
+static struct tegra_fence *
+exa_helper_get_explicit_fence(Bool dst_gr2d, PixmapPtr dst_pix,
+                              int num_src_pixmaps, ...)
+{
+    ScrnInfoPtr pScrn = xf86ScreenToScrn(dst_pix->drawable.pScreen);
+    struct tegra_fence *explicit_fence = NULL;
+    uint64_t last_seqno = 0;
+    TegraPixmapPtr priv;
+    PixmapPtr pix_arg;
+    int drm_ver;
+    va_list ap;
+
+    /*
+     * Vanilla upstream kernel and older GRATE-kernel don't support
+     * explicit fencing.
+     *
+     * Explicit fencing is also bugged on older GRATE-kernel versions.
+     */
+    drm_ver = drm_tegra_version(TegraPTR(pScrn)->drm);
+    if (drm_ver < GRATE_KERNEL_DRM_VERSION + 5)
+        return NULL;
+
+    va_start(ap, num_src_pixmaps);
+    for (; num_src_pixmaps; num_src_pixmaps--) {
+        pix_arg = va_arg(ap, PixmapPtr);
+        if (!pix_arg)
+            continue;
+
+        priv = exaGetPixmapDriverPrivate(pix_arg);
+
+        SWAP_EXPLICIT_FENCE(explicit_fence, priv->fence_write,
+                            dst_gr2d, last_seqno);
+    }
+    va_end(ap);
+
+    priv = exaGetPixmapDriverPrivate(dst_pix);
+
+    SWAP_EXPLICIT_FENCE(explicit_fence, priv->fence_write,
+                        dst_gr2d, last_seqno);
+
+    SWAP_EXPLICIT_FENCE(explicit_fence, priv->fence_read,
+                        dst_gr2d, last_seqno);
+
+    return explicit_fence;
+}

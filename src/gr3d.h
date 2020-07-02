@@ -70,7 +70,8 @@ void TegraGR3D_SetupAttribute(struct tegra_stream *cmds,
                               unsigned index,
                               struct drm_tegra_bo *bo,
                               unsigned offset, unsigned type,
-                              unsigned size, unsigned stride);
+                              unsigned size, unsigned stride,
+                              bool explicit_fencing);
 
 static
 void TegraGR3D_SetupRenderTarget(struct tegra_stream *cmds,
@@ -78,7 +79,8 @@ void TegraGR3D_SetupRenderTarget(struct tegra_stream *cmds,
                                  struct drm_tegra_bo *bo,
                                  unsigned offset,
                                  unsigned pixel_format,
-                                 unsigned pitch);
+                                 unsigned pitch,
+                                 bool explicit_fencing);
 
 static
 void TegraGR3D_EnableRenderTargets(struct tegra_stream *cmds, uint32_t mask);
@@ -95,7 +97,8 @@ void TegraGR3D_SetupTextureDesc(struct tegra_stream *cmds,
                                 bool mip_filter_linear,
                                 bool mag_filter_linear,
                                 bool clamp_to_edge,
-                                bool mirrored_repeat);
+                                bool mirrored_repeat,
+                                bool explicit_fencing);
 
 static
 void TegraGR3D_SetupDrawParams(struct tegra_stream *cmds,
