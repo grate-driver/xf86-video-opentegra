@@ -61,7 +61,7 @@ struct tegra_fence {
 #endif
 };
 
-static inline void tegra_fence_check(struct tegra_fence *f)
+static inline void tegra_fence_validate(struct tegra_fence *f)
 {
 #ifdef FENCE_DEBUG
     if (f) {
@@ -79,7 +79,7 @@ static inline struct tegra_fence *
 tegra_fence_get(struct tegra_fence *f, void *opaque)
 {
     if (f) {
-        tegra_fence_check(f);
+        tegra_fence_validate(f);
         if (opaque)
             f->opaque = opaque;
         f->refcnt++;
@@ -93,7 +93,7 @@ tegra_fence_get(struct tegra_fence *f, void *opaque)
 static inline bool tegra_fence_wait(struct tegra_fence *f)
 {
     if (f) {
-        tegra_fence_check(f);
+        tegra_fence_validate(f);
         return f->wait_fence(f);
     }
 
@@ -105,7 +105,7 @@ static inline bool tegra_fence_wait(struct tegra_fence *f)
 static inline void tegra_fence_free(struct tegra_fence *f)
 {
     if (f) {
-        tegra_fence_check(f);
+        tegra_fence_validate(f);
 #ifdef FENCE_DEBUG
         f->refcnt = -100;
 #endif
@@ -126,7 +126,7 @@ static inline void tegra_fence_finish(struct tegra_fence *f)
         if (f->refcnt == -1)
             f->released = true;
 #endif
-        tegra_fence_check(f);
+        tegra_fence_validate(f);
 
         if (f->refcnt == -1)
             TEGRA_FENCE_FREE(f);
@@ -138,7 +138,7 @@ static inline void tegra_fence_finish(struct tegra_fence *f)
 static inline void tegra_fence_put(struct tegra_fence *f)
 {
     if (f) {
-        tegra_fence_check(f);
+        tegra_fence_validate(f);
 
 #ifdef FENCE_DEBUG
         if (f->refcnt < 0) {

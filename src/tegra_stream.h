@@ -186,13 +186,13 @@ tegra_stream_submit(struct tegra_stream *stream, bool gr2d,
     if (!stream)
         return NULL;
 
-    tegra_fence_check(explicit_fence);
+    tegra_fence_validate(explicit_fence);
 
     f = stream->submit(stream, gr2d, explicit_fence);
     if (f) {
         TEGRA_FENCE_DEBUG_MSG(f, "submit");
         f->seqno = stream->fence_seqno++;
-        tegra_fence_check(f);
+        tegra_fence_validate(f);
     }
 
     return f;
