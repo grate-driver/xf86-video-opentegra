@@ -403,9 +403,10 @@ uncompressed:
     return 1;
 }
 
-static void TegraEXADecompressPixmap(TegraEXAPtr exa, TegraPixmapPtr pixmap,
+static void TegraEXADecompressPixmap(TegraPtr tegra, TegraPixmapPtr pixmap,
                                      struct compression_arg *c)
 {
+    TegraEXAPtr exa = tegra->exa;
 #ifdef HAVE_PNG
     png_image png = { 0 };
 #endif
@@ -418,7 +419,8 @@ static void TegraEXADecompressPixmap(TegraEXAPtr exa, TegraPixmapPtr pixmap,
         DebugMsg("priv %p decompressed: uncompressed\n", pixmap);
 
         /* clear released data for privacy protection */
-        memset(c->buf_in, TEST_FREEZER ? 0xffffffff : 0, c->out_size);
+        if (TEST_FREEZER || tegra->exa_erase_pixmaps)
+            memset(c->buf_in, TEST_FREEZER ? 0xffffffff : 0, c->out_size);
         free(c->buf_in);
         break;
 
@@ -523,7 +525,6 @@ static struct compression_arg TegraEXASelectCompression(TegraPtr tegra,
 static void TegraEXAThawPixmapData(TegraPtr tegra, TegraPixmapPtr pixmap,
                                    Bool accel)
 {
-    TegraEXAPtr exa = tegra->exa;
     struct compression_arg carg;
     unsigned int retries = 0;
     unsigned int data_size;
@@ -580,7 +581,7 @@ retry:
     carg.width              = pixmap->pPixmap->drawable.width;
     carg.pitch              = pixmap->pPixmap->devKind;
 
-    TegraEXADecompressPixmap(exa, pixmap, &carg);
+    TegraEXADecompressPixmap(tegra, pixmap, &carg);
 
     if (TEST_FREEZER) {
         unsigned matched = 0;

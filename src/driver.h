@@ -189,6 +189,7 @@ typedef struct _TegraRec
 
     Bool xv_blocks_hw_cursor;
 
+    Bool exa_erase_pixmaps;
     Bool exa_compress_png;
     int exa_compress_jpeg_quality;
     Bool exa_compress_jpeg;

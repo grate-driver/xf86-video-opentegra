@@ -50,6 +50,7 @@ typedef enum
     OPTION_EXA_COMPRESSION_JPEG,
     OPTION_EXA_COMPRESSION_JPEG_QUALITY,
     OPTION_EXA_COMPRESSION_PNG,
+    OPTION_EXA_ERASE_PIXMAPS,
 } TegraOptions;
 
 static const OptionInfoRec Options[] = {
@@ -63,6 +64,7 @@ static const OptionInfoRec Options[] = {
     { OPTION_EXA_COMPRESSION_JPEG, "DisableCompressionJPEG", OPTV_BOOLEAN, { 0 }, FALSE },
     { OPTION_EXA_COMPRESSION_JPEG_QUALITY, "JPEGCompressionQuality", OPTV_INTEGER, { 0 }, FALSE },
     { OPTION_EXA_COMPRESSION_PNG, "DisableCompressionPNG", OPTV_BOOLEAN, { 0 }, FALSE },
+    { OPTION_EXA_ERASE_PIXMAPS, "SecureErasePixmaps", OPTV_BOOLEAN, { 0 }, FALSE },
     { -1, NULL, OPTV_NONE, { 0 }, FALSE }
 };
 
@@ -472,6 +474,14 @@ TegraPreInit(ScrnInfoPtr pScrn, int flags)
                    tegra->exa_compress_png ? "YES" : "NO");
 #endif
     }
+
+    tegra->exa_erase_pixmaps = xf86ReturnOptValBool(tegra->Options,
+                                                    OPTION_EXA_ERASE_PIXMAPS,
+                                                    FALSE);
+
+    xf86DrvMsg(pScrn->scrnIndex, X_INFO,
+                "EXA secure erase pixmaps: enabled %s\n",
+                tegra->exa_erase_pixmaps ? "YES" : "NO");
 
     /* Load the required sub modules */
     if (!xf86LoadSubModule(pScrn, "dri2") ||

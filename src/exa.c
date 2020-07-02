@@ -256,7 +256,7 @@ static void TegraEXAReleasePixmapData(TegraPtr tegra, TegraPixmapPtr priv)
         }
 
         goto out_final;
-    } else {
+    } else if (tegra->exa_erase_pixmaps) {
         /* clear released data for privacy protection */
         TegraEXAClearPixmapData(priv, TRUE);
     }
