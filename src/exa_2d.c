@@ -173,35 +173,16 @@ static void TegraEXASolid(PixmapPtr pPixmap, int px1, int py1, int px2, int py2)
 
 static void TegraEXADoneSolid(PixmapPtr pPixmap)
 {
-    TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pPixmap);
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pPixmap->drawable.pScreen);
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
     struct tegra_fence *fence = NULL;
-    int drm_ver;
 
     PROFILE_DEF(solid);
 
-    drm_ver = drm_tegra_version(TegraPTR(pScrn)->drm);
-
     if (tegra->scratch.ops && tegra->cmds->status == TEGRADRM_STREAM_CONSTRUCT) {
-
-        if (drm_ver < GRATE_KERNEL_DRM_VERSION + 2) {
-            if (priv->fence_write && !priv->fence_write->gr2d) {
-                TegraEXAWaitFence(priv->fence_write);
-
-                TEGRA_FENCE_PUT(priv->fence_write);
-                priv->fence_write = NULL;
-            }
-
-            if (priv->fence_read && !priv->fence_read->gr2d) {
-                TegraEXAWaitFence(priv->fence_read);
-
-                TEGRA_FENCE_PUT(priv->fence_read);
-                priv->fence_read = NULL;
-            }
-        }
-
         tegra_stream_end(tegra->cmds);
+
+        exa_helper_wait_pixmaps(TRUE, pPixmap, 0);
 #if PROFILE
         PROFILE_START(solid);
         tegra_stream_flush(tegra->cmds);
@@ -209,11 +190,7 @@ static void TegraEXADoneSolid(PixmapPtr pPixmap)
 #else
         fence = tegra_stream_submit(tegra->cmds, true);
 #endif
-
-        if (priv->fence_write != fence) {
-            TEGRA_FENCE_PUT(priv->fence_write);
-            priv->fence_write = TEGRA_FENCE_GET(fence, &tegra->scratch);
-        }
+        exa_helper_replace_pixmaps_fence(fence, &tegra->scratch, pPixmap, 0);
     } else {
         tegra_stream_cleanup(tegra->cmds);
     }
@@ -553,44 +530,13 @@ static void TegraEXADoneCopy(PixmapPtr pDstPixmap)
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pDstPixmap->drawable.pScreen);
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
     struct tegra_fence *fence = NULL;
-    TegraPixmapPtr priv;
-    int drm_ver;
 
     PROFILE_DEF(copy);
 
-    drm_ver = drm_tegra_version(TegraPTR(pScrn)->drm);
-
     if (tegra->scratch.ops && tegra->cmds->status == TEGRADRM_STREAM_CONSTRUCT) {
-        if (drm_ver < GRATE_KERNEL_DRM_VERSION + 2) {
-            priv = exaGetPixmapDriverPrivate(tegra->scratch.pSrc);
-
-            if (priv->fence_write && !priv->fence_write->gr2d) {
-                TegraEXAWaitFence(priv->fence_write);
-
-                TEGRA_FENCE_PUT(priv->fence_write);
-                priv->fence_write = NULL;
-            }
-        }
-
-        priv = exaGetPixmapDriverPrivate(pDstPixmap);
-
-        if (drm_ver < GRATE_KERNEL_DRM_VERSION + 2) {
-            if (priv->fence_write && !priv->fence_write->gr2d) {
-                TegraEXAWaitFence(priv->fence_write);
-
-                TEGRA_FENCE_PUT(priv->fence_write);
-                priv->fence_write = NULL;
-            }
-
-            if (priv->fence_read && !priv->fence_read->gr2d) {
-                TegraEXAWaitFence(priv->fence_read);
-
-                TEGRA_FENCE_PUT(priv->fence_read);
-                priv->fence_read = NULL;
-            }
-        }
-
         tegra_stream_end(tegra->cmds);
+
+        exa_helper_wait_pixmaps(TRUE, pDstPixmap, 1, tegra->scratch.pSrc);
 #if PROFILE
         PROFILE_START(copy);
         tegra_stream_flush(tegra->cmds);
@@ -598,18 +544,8 @@ static void TegraEXADoneCopy(PixmapPtr pDstPixmap)
 #else
         fence = tegra_stream_submit(tegra->cmds, true);
 #endif
-
-        if (priv->fence_write != fence) {
-            TEGRA_FENCE_PUT(priv->fence_write);
-            priv->fence_write = TEGRA_FENCE_GET(fence, &tegra->scratch);
-        }
-
-        priv = exaGetPixmapDriverPrivate(tegra->scratch.pSrc);
-
-        if (priv->fence_read != fence) {
-            TEGRA_FENCE_PUT(priv->fence_read);
-            priv->fence_read = TEGRA_FENCE_GET(fence, &tegra->scratch);
-        }
+        exa_helper_replace_pixmaps_fence(fence, &tegra->scratch, pDstPixmap, 1,
+                                         tegra->scratch.pSrc);
     } else {
         tegra_stream_cleanup(tegra->cmds);
     }

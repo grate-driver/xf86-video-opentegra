@@ -194,3 +194,75 @@ exa_helper_degenerate(struct tegra_box *b)
 {
     return (b->x0 >= b->x1 || b->y0 >= b->y1);
 }
+
+#define WAIT_FENCE(FENCE, GR2D)             \
+{                                           \
+    if (FENCE && FENCE->gr2d != GR2D) {     \
+        TegraEXAWaitFence(FENCE);           \
+                                            \
+        TEGRA_FENCE_PUT(FENCE);             \
+        FENCE = NULL;                       \
+    }                                       \
+}
+
+static void
+exa_helper_wait_pixmaps(Bool dst_gr2d, PixmapPtr dst_pix,
+                        int num_src_pixmaps, ...)
+{
+    ScrnInfoPtr pScrn = xf86ScreenToScrn(dst_pix->drawable.pScreen);
+    TegraPixmapPtr priv;
+    PixmapPtr pix_arg;
+    int drm_ver;
+    va_list ap;
+
+    /* GRATE-kernel supports fencing, hence no need to fence here */
+    drm_ver = drm_tegra_version(TegraPTR(pScrn)->drm);
+    if (drm_ver >= GRATE_KERNEL_DRM_VERSION + 2)
+        return;
+
+    va_start(ap, num_src_pixmaps);
+    for (; num_src_pixmaps; num_src_pixmaps--) {
+        pix_arg = va_arg(ap, PixmapPtr);
+        if (!pix_arg)
+            continue;
+
+        priv = exaGetPixmapDriverPrivate(pix_arg);
+        WAIT_FENCE(priv->fence_write, dst_gr2d);
+    }
+    va_end(ap);
+
+    priv = exaGetPixmapDriverPrivate(dst_pix);
+    WAIT_FENCE(priv->fence_write, dst_gr2d);
+    WAIT_FENCE(priv->fence_read, dst_gr2d);
+}
+
+static void
+exa_helper_replace_pixmaps_fence(struct tegra_fence *fence, void *opaque,
+                                 PixmapPtr dst_pix, int num_src_pixmaps, ...)
+{
+    TegraPixmapPtr priv;
+    PixmapPtr pix_arg;
+    va_list ap;
+
+    priv = exaGetPixmapDriverPrivate(dst_pix);
+
+    if (priv->fence_write != fence) {
+        TEGRA_FENCE_PUT(priv->fence_write);
+        priv->fence_write = TEGRA_FENCE_GET(fence, opaque);
+    }
+
+    va_start(ap, num_src_pixmaps);
+    for (; num_src_pixmaps; num_src_pixmaps--) {
+        pix_arg = va_arg(ap, PixmapPtr);
+        if (!pix_arg)
+            continue;
+
+        priv = exaGetPixmapDriverPrivate(pix_arg);
+
+        if (priv->fence_read != fence) {
+            TEGRA_FENCE_PUT(priv->fence_read);
+            priv->fence_read = TEGRA_FENCE_GET(fence, opaque);
+        }
+    }
+    va_end(ap);
+}

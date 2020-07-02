@@ -870,51 +870,11 @@ static void TegraEXADoneComposite3D(PixmapPtr pDst)
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pDst->drawable.pScreen);
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
     struct tegra_fence *fence = NULL;
-    TegraPixmapPtr priv;
-    int drm_ver;
-
-    drm_ver = drm_tegra_version(TegraPTR(pScrn)->drm);
 
     if (tegra->scratch.ops && tegra->cmds->status == TEGRADRM_STREAM_CONSTRUCT) {
-        if (tegra->scratch.pSrc && drm_ver < GRATE_KERNEL_DRM_VERSION + 2) {
-            priv = exaGetPixmapDriverPrivate(tegra->scratch.pSrc);
-
-            if (priv->fence_write && priv->fence_write->gr2d) {
-                TegraEXAWaitFence(priv->fence_write);
-
-                TEGRA_FENCE_PUT(priv->fence_write);
-                priv->fence_write = NULL;
-            }
-        }
-
-        if (tegra->scratch.pMask && drm_ver < GRATE_KERNEL_DRM_VERSION + 2) {
-            priv = exaGetPixmapDriverPrivate(tegra->scratch.pMask);
-
-            if (priv->fence_write && priv->fence_write->gr2d) {
-                TegraEXAWaitFence(priv->fence_write);
-
-                TEGRA_FENCE_PUT(priv->fence_write);
-                priv->fence_write = NULL;
-            }
-        }
-
-        priv = exaGetPixmapDriverPrivate(pDst);
-
-        if (drm_ver < GRATE_KERNEL_DRM_VERSION + 2) {
-            if (priv->fence_write && priv->fence_write->gr2d) {
-                TegraEXAWaitFence(priv->fence_write);
-
-                TEGRA_FENCE_PUT(priv->fence_write);
-                priv->fence_write = NULL;
-            }
-
-            if (priv->fence_read && priv->fence_read->gr2d) {
-                TegraEXAWaitFence(priv->fence_read);
-
-                TEGRA_FENCE_PUT(priv->fence_read);
-                priv->fence_read = NULL;
-            }
-        }
+        exa_helper_wait_pixmaps(FALSE, pDst, 2,
+                                tegra->scratch.pSrc,
+                                tegra->scratch.pMask);
 
         fence = TegraGR3DStateSubmit(&tegra->gr3d_state);
 
@@ -929,28 +889,9 @@ static void TegraEXADoneComposite3D(PixmapPtr pDst)
          *
          *      See TegraGR3D_DrawPrimitives() in gr3d.c
          */
-        if (priv->fence_write != fence) {
-            TEGRA_FENCE_PUT(priv->fence_write);
-            priv->fence_write = TEGRA_FENCE_GET(fence, &tegra->scratch);
-        }
-
-        if (tegra->scratch.pSrc) {
-            priv = exaGetPixmapDriverPrivate(tegra->scratch.pSrc);
-
-            if (priv->fence_read != fence) {
-                TEGRA_FENCE_PUT(priv->fence_read);
-                priv->fence_read = TEGRA_FENCE_GET(fence, &tegra->scratch);
-            }
-        }
-
-        if (tegra->scratch.pMask) {
-            priv = exaGetPixmapDriverPrivate(tegra->scratch.pMask);
-
-            if (priv->fence_read != fence) {
-                TEGRA_FENCE_PUT(priv->fence_read);
-                priv->fence_read = TEGRA_FENCE_GET(fence, &tegra->scratch);
-            }
-        }
+        exa_helper_replace_pixmaps_fence(fence, &tegra->scratch, pDst, 2,
+                                         tegra->scratch.pSrc,
+                                         tegra->scratch.pMask);
     } else {
         TegraGR3DStateReset(&tegra->gr3d_state);
     }
