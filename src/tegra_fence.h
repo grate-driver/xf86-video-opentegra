@@ -136,21 +136,21 @@ static inline void tegra_fence_put(struct tegra_fence *f)
     if (f) {
         tegra_fence_check(f);
 
+#ifdef FENCE_DEBUG
         if (f->refcnt < 0) {
             TEGRA_FENCE_ERR_MSG("BUG: fence refcount underflow\n");
-#ifdef FENCE_DEBUG
             assert(0);
-#endif
             return;
         }
+#endif
 
+#ifdef FENCE_DEBUG
         if (f->refcnt > 10) {
             TEGRA_FENCE_ERR_MSG("BUG: fence refcount overflow\n");
-#ifdef FENCE_DEBUG
             assert(0);
-#endif
             return;
         }
+#endif
 
         f->refcnt--;
         TEGRA_FENCE_FINISH(f);
