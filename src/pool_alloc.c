@@ -610,6 +610,12 @@ static void mem_pool_destroy(struct mem_pool *pool)
     pool->base = (void *) 0xfff00000;
     pool->pool_size = 0;
 #endif
+
+    free(pool->bitmap);
+    pool->bitmap = NULL;
+
+    free(pool->entries);
+    pool->entries = NULL;
 }
 
 /*
