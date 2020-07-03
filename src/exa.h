@@ -28,6 +28,10 @@
 #include "pool_alloc.h"
 #include "tegra_stream.h"
 
+#ifndef __maybe_unused
+#define __maybe_unused  __attribute__((unused))
+#endif
+
 #define TEGRA_DRI_USAGE_HINT ('D' << 16 | 'R' << 8 | 'I')
 
 /*
@@ -58,7 +62,10 @@
 #define DebugMsg(fmt, args...) do {} while(0)
 #endif
 
-#define PROFILE 0
+#define PROFILE                         0
+
+#define PROFILE_REPORT_MIN_TIME_US      1000
+#define PROFILE_REPORT_START            FALSE
 
 static inline float timespec_diff(const struct timespec *start,
                                   const struct timespec *end)
@@ -74,13 +81,32 @@ static inline float timespec_diff(const struct timespec *start,
     return (seconds * 1000000000.0f + ns) / 1000;
 }
 
+extern uint64_t tegra_profiler_seqno;
+
+struct tegra_profiler {
+    struct timespec start_time;
+    const char *name;
+    uint64_t seqno;
+};
+
 #define PROFILE_DEF(PNAME)                                          \
-    struct timespec profile_##PNAME __attribute__((unused));
+    struct tegra_profiler profile_##PNAME __maybe_unused = {        \
+        .name = "",                                                 \
+    };                                                              \
+
+#define PROFILE_SET_NAME(PNAME, PEXT_NAME)                          \
+    profile_##PNAME.name = PEXT_NAME;
 
 #define PROFILE_START(PNAME)                                        \
     if (PROFILE) {                                                  \
-        printf("%s:%d: profile start\n", __func__, __LINE__);       \
-        clock_gettime(CLOCK_MONOTONIC, &profile_##PNAME);           \
+        profile_##PNAME.seqno = tegra_profiler_seqno++;             \
+        if (PROFILE_REPORT_START)                                   \
+            printf("%s:%d: profile(%llu:%s) start\n",               \
+                   __func__, __LINE__,                              \
+                   profile_##PNAME.seqno,                           \
+                   profile_##PNAME.name);                           \
+        clock_gettime(CLOCK_MONOTONIC,                              \
+                      &profile_##PNAME.start_time);                 \
     }
 
 #define PROFILE_STOP(PNAME)                                         \
@@ -88,9 +114,14 @@ static inline float timespec_diff(const struct timespec *start,
         unsigned profile_time;                                      \
         static struct timespec profile_end;                         \
         clock_gettime(CLOCK_MONOTONIC, &profile_end);               \
-        profile_time = timespec_diff(&profile_##PNAME, &profile_end);\
-        printf("%s:%d: profile stop: %u us\n",                      \
-               __func__, __LINE__, profile_time);                   \
+        profile_time = timespec_diff(&profile_##PNAME.start_time,   \
+                                     &profile_end);                 \
+        if (profile_time >= PROFILE_REPORT_MIN_TIME_US)             \
+            printf("%s:%d: profile(%llu:%s) stop: %u us\n",         \
+               __func__, __LINE__,                                  \
+               profile_##PNAME.seqno,                               \
+               profile_##PNAME.name,                                \
+               profile_time);                                       \
     }
 
 struct tegra_pixmap;

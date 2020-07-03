@@ -35,6 +35,8 @@ static Bool TegraEXAPrepareCPUAccess(PixmapPtr pPix, int idx, void **ptr);
 static void TegraEXAFinishCPUAccess(PixmapPtr pPix, int idx);
 static Bool TegraEXAIsPoolPixmap(PixmapPtr pix);
 
+uint64_t tegra_profiler_seqno;
+
 #include "exa_mm_pool.c"
 #include "exa_mm.c"
 #include "exa_helpers.c"
@@ -130,6 +132,8 @@ static void TegraEXAWaitMarker(ScreenPtr pScreen, int marker)
         tegra->scratch.marker = NULL;
 }
 
+static PROFILE_DEF(cpu_access);
+
 static Bool TegraEXAPrepareCPUAccess(PixmapPtr pPix, int idx, void **ptr)
 {
     TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pPix);
@@ -145,6 +149,7 @@ static Bool TegraEXAPrepareCPUAccess(PixmapPtr pPix, int idx, void **ptr)
     TegraEXAThawPixmap(pPix, FALSE);
 
     if (priv->type == TEGRA_EXA_PIXMAP_TYPE_FALLBACK) {
+        PROFILE_START(cpu_access);
         *ptr = priv->fallback;
         return TRUE;
     }
@@ -172,16 +177,23 @@ static Bool TegraEXAPrepareCPUAccess(PixmapPtr pPix, int idx, void **ptr)
 
     if (priv->type == TEGRA_EXA_PIXMAP_TYPE_POOL) {
         *ptr = mem_pool_entry_addr(&priv->pool_entry);
+        PROFILE_START(cpu_access);
         return TRUE;
     }
 
     if (priv->type == TEGRA_EXA_PIXMAP_TYPE_BO) {
+        PROFILE_DEF(mmap);
+        PROFILE_START(mmap);
+
         err = drm_tegra_bo_map(priv->bo, ptr);
         if (err < 0) {
             ErrorMsg("failed to map buffer object: %d\n", err);
             return FALSE;
         }
 
+        PROFILE_STOP(mmap);
+
+        PROFILE_START(cpu_access);
         return TRUE;
     }
 
@@ -197,6 +209,8 @@ void TegraEXAFinishCPUAccess(PixmapPtr pPix, int idx)
 {
     TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pPix);
     int err;
+
+    PROFILE_STOP(cpu_access);
 
     if (priv->type == TEGRA_EXA_PIXMAP_TYPE_BO) {
         err = drm_tegra_bo_unmap(priv->bo);
