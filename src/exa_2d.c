@@ -188,13 +188,14 @@ static void TegraEXADoneSolid(PixmapPtr pPixmap)
 
         explicit_fence = exa_helper_get_explicit_fence(TRUE, pPixmap, 0);
 
-#if PROFILE
-        PROFILE_START(solid);
-        tegra_stream_flush(tegra->cmds, explicit_fence);
-        PROFILE_STOP(solid);
-#else
-        fence = tegra_stream_submit(tegra->cmds, true, explicit_fence);
-#endif
+        if (PROFILE || tegra->has_iommu_bug) {
+                PROFILE_START(solid);
+                tegra_stream_flush(tegra->cmds, explicit_fence);
+                PROFILE_STOP(solid);
+        } else {
+                fence = tegra_stream_submit(tegra->cmds, true, explicit_fence);
+        }
+
         TEGRA_FENCE_PUT(explicit_fence);
 
         exa_helper_replace_pixmaps_fence(fence, &tegra->scratch, pPixmap, 0);
@@ -552,13 +553,15 @@ static void TegraEXADoneCopy(PixmapPtr pDstPixmap)
 
         explicit_fence = exa_helper_get_explicit_fence(TRUE, pDstPixmap, 1,
                                                        tegra->scratch.pSrc);
-#if PROFILE
-        PROFILE_START(copy);
-        tegra_stream_flush(tegra->cmds, explicit_fence);
-        PROFILE_STOP(copy);
-#else
-        fence = tegra_stream_submit(tegra->cmds, true, explicit_fence);
-#endif
+
+        if (PROFILE || tegra->has_iommu_bug) {
+                PROFILE_START(copy);
+                tegra_stream_flush(tegra->cmds, explicit_fence);
+                PROFILE_STOP(copy);
+        } else {
+                fence = tegra_stream_submit(tegra->cmds, true, explicit_fence);
+        }
+
         TEGRA_FENCE_PUT(explicit_fence);
 
         exa_helper_replace_pixmaps_fence(fence, &tegra->scratch, pDstPixmap, 1,

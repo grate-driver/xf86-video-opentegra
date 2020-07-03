@@ -779,6 +779,19 @@ static void TegraEXAUnWrapProc(ScreenPtr pScreen)
     pScreen->BlockHandler = exa->BlockHandler;
 }
 
+static Bool host1x_firewall_is_present(TegraEXAPtr tegra)
+{
+    tegra_stream_begin(tegra->cmds, tegra->gr2d);
+    tegra_stream_prep(tegra->cmds, 1);
+    tegra_stream_push_setclass(tegra->cmds, HOST1X_CLASS_HOST1X);
+    tegra_stream_end(tegra->cmds);
+
+    if (tegra_stream_flush(tegra->cmds, NULL) == -EINVAL)
+        return TRUE;
+
+    return FALSE;
+}
+
 Bool TegraEXAScreenInit(ScreenPtr pScreen)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pScreen);
@@ -897,6 +910,25 @@ Bool TegraEXAScreenInit(ScreenPtr pScreen)
          * pool because it will hog most of GART aperture.
          */
         xf86DrvMsg(pScrn->scrnIndex, X_INFO, "EXA using GEM CREATE_SPARSE\n");
+    }
+
+    /*
+     * Upstream kernel has an unfixed race-condition bug in the SMMU driver
+     * that results in a kernel panic if host1x firewall is disabled in the
+     * kernel's configuration.
+     *
+     * We may try to workaround the bug by fencing all jobs, which should
+     * reduce number of race condition in the kernel driver. This doesn't
+     * prevent the problem if userspace uses GPU in parallel to Opentegra,
+     * nothing we could do about it here, kernel fix is required.
+     */
+    if (drm_ver == 0) {
+        Bool firewalled = host1x_firewall_is_present(priv);
+
+        xf86DrvMsg(pScrn->scrnIndex, X_INFO, "Host1x firewall %s\n",
+                   firewalled ? "detected" : "undetected");
+
+        priv->has_iommu_bug = !firewalled;
     }
 
     return TRUE;

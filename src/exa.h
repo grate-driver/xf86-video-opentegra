@@ -238,6 +238,8 @@ typedef struct _TegraEXARec{
 
     TegraGR3DState gr3d_state;
 
+    Bool has_iommu_bug;
+
     ExaDriverPtr driver;
 } *TegraEXAPtr;
 

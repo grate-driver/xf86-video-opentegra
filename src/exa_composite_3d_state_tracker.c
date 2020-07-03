@@ -604,6 +604,8 @@ static struct tegra_fence * TegraGR3DStateSubmit(TegraGR3DStatePtr state)
 {
     struct tegra_fence *explicit_fence;
     struct tegra_fence *fence = NULL;
+    ScrnInfoPtr pScrn;
+    TegraEXAPtr tegra;
     PROFILE_DEF(gr3d);
 
     if (state->clean)
@@ -622,13 +624,17 @@ static struct tegra_fence * TegraGR3DStateSubmit(TegraGR3DStatePtr state)
                                                    state->new.dst.pPix, 2,
                                                    state->new.src.pPix,
                                                    state->new.mask.pPix);
-#if PROFILE
-    PROFILE_START(gr3d);
-    tegra_stream_flush(state->cmds, explicit_fence);
-    PROFILE_STOP(gr3d);
-#else
-    fence = tegra_stream_submit(state->cmds, false, explicit_fence);
-#endif
+
+    pScrn = xf86ScreenToScrn(state->new.dst.pPix->drawable.pScreen);
+    tegra = TegraPTR(pScrn)->exa;
+
+    if (PROFILE || tegra->has_iommu_bug) {
+        PROFILE_START(gr3d);
+        tegra_stream_flush(state->cmds, explicit_fence);
+        PROFILE_STOP(gr3d);
+    } else {
+        fence = tegra_stream_submit(state->cmds, false, explicit_fence);
+    }
 
     TEGRA_FENCE_PUT(explicit_fence);
 

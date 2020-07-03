@@ -120,15 +120,12 @@ static int tegra_stream_flush_v1(struct tegra_stream *base_stream,
     ret = drm_tegra_job_submit(stream->job, &fence);
     if (ret) {
         ErrorMsg("drm_tegra_job_submit() failed %d\n", ret);
-        ret = -1;
         goto cleanup;
     }
 
     ret = drm_tegra_fence_wait_timeout(fence, 1000);
-    if (ret) {
+    if (ret)
         ErrorMsg("drm_tegra_fence_wait_timeout() failed %d\n", ret);
-        ret = -1;
-    }
 
     drm_tegra_fence_free(fence);
 
