@@ -29,14 +29,25 @@
 #include <stdint.h>
 #include <string.h>
 
-void tegra_copy_block_vfp(void *dst, const void *src, int size);
+typedef void (*tegra_vfp_func)(char *dst, const char *src, int size);
+
+void tegra_copy_block_vfp(char *dst, const char *src, int size);
 void tegra_copy_block_vfp_2_pass(char *dst, const char *src, int size);
 void tegra_copy_block_vfp_arm(char *dst, const char *src, int size);
 void tegra_memcpy_vfp_unaligned_2_pass(char *dst, const char *src, int size);
 
+/*
+ * Use multi-threaded copying for a large transfers from uncached memory.
+ *
+ * Don't use threaded copying from a cached memory if unsure, since it
+ * could be 2x slower than a single-threaded operation.
+ */
+void tegra_memcpy_vfp_threaded(char *dst, const char *src, int size,
+                               tegra_vfp_func copy_func);
+
 /* use this when src is uncacheable */
 static inline void
-tegra_memcpy_vfp_unaligned(void *dst, const void *src, int size)
+tegra_memcpy_vfp_unaligned(char *dst, const char *src, int size)
 {
     if (size < 192)
         memcpy(dst, src, size);
@@ -55,7 +66,7 @@ tegra_memcpy_vfp_copy_safe(char *dst, const char *src, int size)
 
 /* use this when both src and dst are either cacheable or uncacheable */
 static inline void
-tegra_memcpy_vfp_aligned(void *dst, const void *src, int size)
+tegra_memcpy_vfp_aligned(char *dst, const char *src, int size)
 {
     if (__builtin_expect(dst == src || !size, 0))
         return;
@@ -67,7 +78,7 @@ tegra_memcpy_vfp_aligned(void *dst, const void *src, int size)
 
 /* use this when src is uncacheable and dst is cacheable */
 static inline void
-tegra_memcpy_vfp_aligned_dst_cached(void *dst, const void *src, int size)
+tegra_memcpy_vfp_aligned_dst_cached(char *dst, const char *src, int size)
 {
     if (__builtin_expect(dst == src || !size, 0))
         return;
@@ -79,7 +90,7 @@ tegra_memcpy_vfp_aligned_dst_cached(void *dst, const void *src, int size)
 
 /* use this when src is cacheable and dst uncacheable */
 static inline void
-tegra_memcpy_vfp_aligned_src_cached(void *dst, const void *src, int size)
+tegra_memcpy_vfp_aligned_src_cached(char *dst, const char *src, int size)
 {
     if (__builtin_expect(dst == src || !size, 0))
         return;

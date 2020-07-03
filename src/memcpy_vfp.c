@@ -22,10 +22,19 @@
  */
 
 #include <stdbool.h>
+#include <pthread.h>
+#include <sys/sysinfo.h>
 
 #include "memcpy_vfp.h"
 
 #define BLOCK_SIZE  1024
+
+struct vfpcpy_cfg {
+    tegra_vfp_func cpy;
+    const char *src;
+    char *dst;
+    int size;
+};
 
 static __thread char bounce_buf[BLOCK_SIZE] __attribute__((aligned (128)));
 
@@ -46,7 +55,7 @@ static inline void vfpcpy(void *dst, const void *src, int size)
         : "cc");
 }
 
-void tegra_copy_block_vfp(void *dst, const void *src, int size)
+void tegra_copy_block_vfp(char *dst, const char *src, int size)
 {
     vfpcpy(dst, src, size);
 }
@@ -187,4 +196,72 @@ void tegra_memcpy_vfp_unaligned_2_pass(char *dst, const char *src, int size)
 
     if (size)
         memcpy(dst, src, size);
+}
+
+static void *tegra_memcpy_vfp_thread(void *arg)
+{
+    struct vfpcpy_cfg *cfg = arg;
+
+    cfg->cpy(cfg->dst, cfg->src, cfg->size);
+
+    return NULL;
+}
+
+#define MIN_SIZE_PER_THREAD     512
+#define MIN_THREADS_NUM         2
+#define MAX_THREADS_NUM         2
+
+static unsigned int tegra_num_copy_threads(int size)
+{
+    int size_threads = (size + MIN_SIZE_PER_THREAD) / MIN_SIZE_PER_THREAD;
+    int cpu_threads = size_threads > 1 ? get_nprocs() : 1;
+    int threads_num = size_threads < cpu_threads ? size_threads : cpu_threads;
+
+    if (threads_num < MIN_THREADS_NUM)
+        return 1;
+
+    if (threads_num > MAX_THREADS_NUM)
+        return MAX_THREADS_NUM;
+
+    return threads_num;
+}
+
+void tegra_memcpy_vfp_threaded(char *dst, const char *src, int size,
+                               tegra_vfp_func copy_func)
+{
+    unsigned int threads_num = tegra_num_copy_threads(size);
+    struct vfpcpy_cfg cfgs[MAX_THREADS_NUM];
+    pthread_t threads[MAX_THREADS_NUM];
+    unsigned int thread_cpy_size;
+    void *thread_arg;
+    unsigned int i;
+
+    if (threads_num > 1)
+        thread_cpy_size = (size / threads_num) & (~127);
+    else
+        thread_cpy_size = size;
+
+    for (i = 0; i < threads_num; i++) {
+        cfgs[i].size = thread_cpy_size;
+        cfgs[i].src  = src;
+        cfgs[i].dst  = dst;
+        cfgs[i].cpy  = copy_func;
+
+        src += thread_cpy_size;
+        dst += thread_cpy_size;
+    }
+
+    for (i = 1; i < threads_num; i++) {
+        thread_arg = (void*) &cfgs[i];
+        pthread_create(&threads[i], NULL, tegra_memcpy_vfp_thread, thread_arg);
+    }
+
+    copy_func(cfgs[0].dst, cfgs[0].src, cfgs[0].size);
+
+    size -= thread_cpy_size * threads_num;
+    if (size)
+        memcpy(dst, src, size);
+
+    for (i = 1; i < threads_num; i++)
+        pthread_join(threads[i], NULL);
 }
