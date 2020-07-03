@@ -557,68 +557,154 @@ success:
     return TRUE;
 }
 
-static Bool
-TegraEXACopyScreen(const char *src, int src_pitch, int h,
-                   char *dst, int dst_pitch, int line_len)
+static void
+TegraSelectCopyFunc(char *dst, const char *src, int line_len,
+                    Bool download, Bool src_cached, Bool dst_cached,
+                    tegra_vfp_func *pvfp_func, bool *pvfp_threaded)
 {
-    if (src_pitch == line_len && src_pitch == dst_pitch) {
-        tegra_memcpy_vfp_unaligned(dst, src, line_len * h);
-    } else {
-        while (h--) {
-            tegra_memcpy_vfp_unaligned(dst, src, line_len);
+    tegra_vfp_func vfp_func;
+    bool vfp_threaded;
+    bool vfp_safe;
 
-            src += src_pitch;
-            dst += dst_pitch;
-        }
+    vfp_safe = tegra_memcpy_vfp_copy_safe(dst, src, line_len);
+
+    if (vfp_safe && download && !src_cached) {
+        vfp_threaded = true;
+        vfp_func     = tegra_memcpy_vfp_aligned;
+
+    } if (vfp_safe && !src_cached && dst_cached) {
+        vfp_threaded = true;
+        vfp_func     = tegra_memcpy_vfp_aligned_dst_cached;
+
+    } if (vfp_safe && src_cached && !dst_cached) {
+        vfp_threaded = false;
+        vfp_func     = tegra_memcpy_vfp_aligned_src_cached;
+
+    } else if (download && !src_cached) {
+        vfp_threaded = true;
+        vfp_func     = tegra_memcpy_vfp_unaligned;
+
+    } else {
+        vfp_threaded = false;
+        vfp_func     = NULL;
     }
 
+    *pvfp_threaded = vfp_threaded;
+    *pvfp_func     = vfp_func;
+}
+
+static Bool
+TegraEXACopyScreen(const char *src, int src_pitch, int height,
+                   Bool download, Bool src_cached, Bool dst_cached,
+                   char *dst, int dst_pitch, int line_len)
+{
+    tegra_vfp_func vfp_func;
+    bool vfp_threaded;
+
+    PROFILE_DEF(screen_load);
+
+    if (src_pitch == line_len && src_pitch == dst_pitch) {
+        line_len *= height;
+        height = 1;
+    }
+
+    PROFILE_SET_NAME(screen_load, download ? "download" : "upload");
+    PROFILE_START(screen_load);
+
+    while (height--) {
+        TegraSelectCopyFunc(dst, src, line_len,
+                            download, src_cached, dst_cached,
+                            &vfp_func, &vfp_threaded);
+
+        if (vfp_func) {
+            if (vfp_threaded)
+                tegra_memcpy_vfp_threaded(dst, src, line_len, vfp_func);
+            else
+                vfp_func(dst, src, line_len);
+        } else {
+            memcpy(dst, src, line_len);
+        }
+
+        src += src_pitch;
+        dst += dst_pitch;
+    }
+
+    PROFILE_STOP(screen_load);
+
     return TRUE;
+}
+
+static Bool
+TegraEXALoadScreen(PixmapPtr pix, int x, int y, int w, int h,
+                   char *usr, int usr_pitch, Bool download)
+{
+    TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pix);
+    int offset, pitch, line_len, cpp;
+    Bool src_cached, dst_cached;
+    int access_hint;
+    char *pmap;
+    Bool ret;
+
+    cpp      = pix->drawable.bitsPerPixel >> 3;
+    pitch    = exaGetPixmapPitch(pix);
+    offset   = (y * pitch) + (x * cpp);
+    line_len = w * cpp;
+
+    if (!line_len || !priv->tegra_data) {
+        FallbackMsg("unaccelerateable pixmap %d:%d, %dx%d %d:%d\n",
+                    pix->drawable.width, pix->drawable.height, x, y, w, h);
+        return FALSE;
+    }
+
+    access_hint = download ? EXA_PREPARE_SRC : EXA_PREPARE_DEST;
+    ret = TegraEXAPrepareCPUAccess(pix, access_hint, (void**)&pmap);
+    if (!ret)
+        return FALSE;
+
+    if (download) {
+        if (priv->type == TEGRA_EXA_PIXMAP_TYPE_FALLBACK)
+            src_cached = TRUE;
+        else
+            src_cached = FALSE;
+
+        dst_cached = TRUE;
+    } else {
+        if (priv->type == TEGRA_EXA_PIXMAP_TYPE_FALLBACK)
+            dst_cached = TRUE;
+        else
+            dst_cached = FALSE;
+
+        src_cached = TRUE;
+    }
+
+    AccelMsg("%dx%d %d:%d\n", x, y, w, h);
+
+    if (download)
+        ret = TegraEXACopyScreen(pmap + offset, pitch, h,
+                                 download, src_cached, dst_cached,
+                                 usr, usr_pitch, line_len);
+    else
+        ret = TegraEXACopyScreen(usr, usr_pitch, h,
+                                 download, src_cached, dst_cached,
+                                 pmap + offset, pitch, line_len);
+
+    TegraEXAFinishCPUAccess(pix, EXA_PREPARE_SRC);
+
+    return ret;
 }
 
 static Bool
 TegraEXADownloadFromScreen(PixmapPtr pSrc, int x, int y, int w, int h,
                            char *dst, int dst_pitch)
 {
-    TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pSrc);
-    int src_offset, src_pitch, line_len, cpp;
-    const char *src;
-    Bool ret;
+    return TegraEXALoadScreen(pSrc, x, y, w, h, dst, dst_pitch, TRUE);
+}
 
-    PROFILE_DEF(download);
-
-    if (!priv->accel || !priv->offscreen) {
-        FallbackMsg("unaccelerateable dst pixmap %d:%d, %dx%d %d:%d\n",
-                    pSrc->drawable.width, pSrc->drawable.height, x, y, w, h);
-        return FALSE;
-    }
-
-    ret = TegraEXAPrepareCPUAccess(pSrc, EXA_PREPARE_SRC, (void**)&src);
-    if (!ret)
-        return FALSE;
-
-    if (priv->type == TEGRA_EXA_PIXMAP_TYPE_FALLBACK) {
-        ret = FALSE;
-        goto finish;
-    }
-
-    PROFILE_START(download);
-
-    AccelMsg("%dx%d %d:%d\n", x, y, w, h);
-
-    cpp        = pSrc->drawable.bitsPerPixel >> 3;
-    src_pitch  = exaGetPixmapPitch(pSrc);
-    src_offset = (y * src_pitch) + (x * cpp);
-    line_len   = w * cpp;
-
-    ret = TegraEXACopyScreen(src + src_offset, src_pitch, h,
-                             dst, dst_pitch, line_len);
-
-    PROFILE_STOP(download);
-
-finish:
-    TegraEXAFinishCPUAccess(pSrc, EXA_PREPARE_SRC);
-
-    return ret;
+static Bool
+TegraEXAUploadToScreen(PixmapPtr pDst, int x, int y, int w, int h,
+                       char *src, int src_pitch)
+{
+    return TegraEXALoadScreen(pDst, x, y, w, h, src, src_pitch, FALSE);
 }
 
 static PixmapPtr TegraEXAGetDrawablePixmap(DrawablePtr drawable)
@@ -781,6 +867,7 @@ Bool TegraEXAScreenInit(ScreenPtr pScreen)
     exa->DoneComposite = TegraEXADoneComposite;
 
     exa->DownloadFromScreen = TegraEXADownloadFromScreen;
+    exa->UploadToScreen = TegraEXAUploadToScreen;
 
     if (!exaDriverInit(pScreen, exa)) {
         ErrorMsg("EXA initialization failed\n");
