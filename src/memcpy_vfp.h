@@ -25,6 +25,7 @@
 #define __TEGRA_MEMCPY_H
 
 #include <assert.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -43,6 +44,15 @@ tegra_memcpy_vfp_unaligned(void *dst, const void *src, int size)
         tegra_memcpy_vfp_unaligned_2_pass(dst, src, size);
 }
 
+static inline bool
+tegra_memcpy_vfp_copy_safe(char *dst, const char *src, int size)
+{
+    return (((uintptr_t)src & 127) == 0 &&
+            ((uintptr_t)dst & 127) == 0 &&
+            (size & 127) == 0 &&
+            size >= 128);
+}
+
 /* use this when both src and dst are either cacheable or uncacheable */
 static inline void
 tegra_memcpy_vfp_aligned(void *dst, const void *src, int size)
@@ -50,10 +60,7 @@ tegra_memcpy_vfp_aligned(void *dst, const void *src, int size)
     if (__builtin_expect(dst == src || !size, 0))
         return;
 
-    assert(((uintptr_t)src & 127) == 0);
-    assert(((uintptr_t)dst & 127) == 0);
-    assert((size & 127) == 0);
-    assert(size >= 128);
+    assert(tegra_memcpy_vfp_copy_safe(dst, src, size));
 
     tegra_copy_block_vfp_2_pass(dst, src, size);
 }
@@ -65,10 +72,7 @@ tegra_memcpy_vfp_aligned_dst_cached(void *dst, const void *src, int size)
     if (__builtin_expect(dst == src || !size, 0))
         return;
 
-    assert(((uintptr_t)src & 127) == 0);
-    assert(((uintptr_t)dst & 127) == 0);
-    assert((size & 127) == 0);
-    assert(size >= 128);
+    assert(tegra_memcpy_vfp_copy_safe(dst, src, size));
 
     tegra_copy_block_vfp(dst, src, size);
 }
@@ -80,10 +84,7 @@ tegra_memcpy_vfp_aligned_src_cached(void *dst, const void *src, int size)
     if (__builtin_expect(dst == src || !size, 0))
         return;
 
-    assert(((uintptr_t)src & 127) == 0);
-    assert(((uintptr_t)dst & 127) == 0);
-    assert((size & 127) == 0);
-    assert(size >= 128);
+    assert(tegra_memcpy_vfp_copy_safe(dst, src, size));
 
     tegra_copy_block_vfp_arm(dst, src, size);
 }
