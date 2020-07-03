@@ -131,8 +131,8 @@ void drm_tegra_bo_cache_cleanup(struct drm_tegra *drm, time_t time)
 
 			delta = time - bo->free_time;
 
-			/* keep things in cache for at least 1 second: */
-			if (time && delta <= 1)
+			/* keep things in cache for at least 10 second: */
+			if (time && delta <= 10)
 				break;
 
 			/* keep things in cache longer if not much */
@@ -341,8 +341,8 @@ drm_tegra_bo_mmap_cache_cleanup(struct drm_tegra *drm,
 
 		delta = time - bo->unmap_time;
 
-		/* keep things in cache for at least 3 seconds: */
-		if (time && delta <= 3)
+		/* keep things in cache for at least 30 seconds: */
+		if (time && delta <= 30)
 			break;
 
 		if (time) {
