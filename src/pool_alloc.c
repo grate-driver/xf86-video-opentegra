@@ -75,15 +75,27 @@ static struct {
  *         pool-owners back.
  */
 
-static int mem_pool_init(struct mem_pool *pool, void *addr, unsigned long size,
+static int mem_pool_init(struct mem_pool *pool, unsigned long size,
                          unsigned int bitmap_size)
 {
     pool->bitmap_size = bitmap_size;
     pool->fragmented = 0;
     pool->bitmap_full = 0;
+    pool->base_offset = 0;
+    pool->access_refcount = 0;
     pool->pool_size = size;
     pool->remain = size;
-    pool->base = addr;
+    pool->vbase = NULL;
+    pool->base = NULL;
+
+    /*
+     * TODO: Rework address handling, for now the base must be non-NULL,
+     *       otherwise allocation won't happen since NULL means failed.
+     */
+    if (!pool->base) {
+        pool->base_offset = 0x10000000;
+        pool->base += 0x10000000;
+    }
 
     pool->bitmap = calloc(bitmap_size, sizeof(*pool->bitmap));
     pool->entries = malloc(bitmap_size * 32 * sizeof(*pool->entries));
@@ -302,15 +314,23 @@ static void migrate_entry(struct mem_pool *pool_from,
                           unsigned int from, unsigned int to,
                           void *new_base)
 {
+    char *from_vbase = pool_from->vbase + (unsigned long)pool_from->entries[from].base;
+    char *new_vbase  = pool_to->vbase   + (unsigned long)new_base;
+
+    from_vbase -= pool_from->base_offset;
+    new_vbase  -= pool_to->base_offset;
+
+    assert(pool_from->access_refcount > 0);
+    assert(pool_to->access_refcount > 0);
 #ifdef POOL_DEBUG_VERBOSE
     char *base = pool_from->entries[from].base;
     PRINTF("%s: from %u (%p) to %u (%p)\n",
            __func__, from, pool_from, to, pool_to);
 #endif
+    /* pool_from data is copied into pool_to by move_entry()! */
     move_entry(pool_from, pool_to, from, to);
-    if (new_base != pool_to->entries[to].base) {
-        tegra_memcpy_vfp_threaded(new_base,
-                                  pool_to->entries[to].base,
+    if (new_vbase != from_vbase) {
+        tegra_memcpy_vfp_threaded(new_vbase, from_vbase,
                                   pool_to->entries[to].size,
                                   tegra_memmove_vfp_aligned);
         mem_pool_clear_canary(&pool_to->entries[to]);
@@ -606,6 +626,7 @@ static void mem_pool_destroy(struct mem_pool *pool)
     assert(mem_pool_get_next_used_entry(pool, 0) == -1);
     assert(get_next_unused_entry(pool, 0) == 0);
     assert(pool->remain == pool->pool_size);
+    assert(!pool->access_refcount);
     stats.total_remain -= pool->pool_size;
     pool->base = (void *) 0xfff00000;
     pool->pool_size = 0;
@@ -643,6 +664,12 @@ static int mem_pool_transfer_entries(struct mem_pool * restrict pool_to,
            __func__, pool_to, pool_to->bitmap_full, pool_to->remain, pool_from,
            pool_from->bitmap_full, pool_from->remain);
 #endif
+
+    assert(pool_from->access_refcount > 0);
+    assert(pool_to->access_refcount > 0);
+
+    if (!pool_from->access_refcount || !pool_to->access_refcount)
+        return 0;
 
     if (mem_pool_full(pool_to))
         return 0;
@@ -736,6 +763,12 @@ static int mem_pool_transfer_entries_fast(struct mem_pool * restrict pool_to,
            __func__, pool_to, pool_to->bitmap_full, pool_to->remain, pool_from,
            pool_from->bitmap_full, pool_from->remain);
 #endif
+
+    assert(pool_from->access_refcount > 0);
+    assert(pool_to->access_refcount > 0);
+
+    if (!pool_from->access_refcount || !pool_to->access_refcount)
+        return 0;
 
     if (mem_pool_full(pool_to))
         return 0;

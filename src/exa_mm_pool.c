@@ -66,15 +66,7 @@ static int TegraEXACreatePool(TegraPtr tegra, TegraPixmapPoolPtr *ret,
         return err;
     }
 
-    err = drm_tegra_bo_map(pool->bo, &pool->ptr);
-    if (err < 0) {
-        ErrorMsg("failed to map pool: %d\n", err);
-        drm_tegra_bo_unref(pool->bo);
-        free(pool);
-        return err;
-    }
-
-    err = mem_pool_init(&pool->pool, pool->ptr, size, bitmap_size);
+    err = mem_pool_init(&pool->pool, size, bitmap_size);
     if (err) {
         ErrorMsg("failed to initialize pools BO: %d\n", err);
         drm_tegra_bo_unref(pool->bo);
@@ -89,11 +81,62 @@ static int TegraEXACreatePool(TegraPtr tegra, TegraPixmapPoolPtr *ret,
     return 0;
 }
 
+static int TegraEXAPoolMap(TegraPixmapPoolPtr pool)
+{
+    void *ptr;
+    int err;
+
+    err = drm_tegra_bo_map(pool->bo, &ptr);
+    if (err < 0) {
+        ErrorMsg("failed to map pool: %d\n", err);
+        return err;
+    }
+
+    mem_pool_open_access(&pool->pool, ptr);
+
+    return 0;
+}
+
+static void TegraEXAPoolUnmap(TegraPixmapPoolPtr pool)
+{
+    int err = drm_tegra_bo_unmap(pool->bo);
+    if (err < 0)
+        ErrorMsg("failed to unmap pool: %d\n", err);
+
+    mem_pool_close_access(&pool->pool);
+}
+
+static void * TegraEXAPoolMapEntry(struct mem_pool_entry *pool_entry)
+{
+    TegraPixmapPoolPtr pool = TEGRA_CONTAINER_OF(pool_entry->pool,
+                                                 TegraPixmapPool, pool);
+    int err;
+
+    err = TegraEXAPoolMap(pool);
+    if (err)
+        return NULL;
+
+    return mem_pool_entry_addr(pool_entry);
+}
+
+static void TegraEXAPoolUnmapEntry(struct mem_pool_entry *pool_entry)
+{
+    TegraPixmapPoolPtr pool = TEGRA_CONTAINER_OF(pool_entry->pool,
+                                                 TegraPixmapPool, pool);
+    TegraEXAPoolUnmap(pool);
+}
+
 static void *TegraEXAPoolAlloc(TegraEXAPtr exa, TegraPixmapPoolPtr pool,
                                size_t size, struct mem_pool_entry *pool_entry,
                                Bool fast)
 {
-    void *data = mem_pool_alloc(&pool->pool, size, pool_entry, !fast);
+    void *data = mem_pool_alloc(&pool->pool, size, pool_entry, FALSE);
+
+    if (!data && !fast && mem_pool_has_space(&pool->pool, size)) {
+        TegraEXAPoolMap(pool);
+        data = mem_pool_alloc(&pool->pool, size, pool_entry, TRUE);
+        TegraEXAPoolUnmap(pool);
+    }
 
     if (data) {
         /* move successive pool to the head of the list */
@@ -146,8 +189,18 @@ again:
                 TEGRA_EXA_WAIT_AND_PUT_FENCE(pix->fence_read);
             }
 
+            if (mem_pool_full(&pool_to->pool))
+                continue;
+
+            TegraEXAPoolMap(pool_to);
+            TegraEXAPoolMap(pool_from);
+
             transferred = mem_pool_transfer_entries_fast(&pool_to->pool,
                                                          &pool_from->pool);
+
+            TegraEXAPoolUnmap(pool_from);
+            TegraEXAPoolUnmap(pool_to);
+
             if (!transferred)
                 continue;
 
@@ -189,7 +242,14 @@ static int TegraEXAShrinkPool(TegraPtr tegra, TegraPixmapPoolPtr shrink_pool,
         TEGRA_EXA_WAIT_AND_PUT_FENCE(pix->fence_read);
     }
 
+    TegraEXAPoolMap(new_pool);
+    TegraEXAPoolMap(shrink_pool);
+
     mem_pool_transfer_entries_fast(&new_pool->pool, &shrink_pool->pool);
+
+    TegraEXAPoolUnmap(shrink_pool);
+    TegraEXAPoolUnmap(new_pool);
+
     TegraEXADestroyPool(shrink_pool);
 
     xorg_list_append(&new_pool->entry, new_pools);
@@ -238,7 +298,13 @@ static int TegraEXAMergePools(TegraPtr tegra)
             continue;
 
         if (pool->pool.remain & TEGRA_EXA_PAGE_MASK) {
+            TegraEXAPoolMap(new_pool);
+            TegraEXAPoolMap(pool);
+
             mem_pool_transfer_entries_fast(&new_pool->pool, &pool->pool);
+
+            TegraEXAPoolUnmap(pool);
+            TegraEXAPoolUnmap(new_pool);
 
             if (mem_pool_empty(&pool->pool))
                 TegraEXADestroyPool(pool);
@@ -401,8 +467,17 @@ heavy_again:
         for (h = 0; h < TEGRA_ARRAY_SIZE(heavy_pools) && heavy_pools[h]; h++) {
             pool_to = heavy_pools[h];
 
+            if (mem_pool_full(&pool_to->pool))
+                continue;
+
+            TegraEXAPoolMap(pool_to);
+            TegraEXAPoolMap(pool_from);
+
             transferred += mem_pool_transfer_entries(&pool_to->pool,
                                                      &pool_from->pool);
+
+            TegraEXAPoolUnmap(pool_from);
+            TegraEXAPoolUnmap(pool_to);
         }
 
         /* destroy emptied pool */

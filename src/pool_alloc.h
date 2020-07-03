@@ -24,6 +24,8 @@
 #ifndef __TEGRA_MEM_POOL_H
 #define __TEGRA_MEM_POOL_H
 
+#include <assert.h>
+
 #ifdef DEBUG
 #define POOL_DEBUG
 #endif
@@ -46,12 +48,15 @@ struct mem_pool_entry {
 
 struct mem_pool {
     char *base;
+    char *vbase;
     int fragmented:1;
     int bitmap_full:1;
+    int access_refcount;
     unsigned long remain;
     unsigned long pool_size;
     unsigned long bitmap_size;
     unsigned long *bitmap;
+    unsigned long base_offset;
     struct __mem_pool_entry *entries;
 };
 
@@ -73,21 +78,6 @@ static inline int mem_pool_empty(struct mem_pool *pool)
     return pool->pool_size == pool->remain;
 }
 
-static inline void *mem_pool_entry_addr(struct mem_pool_entry *entry)
-{
-    struct mem_pool *pool = entry->pool;
-    unsigned int entry_id = entry->id;
-
-#ifdef POOL_DEBUG
-    mem_pool_check_entry(entry);
-#endif
-#ifdef POOL_DEBUG_CANARY
-    mem_pool_check_canary(&pool->entries[entry_id]);
-#endif
-
-    return pool->entries[entry_id].base;
-}
-
 static inline unsigned long mem_pool_entry_offset(struct mem_pool_entry *entry)
 {
     struct mem_pool *pool = entry->pool;
@@ -103,6 +93,13 @@ static inline unsigned long mem_pool_entry_offset(struct mem_pool_entry *entry)
     return pool->entries[entry_id].base - pool->base;
 }
 
+static inline void *mem_pool_entry_addr(struct mem_pool_entry *entry)
+{
+    struct mem_pool *pool = entry->pool;
+
+    return pool->vbase + mem_pool_entry_offset(entry);
+}
+
 int mem_pool_get_next_used_entry(struct mem_pool * restrict pool,
                                  unsigned int start);
 
@@ -112,5 +109,21 @@ int mem_pool_get_next_used_entry(struct mem_pool * restrict pool,
          ITR != -1;                                             \
          ITR = mem_pool_get_next_used_entry(POOL, ITR + 1),     \
          ENTRY = (POOL)->entries[ITR < 0 ? 0 : ITR].owner)
+
+static inline void mem_pool_open_access(struct mem_pool *pool, char *vbase)
+{
+    if (pool->access_refcount++)
+        assert(pool->vbase == vbase);
+
+    pool->vbase = vbase;
+}
+
+static inline void mem_pool_close_access(struct mem_pool *pool)
+{
+    if (pool->access_refcount-- == 1)
+        pool->vbase = NULL;
+
+    assert(pool->access_refcount >= 0);
+}
 
 #endif

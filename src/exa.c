@@ -176,7 +176,7 @@ static Bool TegraEXAPrepareCPUAccess(PixmapPtr pPix, int idx, void **ptr)
     }
 
     if (priv->type == TEGRA_EXA_PIXMAP_TYPE_POOL) {
-        *ptr = mem_pool_entry_addr(&priv->pool_entry);
+        *ptr = TegraEXAPoolMapEntry(&priv->pool_entry);
         PROFILE_START(cpu_access);
         return TRUE;
     }
@@ -217,6 +217,9 @@ void TegraEXAFinishCPUAccess(PixmapPtr pPix, int idx)
         if (err < 0)
             ErrorMsg("failed to unmap buffer object: %d\n", err);
     }
+
+    if (priv->type == TEGRA_EXA_PIXMAP_TYPE_POOL)
+        TegraEXAPoolUnmapEntry(&priv->pool_entry);
 
     TegraEXACoolPixmap(pPix, TRUE);
 

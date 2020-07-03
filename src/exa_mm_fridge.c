@@ -151,7 +151,7 @@ static void * TegraEXAFridgeMapPixmap(TegraPixmapPtr pixmap)
         TEGRA_EXA_WAIT_AND_PUT_FENCE(pixmap->fence_write);
 
     if (pixmap->type == TEGRA_EXA_PIXMAP_TYPE_POOL)
-        return mem_pool_entry_addr(&pixmap->pool_entry);
+        return TegraEXAPoolMapEntry(&pixmap->pool_entry);
 
     if (pixmap->type == TEGRA_EXA_PIXMAP_TYPE_BO) {
         err = drm_tegra_bo_map(pixmap->bo, &data_ptr);
@@ -175,6 +175,9 @@ static void TegraEXAFridgeUnMapPixmap(TegraPixmapPtr pixmap)
         if (err < 0)
             ErrorMsg("FATAL: failed to unmap buffer object: %d\n", err);
     }
+
+    if (pixmap->type == TEGRA_EXA_PIXMAP_TYPE_POOL)
+        TegraEXAPoolUnmapEntry(&pixmap->pool_entry);
 }
 
 static void TegraEXAFridgeReleaseUncompressedData(TegraEXAPtr exa,
@@ -190,6 +193,7 @@ static void TegraEXAFridgeReleaseUncompressedData(TegraEXAPtr exa,
         break;
 
     case TEGRA_EXA_PIXMAP_TYPE_POOL:
+        TegraEXAPoolUnmapEntry(&pixmap->pool_entry);
         TegraEXAPoolFree(&pixmap->pool_entry);
         break;
 

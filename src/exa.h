@@ -209,7 +209,6 @@ typedef struct {
     struct drm_tegra_bo *bo;
     struct xorg_list entry;
     struct mem_pool pool;
-    void *ptr;
     Bool heavy : 1;
     Bool light : 1;
     Bool persitent : 1;
