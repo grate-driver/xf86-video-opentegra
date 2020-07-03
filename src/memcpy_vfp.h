@@ -100,6 +100,6 @@ tegra_memcpy_vfp_aligned_src_cached(char *dst, const char *src, int size)
     tegra_copy_block_vfp_arm(dst, src, size);
 }
 
-#define tegra_memmove_vfp_aligned(d,s,z)    tegra_memcpy_vfp_aligned(d,s,z)
+#define tegra_memmove_vfp_aligned       tegra_memcpy_vfp_aligned
 
 #endif

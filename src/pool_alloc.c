@@ -309,9 +309,10 @@ static void migrate_entry(struct mem_pool *pool_from,
 #endif
     move_entry(pool_from, pool_to, from, to);
     if (new_base != pool_to->entries[to].base) {
-        tegra_memmove_vfp_aligned(new_base,
+        tegra_memcpy_vfp_threaded(new_base,
                                   pool_to->entries[to].base,
-                                  pool_to->entries[to].size);
+                                  pool_to->entries[to].size,
+                                  tegra_memmove_vfp_aligned);
         mem_pool_clear_canary(&pool_to->entries[to]);
         pool_to->entries[to].base = new_base;
     }
