@@ -32,6 +32,20 @@
 #define TEGRA_EXA_POOL_SIZE_MAX         (TEGRA_EXA_POOL_SIZE * 3 / 2)
 #define TEGRA_EXA_POOL_SIZE_MERGED_MAX  (1 * 1024 * 1024)
 
+static void TegraEXAFencePoolEntries(TegraPixmapPoolPtr pool)
+{
+    struct mem_pool_entry *pool_entry;
+    int pool_itr;
+
+    MEM_POOL_FOR_EACH_ENTRY(&pool->pool, pool_entry, pool_itr) {
+        TegraPixmapPtr pix = TEGRA_CONTAINER_OF(pool_entry, TegraPixmapRec,
+                                                pool_entry);
+
+        TEGRA_EXA_WAIT_AND_PUT_FENCE(pix->fence_write);
+        TEGRA_EXA_WAIT_AND_PUT_FENCE(pix->fence_read);
+    }
+}
+
 static void TegraEXADestroyPool(TegraPixmapPoolPtr pool)
 {
     mem_pool_destroy(&pool->pool);
@@ -150,10 +164,8 @@ static void *TegraEXAPoolAlloc(TegraEXAPtr exa, TegraPixmapPoolPtr pool,
 static TegraPixmapPoolPtr TegraEXACompactPoolsFast(TegraEXAPtr exa, size_t size)
 {
     TegraPixmapPoolPtr pool_to, pool_from = NULL;
-    struct mem_pool_entry *pool_entry;
     unsigned int transferred;
     unsigned int pass = 3;
-    int pool_itr;
 
 again:
     xorg_list_for_each_entry(pool_to, &exa->mem_pools, entry) {
@@ -182,18 +194,13 @@ again:
             if (pool_from->light)
                 continue;
 
-            MEM_POOL_FOR_EACH_ENTRY(&pool_from->pool, pool_entry, pool_itr) {
-                TegraPixmapPtr pix = TEGRA_CONTAINER_OF(pool_entry, TegraPixmapRec,
-                                                        pool_entry);
-                TEGRA_EXA_WAIT_AND_PUT_FENCE(pix->fence_write);
-                TEGRA_EXA_WAIT_AND_PUT_FENCE(pix->fence_read);
-            }
-
             if (mem_pool_full(&pool_to->pool))
                 continue;
 
             TegraEXAPoolMap(pool_to);
             TegraEXAPoolMap(pool_from);
+
+            TegraEXAFencePoolEntries(pool_from);
 
             transferred = mem_pool_transfer_entries_fast(&pool_to->pool,
                                                          &pool_from->pool);
@@ -218,10 +225,8 @@ again:
 static int TegraEXAShrinkPool(TegraPtr tegra, TegraPixmapPoolPtr shrink_pool,
                               struct xorg_list *new_pools)
 {
-    struct mem_pool_entry *pool_entry;
     TegraPixmapPoolPtr new_pool;
     unsigned long size;
-    int pool_itr;
     int err;
 
     if (shrink_pool->pool.remain < TEGRA_EXA_PAGE_SIZE)
@@ -235,15 +240,10 @@ static int TegraEXAShrinkPool(TegraPtr tegra, TegraPixmapPoolPtr shrink_pool,
     if (err)
         return err;
 
-    MEM_POOL_FOR_EACH_ENTRY(&shrink_pool->pool, pool_entry, pool_itr) {
-        TegraPixmapPtr pix = TEGRA_CONTAINER_OF(pool_entry, TegraPixmapRec,
-                                                pool_entry);
-        TEGRA_EXA_WAIT_AND_PUT_FENCE(pix->fence_write);
-        TEGRA_EXA_WAIT_AND_PUT_FENCE(pix->fence_read);
-    }
-
     TegraEXAPoolMap(new_pool);
     TegraEXAPoolMap(shrink_pool);
+
+    TegraEXAFencePoolEntries(shrink_pool);
 
     mem_pool_transfer_entries_fast(&new_pool->pool, &shrink_pool->pool);
 
@@ -300,6 +300,8 @@ static int TegraEXAMergePools(TegraPtr tegra)
         if (pool->pool.remain & TEGRA_EXA_PAGE_MASK) {
             TegraEXAPoolMap(new_pool);
             TegraEXAPoolMap(pool);
+
+            TegraEXAFencePoolEntries(pool);
 
             mem_pool_transfer_entries_fast(&new_pool->pool, &pool->pool);
 
@@ -472,6 +474,9 @@ heavy_again:
 
             TegraEXAPoolMap(pool_to);
             TegraEXAPoolMap(pool_from);
+
+            TegraEXAFencePoolEntries(pool_to);
+            TegraEXAFencePoolEntries(pool_from);
 
             transferred += mem_pool_transfer_entries(&pool_to->pool,
                                                      &pool_from->pool);
