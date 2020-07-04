@@ -165,6 +165,10 @@ int drm_tegra_job_push_reloc_v2(struct drm_tegra_job_v2 *job,
 		if (job->bo_table[i].handle == target->handle) {
 			if (drm_bo_table_flags & DRM_TEGRA_BO_TABLE_WRITE)
 				job->bo_table[i].flags |= DRM_TEGRA_BO_TABLE_WRITE;
+
+			if (!(drm_bo_table_flags & DRM_TEGRA_BO_TABLE_EXPLICIT_FENCE))
+				job->bo_table[i].flags &= ~DRM_TEGRA_BO_TABLE_EXPLICIT_FENCE;
+
 			break;
 		}
 	}
