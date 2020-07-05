@@ -620,7 +620,7 @@ static struct tegra_fence * TegraGR3DStateSubmit(TegraGR3DStatePtr state)
      */
     tegra_stream_end(state->cmds);
 
-    explicit_fence = exa_helper_get_explicit_fence(FALSE,
+    explicit_fence = exa_helper_get_explicit_fence(TEGRA_2D,
                                                    state->new.dst.pPix, 2,
                                                    state->new.src.pPix,
                                                    state->new.mask.pPix);
@@ -633,7 +633,7 @@ static struct tegra_fence * TegraGR3DStateSubmit(TegraGR3DStatePtr state)
         tegra_stream_flush(state->cmds, explicit_fence);
         PROFILE_STOP(gr3d);
     } else {
-        fence = tegra_stream_submit(state->cmds, false, explicit_fence);
+        fence = tegra_stream_submit(TEGRA_3D, state->cmds, explicit_fence);
     }
 
     TEGRA_FENCE_PUT(explicit_fence);

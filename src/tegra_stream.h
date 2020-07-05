@@ -60,7 +60,7 @@ struct tegra_reloc {
 
 struct tegra_stream {
     enum tegra_stream_status status;
-    struct tegra_fence *last_fence;
+    struct tegra_fence *last_fence[TEGRA_ENGINES_NUM];
     bool op_done_synced;
     uint64_t fence_seqno;
     uint32_t **buf_ptr;
@@ -73,7 +73,8 @@ struct tegra_stream {
     int (*cleanup)(struct tegra_stream *stream);
     int (*flush)(struct tegra_stream *stream,
                  struct tegra_fence *explicit_fence);
-    struct tegra_fence * (*submit)(struct tegra_stream *stream, bool gr2d,
+    struct tegra_fence * (*submit)(enum host1x_engine engine,
+                                   struct tegra_stream *stream,
                                    struct tegra_fence *explicit_fence);
     int (*push_reloc)(struct tegra_stream *stream,
                       struct drm_tegra_bo *bo,
@@ -166,19 +167,35 @@ static inline int tegra_stream_flush(struct tegra_stream *stream,
 static inline struct tegra_fence *
 tegra_stream_get_last_fence(struct tegra_stream *stream)
 {
-    if (stream->last_fence)
-        return TEGRA_FENCE_GET(stream->last_fence, stream->last_fence->opaque);
+    struct tegra_fence *last_fence;
+
+    if (!stream->last_fence[TEGRA_2D]) {
+        last_fence = stream->last_fence[TEGRA_3D];
+    } else if (!stream->last_fence[TEGRA_3D]) {
+        last_fence = stream->last_fence[TEGRA_2D];
+    } else {
+        if (stream->last_fence[TEGRA_2D]->seqno >
+            stream->last_fence[TEGRA_3D]->seqno)
+                last_fence = stream->last_fence[TEGRA_2D];
+            else
+                last_fence = stream->last_fence[TEGRA_3D];
+    }
+
+    TEGRA_FENCE_DEBUG_MSG(last_fence, "get_last");
+
+    if (last_fence)
+        return TEGRA_FENCE_GET(last_fence, last_fence->opaque);
 
     return NULL;
 }
-#define TEGRA_STREAM_GET_LAST_FENCE(STREAM)                     \
-({                                                              \
-    TEGRA_FENCE_DEBUG_MSG(STREAM->last_fence, "get_last");      \
-    tegra_stream_get_last_fence(STREAM);                        \
+#define TEGRA_STREAM_GET_LAST_FENCE(STREAM)                 \
+({                                                          \
+    tegra_stream_get_last_fence(STREAM);                    \
 })
 
 static inline struct tegra_fence *
-tegra_stream_submit(struct tegra_stream *stream, bool gr2d,
+tegra_stream_submit(enum host1x_engine engine,
+                    struct tegra_stream *stream,
                     struct tegra_fence *explicit_fence)
 {
     struct tegra_fence *f;
@@ -188,7 +205,7 @@ tegra_stream_submit(struct tegra_stream *stream, bool gr2d,
 
     tegra_fence_validate(explicit_fence);
 
-    f = stream->submit(stream, gr2d, explicit_fence);
+    f = stream->submit(engine, stream, explicit_fence);
     if (f) {
         TEGRA_FENCE_DEBUG_MSG(f, "submit");
         f->seqno = stream->fence_seqno++;

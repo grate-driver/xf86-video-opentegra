@@ -1239,7 +1239,7 @@ static Bool TegraVideoCopyRotatedPlane(TegraVideoPtr priv,
 
     tegra_stream_end(priv->cmds);
 
-    fence = tegra_stream_submit(priv->cmds, true, NULL);
+    fence = tegra_stream_submit(TEGRA_2D, priv->cmds, NULL);
     if (!fence)
         return FALSE;
 

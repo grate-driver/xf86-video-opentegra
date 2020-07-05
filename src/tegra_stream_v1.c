@@ -78,8 +78,12 @@ static void tegra_stream_destroy_v1(struct tegra_stream *base_stream)
         TEGRA_FENCE_FINISH(&f->base);
     }
 
-    TEGRA_FENCE_WAIT(stream->base.last_fence);
-    TEGRA_FENCE_PUT(stream->base.last_fence);
+    TEGRA_FENCE_WAIT(stream->base.last_fence[TEGRA_2D]);
+    TEGRA_FENCE_PUT(stream->base.last_fence[TEGRA_2D]);
+
+    TEGRA_FENCE_WAIT(stream->base.last_fence[TEGRA_3D]);
+    TEGRA_FENCE_PUT(stream->base.last_fence[TEGRA_3D]);
+
     drm_tegra_job_free(stream->job);
     free(stream);
 }
@@ -103,9 +107,13 @@ static int tegra_stream_flush_v1(struct tegra_stream *base_stream,
     struct drm_tegra_fence *fence;
     int ret;
 
-    TEGRA_FENCE_WAIT(stream->base.last_fence);
-    TEGRA_FENCE_PUT(stream->base.last_fence);
-    stream->base.last_fence = NULL;
+    TEGRA_FENCE_WAIT(stream->base.last_fence[TEGRA_2D]);
+    TEGRA_FENCE_PUT(stream->base.last_fence[TEGRA_2D]);
+    stream->base.last_fence[TEGRA_2D] = NULL;
+
+    TEGRA_FENCE_WAIT(stream->base.last_fence[TEGRA_3D]);
+    TEGRA_FENCE_PUT(stream->base.last_fence[TEGRA_3D]);
+    stream->base.last_fence[TEGRA_3D] = NULL;
 
     /* reflushing is fine */
     if (stream->base.status == TEGRADRM_STREAM_FREE)
@@ -136,7 +144,8 @@ cleanup:
 }
 
 static struct tegra_fence *
-tegra_stream_submit_v1(struct tegra_stream *base_stream, bool gr2d,
+tegra_stream_submit_v1(enum host1x_engine engine,
+                       struct tegra_stream *base_stream,
                        struct tegra_fence *explicit_fence)
 {
     struct tegra_stream_v1 *stream = to_stream_v1(base_stream);
@@ -144,7 +153,7 @@ tegra_stream_submit_v1(struct tegra_stream *base_stream, bool gr2d,
     struct tegra_fence *f;
     int ret;
 
-    f = stream->base.last_fence;
+    f = stream->base.last_fence[engine];
 
     /* resubmitting is fine */
     if (stream->base.status == TEGRADRM_STREAM_FREE)
@@ -159,9 +168,9 @@ tegra_stream_submit_v1(struct tegra_stream *base_stream, bool gr2d,
     ret = drm_tegra_job_submit(stream->job, &fence);
     if (ret) {
         ErrorMsg("drm_tegra_job_submit() failed %d\n", ret);
-        TEGRA_FENCE_WAIT(stream->base.last_fence);
-        TEGRA_FENCE_PUT(stream->base.last_fence);
-        stream->base.last_fence = f = NULL;
+        TEGRA_FENCE_WAIT(stream->base.last_fence[engine]);
+        TEGRA_FENCE_PUT(stream->base.last_fence[engine]);
+        stream->base.last_fence[engine] = f = NULL;
         ret = -1;
     } else {
         struct tegra_fence_v1 *f_v1, *tmp_v1;
@@ -169,10 +178,10 @@ tegra_stream_submit_v1(struct tegra_stream *base_stream, bool gr2d,
         xorg_list_for_each_entry_safe(f_v1, tmp_v1, &stream->held_fences, entry)
             TEGRA_FENCE_FINISH(&f_v1->base);
 
-        f = tegra_stream_create_fence_v1(stream, fence, gr2d);
+        f = tegra_stream_create_fence_v1(stream, fence, engine == TEGRA_2D);
         if (f) {
-            TEGRA_FENCE_PUT(stream->base.last_fence);
-            stream->base.last_fence = f;
+            TEGRA_FENCE_PUT(stream->base.last_fence[engine]);
+            stream->base.last_fence[engine] = f;
             goto done;
         } else {
             ret = drm_tegra_fence_wait_timeout(fence, 1000);

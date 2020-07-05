@@ -147,7 +147,8 @@ static void * TegraEXAFridgeMapPixmap(TegraPixmapPtr pixmap)
     if (pixmap->type == TEGRA_EXA_PIXMAP_TYPE_FALLBACK)
         return pixmap->fallback;
 
-    TEGRA_EXA_WAIT_AND_PUT_FENCE(pixmap->fence_write);
+    TEGRA_EXA_WAIT_AND_PUT_FENCE(pixmap->fence_write[TEGRA_2D]);
+    TEGRA_EXA_WAIT_AND_PUT_FENCE(pixmap->fence_write[TEGRA_3D]);
 
     if (pixmap->type == TEGRA_EXA_PIXMAP_TYPE_POOL)
         return TegraEXAPoolMapEntry(&pixmap->pool_entry);
@@ -229,8 +230,10 @@ static void TegraEXAResurrectAccelPixmap(TegraPtr tegra, TegraPixmapPtr pixmap)
            TegraEXAAllocateDRM(tegra, pixmap, data_size));
 
     if (ret == TRUE) {
-        pixmap->fence_write = NULL;
-        pixmap->fence_read  = NULL;
+        pixmap->fence_write[TEGRA_2D] = NULL;
+        pixmap->fence_write[TEGRA_3D] = NULL;
+        pixmap->fence_read[TEGRA_2D]  = NULL;
+        pixmap->fence_read[TEGRA_3D]  = NULL;
         pixmap_data = TegraEXAFridgeMapPixmap(pixmap);
 
         if (!pixmap_data) {
@@ -541,8 +544,10 @@ static void TegraEXAThawPixmapData(TegraPtr tegra, TegraPixmapPtr pixmap,
     carg.format             = pixmap->compression_fmt;
 
     data_size = TegraPixmapSize(pixmap);
-    pixmap->fence_write = NULL;
-    pixmap->fence_read  = NULL;
+    pixmap->fence_write[TEGRA_2D] = NULL;
+    pixmap->fence_write[TEGRA_3D] = NULL;
+    pixmap->fence_read[TEGRA_2D]  = NULL;
+    pixmap->fence_read[TEGRA_3D]  = NULL;
 
 retry:
     if (accel || pixmap->accelerated)
@@ -622,7 +627,8 @@ static int TegraEXAFreezePixmap(TegraPtr tegra, TegraPixmapPtr pixmap)
         return -1;
     }
 
-    TEGRA_EXA_WAIT_AND_PUT_FENCE(pixmap->fence_read);
+    TEGRA_EXA_WAIT_AND_PUT_FENCE(pixmap->fence_read[TEGRA_2D]);
+    TEGRA_EXA_WAIT_AND_PUT_FENCE(pixmap->fence_read[TEGRA_3D]);
 
     carg = TegraEXASelectCompression(tegra, pixmap, data_size, pixmap_data);
     err = TegraEXACompressPixmap(exa, pixmap, &carg);

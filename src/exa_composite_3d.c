@@ -872,7 +872,7 @@ static void TegraEXADoneComposite3D(PixmapPtr pDst)
     struct tegra_fence *fence = NULL;
 
     if (tegra->scratch.ops && tegra->cmds->status == TEGRADRM_STREAM_CONSTRUCT) {
-        exa_helper_wait_pixmaps(FALSE, pDst, 2,
+        exa_helper_wait_pixmaps(TEGRA_2D, pDst, 2,
                                 tegra->scratch.pSrc,
                                 tegra->scratch.pMask);
 
@@ -889,7 +889,8 @@ static void TegraEXADoneComposite3D(PixmapPtr pDst)
          *
          *      See TegraGR3D_DrawPrimitives() in gr3d.c
          */
-        exa_helper_replace_pixmaps_fence(fence, &tegra->scratch, pDst, 2,
+        exa_helper_replace_pixmaps_fence(TEGRA_3D, fence, &tegra->scratch,
+                                         pDst, 2,
                                          tegra->scratch.pSrc,
                                          tegra->scratch.pMask);
     } else {

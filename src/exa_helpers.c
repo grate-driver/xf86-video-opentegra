@@ -195,14 +195,8 @@ exa_helper_degenerate(struct tegra_box *b)
     return (b->x0 >= b->x1 || b->y0 >= b->y1);
 }
 
-#define WAIT_FENCE(FENCE, GR2D)                 \
-{                                               \
-    if (FENCE && FENCE->gr2d != GR2D)           \
-        TEGRA_EXA_WAIT_AND_PUT_FENCE(FENCE);    \
-}
-
 static void
-exa_helper_wait_pixmaps(Bool dst_gr2d, PixmapPtr dst_pix,
+exa_helper_wait_pixmaps(enum host1x_engine engine, PixmapPtr dst_pix,
                         int num_src_pixmaps, ...)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(dst_pix->drawable.pScreen);
@@ -223,18 +217,20 @@ exa_helper_wait_pixmaps(Bool dst_gr2d, PixmapPtr dst_pix,
             continue;
 
         priv = exaGetPixmapDriverPrivate(pix_arg);
-        WAIT_FENCE(priv->fence_write, dst_gr2d);
+        TEGRA_EXA_WAIT_AND_PUT_FENCE(priv->fence_write[engine]);
     }
     va_end(ap);
 
     priv = exaGetPixmapDriverPrivate(dst_pix);
-    WAIT_FENCE(priv->fence_write, dst_gr2d);
-    WAIT_FENCE(priv->fence_read, dst_gr2d);
+    TEGRA_EXA_WAIT_AND_PUT_FENCE(priv->fence_write[engine]);
+    TEGRA_EXA_WAIT_AND_PUT_FENCE(priv->fence_read[engine]);
 }
 
 static void
-exa_helper_replace_pixmaps_fence(struct tegra_fence *fence, void *opaque,
-                                 PixmapPtr dst_pix, int num_src_pixmaps, ...)
+exa_helper_replace_pixmaps_fence(enum host1x_engine engine,
+                                 struct tegra_fence *fence,
+                                 void *opaque, PixmapPtr dst_pix,
+                                 int num_src_pixmaps, ...)
 {
     TegraPixmapPtr priv;
     PixmapPtr pix_arg;
@@ -242,9 +238,9 @@ exa_helper_replace_pixmaps_fence(struct tegra_fence *fence, void *opaque,
 
     priv = exaGetPixmapDriverPrivate(dst_pix);
 
-    if (priv->fence_write != fence) {
-        TEGRA_FENCE_PUT(priv->fence_write);
-        priv->fence_write = TEGRA_FENCE_GET(fence, opaque);
+    if (priv->fence_write[engine] != fence) {
+        TEGRA_FENCE_PUT(priv->fence_write[engine]);
+        priv->fence_write[engine] = TEGRA_FENCE_GET(fence, opaque);
     }
 
     va_start(ap, num_src_pixmaps);
@@ -255,17 +251,17 @@ exa_helper_replace_pixmaps_fence(struct tegra_fence *fence, void *opaque,
 
         priv = exaGetPixmapDriverPrivate(pix_arg);
 
-        if (priv->fence_read != fence) {
-            TEGRA_FENCE_PUT(priv->fence_read);
-            priv->fence_read = TEGRA_FENCE_GET(fence, opaque);
+        if (priv->fence_read[engine] != fence) {
+            TEGRA_FENCE_PUT(priv->fence_read[engine]);
+            priv->fence_read[engine] = TEGRA_FENCE_GET(fence, opaque);
         }
     }
     va_end(ap);
 }
 
-#define SWAP_EXPLICIT_FENCE(EXPLICIT_FENCE, FENCE, GR2D, LAST_SEQNO)    \
+#define SWAP_EXPLICIT_FENCE(EXPLICIT_FENCE, FENCE, LAST_SEQNO)          \
 {                                                                       \
-    if (FENCE && FENCE->gr2d != GR2D && FENCE->seqno >= LAST_SEQNO) {   \
+    if (FENCE && FENCE->seqno >= LAST_SEQNO) {                          \
         TEGRA_FENCE_PUT(EXPLICIT_FENCE);                                \
         EXPLICIT_FENCE = TEGRA_FENCE_GET(FENCE, NULL);                  \
         LAST_SEQNO = EXPLICIT_FENCE->seqno;                             \
@@ -282,7 +278,7 @@ exa_helper_replace_pixmaps_fence(struct tegra_fence *fence, void *opaque,
  * The returned explicit shall be put once done with it.
  */
 static struct tegra_fence *
-exa_helper_get_explicit_fence(Bool dst_gr2d, PixmapPtr dst_pix,
+exa_helper_get_explicit_fence(enum host1x_engine engine, PixmapPtr dst_pix,
                               int num_src_pixmaps, ...)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(dst_pix->drawable.pScreen);
@@ -311,18 +307,15 @@ exa_helper_get_explicit_fence(Bool dst_gr2d, PixmapPtr dst_pix,
 
         priv = exaGetPixmapDriverPrivate(pix_arg);
 
-        SWAP_EXPLICIT_FENCE(explicit_fence, priv->fence_write,
-                            dst_gr2d, last_seqno);
+        SWAP_EXPLICIT_FENCE(explicit_fence, priv->fence_write[engine],
+                            last_seqno);
     }
     va_end(ap);
 
     priv = exaGetPixmapDriverPrivate(dst_pix);
 
-    SWAP_EXPLICIT_FENCE(explicit_fence, priv->fence_write,
-                        dst_gr2d, last_seqno);
-
-    SWAP_EXPLICIT_FENCE(explicit_fence, priv->fence_read,
-                        dst_gr2d, last_seqno);
+    SWAP_EXPLICIT_FENCE(explicit_fence, priv->fence_write[engine], last_seqno);
+    SWAP_EXPLICIT_FENCE(explicit_fence, priv->fence_read[engine],  last_seqno);
 
     return explicit_fence;
 }

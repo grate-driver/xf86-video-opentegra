@@ -41,8 +41,11 @@ static void TegraEXAFencePoolEntries(TegraPixmapPoolPtr pool)
         TegraPixmapPtr pix = TEGRA_CONTAINER_OF(pool_entry, TegraPixmapRec,
                                                 pool_entry);
 
-        TEGRA_EXA_WAIT_AND_PUT_FENCE(pix->fence_write);
-        TEGRA_EXA_WAIT_AND_PUT_FENCE(pix->fence_read);
+        TEGRA_EXA_WAIT_AND_PUT_FENCE(pix->fence_write[TEGRA_2D]);
+        TEGRA_EXA_WAIT_AND_PUT_FENCE(pix->fence_read[TEGRA_2D]);
+
+        TEGRA_EXA_WAIT_AND_PUT_FENCE(pix->fence_write[TEGRA_3D]);
+        TEGRA_EXA_WAIT_AND_PUT_FENCE(pix->fence_read[TEGRA_3D]);
     }
 }
 

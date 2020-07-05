@@ -164,7 +164,8 @@ static Bool TegraEXAPrepareCPUAccess(PixmapPtr pPix, int idx, void **ptr)
     default:
     case EXA_PREPARE_DEST:
     case EXA_PREPARE_AUX_DEST:
-        TEGRA_EXA_WAIT_AND_PUT_FENCE(priv->fence_read);
+        TEGRA_EXA_WAIT_AND_PUT_FENCE(priv->fence_read[TEGRA_2D]);
+        TEGRA_EXA_WAIT_AND_PUT_FENCE(priv->fence_read[TEGRA_3D]);
 
         /* fall through */
     case EXA_PREPARE_SRC:
@@ -172,7 +173,8 @@ static Bool TegraEXAPrepareCPUAccess(PixmapPtr pPix, int idx, void **ptr)
     case EXA_PREPARE_AUX_SRC:
     case EXA_PREPARE_AUX_MASK:
     case EXA_NUM_PREPARE_INDICES:
-        TEGRA_EXA_WAIT_AND_PUT_FENCE(priv->fence_write);
+        TEGRA_EXA_WAIT_AND_PUT_FENCE(priv->fence_write[TEGRA_2D]);
+        TEGRA_EXA_WAIT_AND_PUT_FENCE(priv->fence_write[TEGRA_3D]);
     }
 
     if (priv->type == TEGRA_EXA_PIXMAP_TYPE_POOL) {
@@ -312,21 +314,18 @@ static void TegraEXAReleasePixmapData(TegraPtr tegra, TegraPixmapPtr priv)
      * this will be resolved by BO reservation that right now isn't supported
      * by vanilla upstream kernel driver.
      */
-    if (priv->fence_read) {
-        if (force_fencing || drm_ver < GRATE_KERNEL_DRM_VERSION)
-            TegraEXAWaitFence(priv->fence_read);
-
-        TEGRA_FENCE_PUT(priv->fence_read);
-        priv->fence_read = NULL;
+#define RELEASE_FENCE(F, FORCE, DRM_VER)                    \
+    if (F) {                                                \
+        if (FORCE || DRM_VER < GRATE_KERNEL_DRM_VERSION)    \
+            TegraEXAWaitFence(F);                           \
+        TEGRA_FENCE_PUT(F);                                 \
+        F = NULL;                                           \
     }
 
-    if (priv->fence_write) {
-        if (force_fencing || drm_ver < GRATE_KERNEL_DRM_VERSION)
-            TegraEXAWaitFence(priv->fence_write);
-
-        TEGRA_FENCE_PUT(priv->fence_write);
-        priv->fence_write = NULL;
-    }
+    RELEASE_FENCE(priv->fence_read[TEGRA_2D],  force_fencing, drm_ver);
+    RELEASE_FENCE(priv->fence_read[TEGRA_3D],  force_fencing, drm_ver);
+    RELEASE_FENCE(priv->fence_write[TEGRA_2D], force_fencing, drm_ver);
+    RELEASE_FENCE(priv->fence_write[TEGRA_3D], force_fencing, drm_ver);
 
     if (priv->type == TEGRA_EXA_PIXMAP_TYPE_POOL) {
         TegraEXAPoolFree(&priv->pool_entry);

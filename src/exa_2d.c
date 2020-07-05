@@ -184,21 +184,23 @@ static void TegraEXADoneSolid(PixmapPtr pPixmap)
     if (tegra->scratch.ops && tegra->cmds->status == TEGRADRM_STREAM_CONSTRUCT) {
         tegra_stream_end(tegra->cmds);
 
-        exa_helper_wait_pixmaps(TRUE, pPixmap, 0);
+        exa_helper_wait_pixmaps(TEGRA_3D, pPixmap, 0);
 
-        explicit_fence = exa_helper_get_explicit_fence(TRUE, pPixmap, 0);
+        explicit_fence = exa_helper_get_explicit_fence(TEGRA_3D, pPixmap, 0);
 
         if (PROFILE || tegra->has_iommu_bug) {
                 PROFILE_START(solid);
                 tegra_stream_flush(tegra->cmds, explicit_fence);
                 PROFILE_STOP(solid);
         } else {
-                fence = tegra_stream_submit(tegra->cmds, true, explicit_fence);
+                fence = tegra_stream_submit(TEGRA_2D, tegra->cmds,
+                                            explicit_fence);
         }
 
         TEGRA_FENCE_PUT(explicit_fence);
 
-        exa_helper_replace_pixmaps_fence(fence, &tegra->scratch, pPixmap, 0);
+        exa_helper_replace_pixmaps_fence(TEGRA_2D, fence, &tegra->scratch,
+                                         pPixmap, 0);
     } else {
         tegra_stream_cleanup(tegra->cmds);
     }
@@ -549,9 +551,9 @@ static void TegraEXADoneCopy(PixmapPtr pDstPixmap)
     if (tegra->scratch.ops && tegra->cmds->status == TEGRADRM_STREAM_CONSTRUCT) {
         tegra_stream_end(tegra->cmds);
 
-        exa_helper_wait_pixmaps(TRUE, pDstPixmap, 1, tegra->scratch.pSrc);
+        exa_helper_wait_pixmaps(TEGRA_3D, pDstPixmap, 1, tegra->scratch.pSrc);
 
-        explicit_fence = exa_helper_get_explicit_fence(TRUE, pDstPixmap, 1,
+        explicit_fence = exa_helper_get_explicit_fence(TEGRA_3D, pDstPixmap, 1,
                                                        tegra->scratch.pSrc);
 
         if (PROFILE || tegra->has_iommu_bug) {
@@ -559,13 +561,14 @@ static void TegraEXADoneCopy(PixmapPtr pDstPixmap)
                 tegra_stream_flush(tegra->cmds, explicit_fence);
                 PROFILE_STOP(copy);
         } else {
-                fence = tegra_stream_submit(tegra->cmds, true, explicit_fence);
+                fence = tegra_stream_submit(TEGRA_2D, tegra->cmds,
+                                            explicit_fence);
         }
 
         TEGRA_FENCE_PUT(explicit_fence);
 
-        exa_helper_replace_pixmaps_fence(fence, &tegra->scratch, pDstPixmap, 1,
-                                         tegra->scratch.pSrc);
+        exa_helper_replace_pixmaps_fence(TEGRA_2D, fence, &tegra->scratch,
+                                         pDstPixmap, 1, tegra->scratch.pSrc);
     } else {
         tegra_stream_cleanup(tegra->cmds);
     }

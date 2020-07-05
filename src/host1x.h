@@ -25,6 +25,12 @@
 #ifndef HOST1X_H
 #define HOST1X_H
 
+enum host1x_engine {
+    TEGRA_2D,
+    TEGRA_3D,
+    TEGRA_ENGINES_NUM,
+};
+
 #define HOST1X_OPCODE_SETCL(offset, classid, mask) \
     ((0x0 << 28) | (((offset) & 0xfff) << 16) | (((classid) & 0x3ff) << 6) | ((mask) & 0x3f))
 #define HOST1X_OPCODE_INCR(offset, count) \

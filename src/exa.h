@@ -273,8 +273,8 @@ typedef struct tegra_pixmap {
         struct {
             union {
                 struct {
-                    struct tegra_fence *fence_write;
-                    struct tegra_fence *fence_read;
+                    struct tegra_fence *fence_write[TEGRA_ENGINES_NUM];
+                    struct tegra_fence *fence_read[TEGRA_ENGINES_NUM];
 
                     union {
                         struct mem_pool_entry pool_entry;
