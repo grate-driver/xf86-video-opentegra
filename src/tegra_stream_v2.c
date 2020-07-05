@@ -45,6 +45,13 @@ struct tegra_stream_v2 {
     struct drm_tegra_job_v2 *job;
 };
 
+static uint64_t gettime_ns(void)
+{
+    struct timespec current;
+    clock_gettime(CLOCK_MONOTONIC, &current);
+    return (uint64_t)current.tv_sec * 1000000000ull + current.tv_nsec;
+}
+
 static struct tegra_fence *
 tegra_stream_create_fence_v2(struct tegra_stream_v2 *stream, bool gr2d);
 
@@ -159,6 +166,15 @@ tegra_stream_submit_v2(struct tegra_stream *base_stream, bool gr2d,
     else
         syncobj_handle_in = 0;
 
+    if (syncobj_handle_in) {
+        ret = drmSyncobjWait(stream->drm_fd, &syncobj_handle_in, 1,
+                             gettime_ns() + 1000000000,
+                             DRM_SYNCOBJ_WAIT_FLAGS_WAIT_FOR_SUBMIT,
+                             NULL);
+        if (ret)
+            ErrorMsg("drmSyncobjWait(WAIT_FOR_SUBMIT) failed %d\n", ret);
+    }
+
     ret = drm_tegra_job_submit_v2(stream->job,
                                   syncobj_handle_in,
                                   to_fence_v2(f)->syncobj_handle,
@@ -195,13 +211,6 @@ static int tegra_stream_create_syncobj_v2(struct tegra_stream_v2 *stream,
 #endif
 
     return 0;
-}
-
-static uint64_t gettime_ns(void)
-{
-    struct timespec current;
-    clock_gettime(CLOCK_MONOTONIC, &current);
-    return (uint64_t)current.tv_sec * 1000000000ull + current.tv_nsec;
 }
 
 static bool tegra_stream_wait_fence_v2(struct tegra_fence *base_fence)
