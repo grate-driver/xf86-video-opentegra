@@ -536,7 +536,6 @@ static void TegraEXAThawPixmapData(TegraPtr tegra, TegraPixmapPtr pixmap,
     unsigned int data_size;
     uint8_t *pixmap_data;
     Bool ret = FALSE;
-    unsigned int i;
 
     carg.compression_type   = pixmap->compression_type;
     carg.buf_in             = pixmap->compressed_data;
@@ -579,8 +578,16 @@ retry:
     }
 
     if (TEST_FREEZER) {
-        for (i = 0; i < data_size; i++)
-            pixmap_data[i] = i + 0x55;
+        unsigned int cpp = pixmap->pPixmap->drawable.bitsPerPixel / 8;
+        unsigned int width_bytes = pixmap->pPixmap->drawable.width * cpp;
+        unsigned int x, y, match;
+
+        for (y = 0; y < pixmap->pPixmap->drawable.height; y++) {
+            for (x = 0; x < width_bytes; x++) {
+                match = y * width_bytes + x + 0x55;
+                pixmap_data[y * width_bytes + x] = match;
+            }
+        }
     }
 
     carg.buf_out            = pixmap_data;
@@ -592,15 +599,22 @@ retry:
     TegraEXADecompressPixmap(tegra, pixmap, &carg);
 
     if (TEST_FREEZER) {
-        unsigned matched = 0;
+        unsigned int cpp = pixmap->pPixmap->drawable.bitsPerPixel / 8;
+        unsigned int width_bytes = pixmap->pPixmap->drawable.width * cpp;
+        unsigned int x, y, match, matched = 0;
 
-        for (i = 0; i < data_size; i++) {
-            if (pixmap_data[i] == ((i + 0x55) & 0xff))
-                matched++;
+        for (y = 0; y < pixmap->pPixmap->drawable.height; y++) {
+            for (x = 0; x < width_bytes; x++) {
+                match = y * width_bytes + x + 0x55;
+
+                if (pixmap_data[y * width_bytes + x] == (match & 0xff))
+                    matched++;
+            }
         }
 
         if (matched > data_size / 2)
-            ErrorMsg("priv %p decompression failure!\n", pixmap);
+            ErrorMsg("priv %p decompression failure! data_size %u\n",
+                     pixmap, data_size);
     }
 
     TegraEXAFridgeUnMapPixmap(pixmap);
