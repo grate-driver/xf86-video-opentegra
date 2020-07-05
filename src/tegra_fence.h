@@ -156,8 +156,8 @@ static inline void tegra_fence_put(struct tegra_fence *f)
         }
 #endif
 
-        f->refcnt--;
-        TEGRA_FENCE_FINISH(f);
+        if (--f->refcnt == -1)
+            TEGRA_FENCE_FINISH(f);
     }
 }
 #define TEGRA_FENCE_PUT(F) \
