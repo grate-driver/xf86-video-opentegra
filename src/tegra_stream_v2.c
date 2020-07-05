@@ -182,6 +182,7 @@ tegra_stream_submit_v2(enum host1x_engine engine,
      * Since GRATE-kernel v6, the fence is attached to job's syncobject
      * at submission time and not at the job's execution-start time.
      */
+#ifdef HAVE_LIBDRM_SYNCOBJ_SUPPORT
     if (syncobj_handle_in && drm_ver < GRATE_KERNEL_DRM_VERSION + 6) {
         ret = drmSyncobjWait(stream->drm_fd, &syncobj_handle_in, 1,
                              gettime_ns() + 1000000000,
@@ -190,6 +191,7 @@ tegra_stream_submit_v2(enum host1x_engine engine,
         if (ret)
             ErrorMsg("drmSyncobjWait(WAIT_FOR_SUBMIT) failed %d\n", ret);
     }
+#endif
 
     ret = drm_tegra_job_submit_v2(stream->job,
                                   syncobj_handle_in,
