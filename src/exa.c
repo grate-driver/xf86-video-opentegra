@@ -95,41 +95,36 @@ static int TegraEXAMarkSync(ScreenPtr pScreen)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pScreen);
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
-    union {
-        struct tegra_fence *fence;
-        int marker;
-    } data;
+    struct tegra_stream *stream = tegra->cmds;
+    struct tegra_marker *tegra_marker;
 
-    /* on 32bit ARM size of integer is equal to size of pointer */
-    data.fence = TEGRA_STREAM_GET_LAST_FENCE(tegra->cmds);
+    tegra_marker = &tegra->scratch.marker;
 
     /*
      * EXA may take marker multiple times, but it waits only for the
      * lastly taken marker, so we release the previous marker-fence here.
      */
-    TEGRA_FENCE_PUT(tegra->scratch.marker);
-    tegra->scratch.marker = data.fence;
+    TEGRA_FENCE_PUT(tegra_marker->fence[TEGRA_2D]);
+    TEGRA_FENCE_PUT(tegra_marker->fence[TEGRA_3D]);
 
-    return data.marker;
+    tegra_marker->fence[TEGRA_2D] = TEGRA_STREAM_GET_LAST_FENCE(stream, TEGRA_2D);
+    tegra_marker->fence[TEGRA_3D] = TEGRA_STREAM_GET_LAST_FENCE(stream, TEGRA_3D);
+
+    /*
+     * Xorg's EXA doesn't actually use intermediate markers, so we can
+     * simplify the code by taking it into account. TegraEXAWaitMarker()
+     * will always wait for the lastly taken marker.
+     */
+    return 0;
 }
 
 static void TegraEXAWaitMarker(ScreenPtr pScreen, int marker)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pScreen);
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
-    union {
-        struct tegra_fence *fence;
-        int marker;
-    } data;
 
-    data.marker = marker;
-
-    TegraEXAWaitFence(data.fence);
-    TEGRA_FENCE_PUT(data.fence);
-
-    /* if it was a lastly-taken marker, then we've just released it */
-    if (data.fence == tegra->scratch.marker)
-        tegra->scratch.marker = NULL;
+    TEGRA_EXA_WAIT_AND_PUT_FENCE(tegra->scratch.marker.fence[TEGRA_2D]);
+    TEGRA_EXA_WAIT_AND_PUT_FENCE(tegra->scratch.marker.fence[TEGRA_3D]);
 }
 
 static PROFILE_DEF(cpu_access);

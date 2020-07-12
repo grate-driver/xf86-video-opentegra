@@ -178,10 +178,14 @@ enum Tegra2DCompositeOp {
     TEGRA2D_COPY,
 };
 
+struct tegra_marker {
+    struct tegra_fence *fence[TEGRA_ENGINES_NUM];
+};
+
 typedef struct tegra_exa_scratch {
     enum Tegra2DOrientation orientation;
     enum Tegra2DCompositeOp op2d;
-    struct tegra_fence *marker;
+    struct tegra_marker marker;
     TegraEXAAttribBo attribs;
     union {
         PictTransform transform;

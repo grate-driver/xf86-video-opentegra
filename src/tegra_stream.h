@@ -165,21 +165,10 @@ static inline int tegra_stream_flush(struct tegra_stream *stream,
 }
 
 static inline struct tegra_fence *
-tegra_stream_get_last_fence(struct tegra_stream *stream)
+tegra_stream_get_last_fence(struct tegra_stream *stream,
+                            enum host1x_engine engine)
 {
-    struct tegra_fence *last_fence;
-
-    if (!stream->last_fence[TEGRA_2D]) {
-        last_fence = stream->last_fence[TEGRA_3D];
-    } else if (!stream->last_fence[TEGRA_3D]) {
-        last_fence = stream->last_fence[TEGRA_2D];
-    } else {
-        if (stream->last_fence[TEGRA_2D]->seqno >
-            stream->last_fence[TEGRA_3D]->seqno)
-                last_fence = stream->last_fence[TEGRA_2D];
-            else
-                last_fence = stream->last_fence[TEGRA_3D];
-    }
+    struct tegra_fence *last_fence = stream->last_fence[engine];
 
     TEGRA_FENCE_DEBUG_MSG(last_fence, "get_last");
 
@@ -188,9 +177,9 @@ tegra_stream_get_last_fence(struct tegra_stream *stream)
 
     return NULL;
 }
-#define TEGRA_STREAM_GET_LAST_FENCE(STREAM)                 \
+#define TEGRA_STREAM_GET_LAST_FENCE(STREAM, ENGINE)         \
 ({                                                          \
-    tegra_stream_get_last_fence(STREAM);                    \
+    tegra_stream_get_last_fence(STREAM, ENGINE);            \
 })
 
 static inline struct tegra_fence *
