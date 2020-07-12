@@ -324,6 +324,24 @@ static inline void tegra_exa_wait_fence(struct tegra_fence *fence)
     }                                       \
 })
 
+#define TEGRA_PIXMAP_WAIT_READ_FENCES(P)                        \
+({                                                              \
+    TEGRA_EXA_WAIT_AND_PUT_FENCE((P)->fence_read[TEGRA_2D]);    \
+    TEGRA_EXA_WAIT_AND_PUT_FENCE((P)->fence_read[TEGRA_3D]);    \
+})
+
+#define TEGRA_PIXMAP_WAIT_WRITE_FENCES(P)                       \
+({                                                              \
+    TEGRA_EXA_WAIT_AND_PUT_FENCE((P)->fence_write[TEGRA_2D]);   \
+    TEGRA_EXA_WAIT_AND_PUT_FENCE((P)->fence_write[TEGRA_3D]);   \
+})
+
+#define TEGRA_PIXMAP_WAIT_ALL_FENCES(P) \
+({                                      \
+    TEGRA_PIXMAP_WAIT_READ_FENCES(P);   \
+    TEGRA_PIXMAP_WAIT_WRITE_FENCES(P);  \
+})
+
 unsigned TegraEXAHeightHwAligned(unsigned int height, unsigned int bpp);
 
 static inline Pixel TegraPixelRGB565to888(Pixel pixel)

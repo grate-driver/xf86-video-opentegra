@@ -147,8 +147,7 @@ static void * TegraEXAFridgeMapPixmap(TegraPixmapPtr pixmap)
     if (pixmap->type == TEGRA_EXA_PIXMAP_TYPE_FALLBACK)
         return pixmap->fallback;
 
-    TEGRA_EXA_WAIT_AND_PUT_FENCE(pixmap->fence_write[TEGRA_2D]);
-    TEGRA_EXA_WAIT_AND_PUT_FENCE(pixmap->fence_write[TEGRA_3D]);
+    TEGRA_PIXMAP_WAIT_ALL_FENCES(pixmap);
 
     if (pixmap->type == TEGRA_EXA_PIXMAP_TYPE_POOL)
         return TegraEXAPoolMapEntry(&pixmap->pool_entry);
@@ -640,9 +639,6 @@ static int TegraEXAFreezePixmap(TegraPtr tegra, TegraPixmapPtr pixmap)
         ErrorMsg("failed to map pixmap data\n");
         return -1;
     }
-
-    TEGRA_EXA_WAIT_AND_PUT_FENCE(pixmap->fence_read[TEGRA_2D]);
-    TEGRA_EXA_WAIT_AND_PUT_FENCE(pixmap->fence_read[TEGRA_3D]);
 
     carg = TegraEXASelectCompression(tegra, pixmap, data_size, pixmap_data);
     err = TegraEXACompressPixmap(exa, pixmap, &carg);

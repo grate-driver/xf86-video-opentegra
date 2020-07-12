@@ -277,16 +277,12 @@ tegra_dri2_copy_region(DrawablePtr drawable, RegionPtr pRegion,
      * back then.
      */
     tegra = exaGetPixmapDriverPrivate(src_pixmap);
-    if (tegra && tegra->dri) {
-        TEGRA_EXA_WAIT_AND_PUT_FENCE(tegra->fence_read[TEGRA_2D]);
-        TEGRA_EXA_WAIT_AND_PUT_FENCE(tegra->fence_read[TEGRA_3D]);
-    }
+    if (tegra && tegra->dri)
+        TEGRA_PIXMAP_WAIT_READ_FENCES(tegra);
 
     tegra = exaGetPixmapDriverPrivate(dst_pixmap);
-    if (tegra && tegra->dri) {
-        TEGRA_EXA_WAIT_AND_PUT_FENCE(tegra->fence_write[TEGRA_2D]);
-        TEGRA_EXA_WAIT_AND_PUT_FENCE(tegra->fence_write[TEGRA_3D]);
-    }
+    if (tegra && tegra->dri)
+        TEGRA_PIXMAP_WAIT_WRITE_FENCES(tegra);
 }
 
 static uint64_t
