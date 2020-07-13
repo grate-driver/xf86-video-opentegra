@@ -157,11 +157,11 @@ static void TegraEXASolid(PixmapPtr pPixmap, int px1, int py1, int px2, int py2)
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pPixmap->drawable.pScreen);
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
 
-    AccelMsg("%dx%d w:h %d:%d\n", px1, py1, px2 - px1, py2 - py1);
-
     if (pPixmap->drawable.width == 1 &&
         pPixmap->drawable.height == 1)
             return;
+
+    AccelMsg("%dx%d w:h %d:%d\n", px1, py1, px2 - px1, py2 - py1);
 
     tegra_stream_prep(tegra->cmds, 3);
     tegra_stream_push(tegra->cmds, HOST1X_OPCODE_MASK(0x38, 0x5));
@@ -188,14 +188,13 @@ static void TegraEXADoneSolid(PixmapPtr pPixmap)
 
         explicit_fence = exa_helper_get_explicit_fence(TEGRA_3D, pPixmap, 0);
 
-        if (PROFILE || tegra->has_iommu_bug) {
-                PROFILE_START(solid);
+        PROFILE_START(solid);
+        if (PROFILE_GPU || tegra->has_iommu_bug)
                 tegra_stream_flush(tegra->cmds, explicit_fence);
-                PROFILE_STOP(solid);
-        } else {
+        else
                 fence = tegra_stream_submit(TEGRA_2D, tegra->cmds,
                                             explicit_fence);
-        }
+        PROFILE_STOP(solid);
 
         TEGRA_FENCE_PUT(explicit_fence);
 
@@ -556,14 +555,13 @@ static void TegraEXADoneCopy(PixmapPtr pDstPixmap)
         explicit_fence = exa_helper_get_explicit_fence(TEGRA_3D, pDstPixmap, 1,
                                                        tegra->scratch.pSrc);
 
-        if (PROFILE || tegra->has_iommu_bug) {
-                PROFILE_START(copy);
+        PROFILE_START(copy);
+        if (PROFILE_GPU || tegra->has_iommu_bug)
                 tegra_stream_flush(tegra->cmds, explicit_fence);
-                PROFILE_STOP(copy);
-        } else {
+        else
                 fence = tegra_stream_submit(TEGRA_2D, tegra->cmds,
                                             explicit_fence);
-        }
+        PROFILE_STOP(copy);
 
         TEGRA_FENCE_PUT(explicit_fence);
 

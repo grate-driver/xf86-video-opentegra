@@ -63,6 +63,7 @@
 #endif
 
 #define PROFILE                         0
+#define PROFILE_GPU                     0
 
 #define PROFILE_REPORT_MIN_TIME_US      1000
 #define PROFILE_REPORT_START            FALSE
@@ -309,15 +310,14 @@ typedef struct tegra_pixmap {
 unsigned int TegraEXAPitch(unsigned int width, unsigned int height,
                            unsigned int bpp);
 
-static inline void tegra_exa_wait_fence(struct tegra_fence *fence)
-{
-    PROFILE_DEF(wait_fence)
-    PROFILE_START(wait_fence)
-    tegra_fence_wait(fence);
-    PROFILE_STOP(wait_fence)
-}
-#define TegraEXAWaitFence(F)    \
-    ({ TEGRA_FENCE_DEBUG_MSG(F, "wait"); tegra_exa_wait_fence(F); })
+#define TegraEXAWaitFence(F)                                \
+({                                                          \
+    PROFILE_DEF(wait_fence);                                \
+    profile_wait_fence.name = "wait_fence";                 \
+    PROFILE_START(wait_fence);                              \
+    TEGRA_FENCE_DEBUG_MSG(F, "wait"); tegra_fence_wait(F);  \
+    PROFILE_STOP(wait_fence);                               \
+})
 
 #define TEGRA_EXA_WAIT_AND_PUT_FENCE(F)     \
 ({                                          \

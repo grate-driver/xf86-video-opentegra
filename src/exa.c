@@ -595,6 +595,7 @@ TegraEXACopyScreen(const char *src, int src_pitch, int height,
 {
     tegra_vfp_func vfp_func;
     bool vfp_threaded;
+    char pname[128];
 
     PROFILE_DEF(screen_load);
 
@@ -603,7 +604,10 @@ TegraEXACopyScreen(const char *src, int src_pitch, int height,
         height = 1;
     }
 
-    PROFILE_SET_NAME(screen_load, download ? "download" : "upload");
+    if (PROFILE)
+        sprintf(pname, "%s:%d", download ? "download" : "upload",
+                line_len * height);
+    PROFILE_SET_NAME(screen_load, pname);
     PROFILE_START(screen_load);
 
     while (height--) {
@@ -672,7 +676,8 @@ TegraEXALoadScreen(PixmapPtr pix, int x, int y, int w, int h,
         src_cached = TRUE;
     }
 
-    AccelMsg("%dx%d %d:%d\n", x, y, w, h);
+    AccelMsg("%s pPix %p %d:%d, %dx%d %d:%d\n", download ? "download" : "upload",
+             pix, pix->drawable.width, pix->drawable.height, x, y, w, h);
 
     if (download)
         ret = TegraEXACopyScreen(pmap + offset, pitch, h,
@@ -683,7 +688,7 @@ TegraEXALoadScreen(PixmapPtr pix, int x, int y, int w, int h,
                                  download, src_cached, dst_cached,
                                  pmap + offset, pitch, line_len);
 
-    TegraEXAFinishCPUAccess(pix, EXA_PREPARE_SRC);
+    TegraEXAFinishCPUAccess(pix, access_hint);
 
     return ret;
 }
