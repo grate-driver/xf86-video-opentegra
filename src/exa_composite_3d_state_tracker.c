@@ -172,6 +172,12 @@ TegraGR3DStateSelectProgram(TegraGR3DStatePtr state)
         if (src_sel == TEX_SOLID && mask_sel == TEX_EMPTY &&
             !state->new.dst.alpha) {
                 prog = &prog_blend_over_solid_src_empty_mask_dst_opaque;
+
+                if ((state->new.src.solid >> 24) == 0xff) {
+                    prog = &prog_blend_src_solid_mask_src;
+                    state->new.mask.solid = 0x00fffffff;
+                }
+
                 goto custom_shader;
         }
 
@@ -220,6 +226,13 @@ TegraGR3DStateSelectProgram(TegraGR3DStatePtr state)
     }
 
     prog = cfg->prog[PROG_SEL(src_sel, mask_sel)];
+
+    if (prog == &prog_blend_add_solid_mask &&
+            state->new.dst.alpha && state->new.src.alpha) {
+        prog = &prog_blend_add_solid_mask_alpha_src_dst;
+        goto custom_shader;
+    }
+
     if (!prog) {
         FallbackMsg("no shader for operation %d src_sel %u mask_sel %u\n",
                     state->new.op, src_sel, mask_sel);
