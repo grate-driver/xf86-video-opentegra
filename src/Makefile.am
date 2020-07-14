@@ -50,6 +50,7 @@ opentegra_drv_la_DEPENDENCIES = \
 	exa_composite_2d.c \
 	exa_composite_3d.c \
 	exa_composite_3d_state_tracker.c \
+	exa_pixmap.c \
 	pool_alloc.c \
 	gr3d.c
 
