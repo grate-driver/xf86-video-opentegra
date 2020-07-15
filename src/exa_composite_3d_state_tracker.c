@@ -78,177 +78,13 @@ static void TegraGR3DStateReset(TegraGR3DStatePtr state)
 static const struct shader_program *
 TegraGR3DStateSelectProgram(TegraGR3DStatePtr state)
 {
-    const struct tegra_composite_config *cfg = &composite_cfgs[state->new.op];
-    const struct shader_program *prog;
-    unsigned mask_sel;
-    unsigned src_sel;
-
     if (state->new.op >= TEGRA_ARRAY_SIZE(composite_cfgs))
         return NULL;
 
-    /* optimize wrap-mode if possible */
-    if (!state->new.src.coords_wrap && state->new.src.pPix)
-        state->new.src.tex_sel = TEX_PAD;
+    tegra_exa_optimize_texture_sampler(&state->new.src);
+    tegra_exa_optimize_texture_sampler(&state->new.mask);
 
-    src_sel = state->new.src.tex_sel;
-
-    /* optimize wrap-mode if possible */
-    if (!state->new.mask.coords_wrap && state->new.mask.pPix)
-        state->new.mask.tex_sel = TEX_PAD;
-
-    mask_sel = state->new.mask.tex_sel;
-
-    /* pow2 texture can use more optimized shaders */
-    if (state->new.src.pow2 &&
-            (src_sel == TEX_NORMAL || src_sel == TEX_MIRROR))
-        src_sel = TEX_PAD;
-
-    /* pow2 texture can use more optimized shaders */
-    if (state->new.mask.pow2 &&
-            (mask_sel == TEX_NORMAL || mask_sel == TEX_MIRROR))
-        mask_sel = TEX_PAD;
-
-    /*
-     * Currently all shaders are handling texture transparency and
-     * coordinates warp-modes in the assembly, this adds a lot of
-     * instructions to the shaders and in result they are quite slow.
-     * Ideally we need a proper compiler to build all variants of the
-     * custom shaders, but we don't have that luxury at the moment.
-     *
-     * As a temporary workaround we prepared custom shaders for a
-     * couple of most popular texture-operation combinations.
-     */
-    if (state->new.op == PictOpOver) {
-        if (src_sel == TEX_PAD && !state->new.src.alpha &&
-            (mask_sel == TEX_SOLID || mask_sel == TEX_EMPTY)) {
-                prog = &prog_blend_over_opaque_pad_src_solid_mask;
-                goto custom_shader;
-        }
-
-        if (src_sel == TEX_NORMAL && state->new.src.alpha &&
-            mask_sel == TEX_EMPTY && !state->new.dst.alpha) {
-                prog = &prog_blend_over_alpha_normal_src_empty_mask_dst_opaque;
-                state->new.src.tex_sel = TEX_PAD;
-                goto custom_shader;
-        }
-
-        if (src_sel == TEX_NORMAL && state->new.src.alpha &&
-            (mask_sel == TEX_SOLID || mask_sel == TEX_EMPTY)) {
-                prog = &prog_blend_over_alpha_normal_src_solid_mask;
-                state->new.src.tex_sel = TEX_PAD;
-                goto custom_shader;
-        }
-
-        if (src_sel == TEX_PAD && state->new.src.alpha &&
-            mask_sel == TEX_EMPTY && !state->new.dst.alpha) {
-                prog = &prog_blend_over_alpha_pad_src_empty_mask_dst_opaque;
-                goto custom_shader;
-        }
-
-        if (src_sel == TEX_PAD && state->new.src.alpha &&
-            (mask_sel == TEX_SOLID || mask_sel == TEX_EMPTY)) {
-                prog = &prog_blend_over_alpha_pad_src_solid_mask;
-                goto custom_shader;
-        }
-
-        if (src_sel == TEX_CLIPPED && state->new.src.alpha &&
-            (mask_sel == TEX_SOLID || mask_sel == TEX_EMPTY)) {
-                prog = &prog_blend_over_alpha_clipped_src_solid_mask;
-                goto custom_shader;
-        }
-
-        if (src_sel == TEX_CLIPPED && state->new.src.alpha &&
-            (mask_sel == TEX_SOLID || mask_sel == TEX_EMPTY)) {
-                prog = &prog_blend_over_opaque_clipped_src_solid_mask;
-                goto custom_shader;
-        }
-
-        if (src_sel == TEX_SOLID && mask_sel == TEX_EMPTY &&
-            state->new.dst.alpha) {
-                prog = &prog_blend_over_solid_src_empty_mask_dst_alpha;
-                goto custom_shader;
-        }
-
-        if (src_sel == TEX_SOLID && mask_sel == TEX_EMPTY &&
-            !state->new.dst.alpha) {
-                prog = &prog_blend_over_solid_src_empty_mask_dst_opaque;
-
-                if ((state->new.src.solid >> 24) == 0xff) {
-                    prog = &prog_blend_src_solid_mask_src;
-                    state->new.mask.solid = 0x00fffffff;
-                }
-
-                goto custom_shader;
-        }
-
-        if (src_sel == TEX_SOLID && mask_sel == TEX_CLIPPED &&
-            state->new.mask.component_alpha) {
-                if (state->new.src.solid == 0xff000000 && !state->new.dst.alpha) {
-                    prog = &prog_blend_over_solid_black_src_clipped_mask_dst_opaque;
-                    goto custom_shader;
-                }
-
-                prog = &prog_blend_over_solid_src_clipped_mask;
-                goto custom_shader;
-        }
-
-        if (src_sel == TEX_SOLID && mask_sel == TEX_PAD &&
-            state->new.mask.component_alpha) {
-                if (state->new.src.solid == 0xff000000 && !state->new.dst.alpha) {
-                    prog = &prog_blend_over_solid_black_src_pad_mask_dst_opaque;
-                    goto custom_shader;
-                }
-
-                prog = &prog_blend_over_solid_src_pad_mask;
-                goto custom_shader;
-        }
-
-        if (src_sel == TEX_SOLID && mask_sel == TEX_CLIPPED &&
-            state->new.src.solid == 0xff000000 && !state->new.dst.alpha &&
-            state->new.mask.component_alpha) {
-                prog = &prog_blend_over_solid_black_src_clipped_aaaa_mask_dst_opaque;
-                goto custom_shader;
-        }
-    }
-
-    if (state->new.op == PictOpSrc) {
-        if (src_sel == TEX_CLIPPED &&
-            (mask_sel == TEX_SOLID || mask_sel == TEX_EMPTY)) {
-                prog = &prog_blend_src_clipped_src_solid_mask;
-                goto custom_shader;
-        }
-
-        if (mask_sel == TEX_CLIPPED &&
-            (src_sel == TEX_SOLID || src_sel == TEX_EMPTY)) {
-                prog = &prog_blend_src_solid_src_clipped_mask;
-                goto custom_shader;
-        }
-    }
-
-    prog = cfg->prog[PROG_SEL(src_sel, mask_sel)];
-
-    if (prog == &prog_blend_add_solid_mask &&
-            state->new.dst.alpha && state->new.src.alpha) {
-        prog = &prog_blend_add_solid_mask_alpha_src_dst;
-        goto custom_shader;
-    }
-
-    if (!prog) {
-        FallbackMsg("no shader for operation %d src_sel %u mask_sel %u\n",
-                    state->new.op, src_sel, mask_sel);
-        return NULL;
-    }
-
-    AccelMsg("got shader for operation %d src_sel %u mask_sel %u %s\n",
-             state->new.op, src_sel, mask_sel, prog->name);
-
-    return prog;
-
-custom_shader:
-    AccelMsg("custom shader for operation %d src_sel %u mask_sel %u %s\n",
-             state->new.op, src_sel, mask_sel, prog->name);
-
-    return prog;
+    return tegra_exa_select_optimized_gr3d_program(state);
 }
 
 static void TegraGR3DStateFinalize(TegraGR3DStatePtr state)
@@ -372,6 +208,8 @@ static void TegraGR3DStateFinalize(TegraGR3DStatePtr state)
                 break;
             }
 
+            tegra_exa_flush_deferred_operations(tex->pPix, TRUE);
+
             TegraGR3D_SetupTextureDesc(cmds, 0,
                                        TegraEXAPixmapBO(tex->pPix),
                                        TegraEXAPixmapOffset(tex->pPix),
@@ -461,6 +299,8 @@ static void TegraGR3DStateFinalize(TegraGR3DStatePtr state)
                 break;
             }
 
+            tegra_exa_flush_deferred_operations(tex->pPix, TRUE);
+
             TegraGR3D_SetupTextureDesc(cmds, 1,
                                        TegraEXAPixmapBO(tex->pPix),
                                        TegraEXAPixmapOffset(tex->pPix),
@@ -504,6 +344,8 @@ static void TegraGR3DStateFinalize(TegraGR3DStatePtr state)
     }
 
     tex = &state->new.dst;
+
+    tegra_exa_flush_deferred_operations(tex->pPix, TRUE);
 
     TegraGR3D_UploadConstFP(cmds, 8,
                             FX10x2(tex->alpha,
@@ -553,7 +395,7 @@ static Bool TegraGR3DStateAppend(TegraGR3DStatePtr state, TegraEXAPtr tegra,
     state->cmds = cmds;
 
     if (state->new.src.pPix) {
-        TegraEXAThawPixmap(state->new.src.pPix, TRUE);
+        TegraEXAThawPixmap2(state->new.src.pPix, THAW_ACCEL, THAW_ALLOC);
 
         priv = exaGetPixmapDriverPrivate(state->new.src.pPix);
         if (priv->type <= TEGRA_EXA_PIXMAP_TYPE_FALLBACK) {
@@ -567,7 +409,7 @@ static Bool TegraGR3DStateAppend(TegraGR3DStatePtr state, TegraEXAPtr tegra,
     }
 
     if (state->new.mask.pPix) {
-        TegraEXAThawPixmap(state->new.mask.pPix, TRUE);
+        TegraEXAThawPixmap2(state->new.mask.pPix, THAW_ACCEL, THAW_ALLOC);
 
         priv = exaGetPixmapDriverPrivate(state->new.mask.pPix);
         if (priv->type <= TEGRA_EXA_PIXMAP_TYPE_FALLBACK) {
@@ -580,7 +422,7 @@ static Bool TegraGR3DStateAppend(TegraGR3DStatePtr state, TegraEXAPtr tegra,
         }
     }
 
-    TegraEXAThawPixmap(state->new.dst.pPix, TRUE);
+    TegraEXAThawPixmap2(state->new.dst.pPix, THAW_ACCEL, THAW_ALLOC);
 
     priv = exaGetPixmapDriverPrivate(state->new.dst.pPix);
     if (priv->type <= TEGRA_EXA_PIXMAP_TYPE_FALLBACK) {

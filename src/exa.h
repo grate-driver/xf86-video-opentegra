@@ -62,6 +62,8 @@
 #define DebugMsg(fmt, args...) do {} while(0)
 #endif
 
+#define TEGRA_EXA_CPU_FILL_MIN_SIZE     (128 * 1024)
+
 #define PROFILE                         0
 #define PROFILE_GPU                     0
 
@@ -197,8 +199,11 @@ typedef struct tegra_exa_scratch {
     unsigned attrib_itr;
     unsigned vtx_cnt;
     PixmapPtr pMask;
+    Bool cpu_access;
+    Bool optimize;
     PixmapPtr pSrc;
     unsigned ops;
+    Pixel color;
     int srcX;
     int srcY;
     int dstX;
@@ -213,6 +218,19 @@ typedef struct {
     Bool light : 1;
     Bool persitent : 1;
 } TegraPixmapPool, *TegraPixmapPoolPtr;
+
+enum {
+    TEGRA_OPT_SOLID,
+    TEGRA_OPT_COPY,
+    TEGRA_OPT_NUM,
+};
+
+struct tegra_optimization_state {
+    struct tegra_stream *cmds_tmp;
+    struct tegra_stream *cmds;
+    TegraEXAScratch scratch_tmp;
+    TegraEXAScratch scratch;
+};
 
 typedef struct _TegraEXARec{
     struct drm_tegra_channel *gr2d;
@@ -240,6 +258,9 @@ typedef struct _TegraEXARec{
 
     Bool has_iommu_bug;
 
+    struct tegra_optimization_state opt_state[TEGRA_OPT_NUM];
+    Bool in_flush;
+
     ExaDriverPtr driver;
 } *TegraEXAPtr;
 
@@ -252,6 +273,11 @@ typedef struct _TegraEXARec{
 #define TEGRA_EXA_COMPRESSION_LZ4           2
 #define TEGRA_EXA_COMPRESSION_JPEG          3
 #define TEGRA_EXA_COMPRESSION_PNG           4
+
+struct tegra_pixmap_upload_buffer {
+    unsigned int refcount;
+    void *data;
+};
 
 typedef struct tegra_pixmap {
     bool tegra_data : 1;        /* pixmap's data allocated by Opentegra */
@@ -268,6 +294,14 @@ typedef struct tegra_pixmap {
     unsigned crtc : 1;          /* pixmap's CRTC ID (for display rotation) */
 
     unsigned type : 2;
+
+    unsigned freezer_lockcnt;   /* pixmap's data won't be touched by fridge while > 0 */
+
+    struct pixmap_state {
+        bool solid_fill : 1;    /* whole pixmap is filled with a solid color */
+
+        Pixel solid_color;
+    } state;
 
     union {
         struct {

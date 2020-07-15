@@ -83,6 +83,8 @@ static void TegraEXAReleasePixmapData(TegraPtr tegra, TegraPixmapPtr priv)
     Bool force_fencing = false;
     int drm_ver;
 
+    tegra_exa_cancel_deferred_operations(priv->pPixmap);
+
     if (priv->type == TEGRA_EXA_PIXMAP_TYPE_NONE) {
         if (priv->frozen) {
 #ifdef HAVE_JPEG
@@ -238,4 +240,17 @@ static Bool TegraEXAAllocatePixmapData(TegraPtr tegra,
     return (TegraEXAAllocateDRMFromPool(tegra, pixmap, size) ||
             TegraEXAAllocateDRM(tegra, pixmap, size) ||
             TegraEXAAllocateMem(pixmap, size));
+}
+
+static Bool TegraEXAPixmapBusy(TegraPixmapPtr pixmap)
+{
+    unsigned int i;
+
+    for (i = 0; i < TEGRA_ENGINES_NUM; i++) {
+        if (!TEGRA_FENCE_COMPLETED(pixmap->fence_write[i]) ||
+            !TEGRA_FENCE_COMPLETED(pixmap->fence_read[i]))
+                return TRUE;
+    }
+
+    return FALSE;
 }

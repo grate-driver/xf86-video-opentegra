@@ -24,6 +24,16 @@
 #ifndef __TEGRA_EXA_MM_H
 #define __TEGRA_EXA_MM_H
 
+enum thaw_accel {
+    THAW_NOACCEL,
+    THAW_ACCEL,
+};
+
+enum thaw_alloc {
+    THAW_NOALLOC,
+    THAW_ALLOC,
+};
+
 static void TegraEXADestroyPool(TegraPixmapPoolPtr pool);
 
 static void TegraEXAPoolFree(struct mem_pool_entry *pool_entry);
@@ -44,6 +54,10 @@ static void TegraEXAReleaseMM(TegraPtr tegra, TegraEXAPtr exa);
 static void TegraEXACoolTegraPixmap(TegraPtr tegra, TegraPixmapPtr pix);
 static void TegraEXACoolPixmap(PixmapPtr pPixmap, Bool write);
 static void TegraEXAThawPixmap(PixmapPtr pPixmap, Bool accel);
+static void TegraEXAThawPixmap2(PixmapPtr pPixmap, enum thaw_accel accel,
+                                enum thaw_alloc allocate);
 static void TegraEXAFreezePixmaps(TegraPtr tegra, time_t time_sec);
+static void TegraEXAFillPixmapData(TegraPixmapPtr pixmap, Bool accel,
+                                   Pixel color);
 
 #endif

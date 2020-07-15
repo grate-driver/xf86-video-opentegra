@@ -34,6 +34,7 @@ static struct drm_tegra_bo * TegraEXAPixmapBO(PixmapPtr pix);
 static Bool TegraEXAPrepareCPUAccess(PixmapPtr pPix, int idx, void **ptr);
 static void TegraEXAFinishCPUAccess(PixmapPtr pPix, int idx);
 static Bool TegraEXAIsPoolPixmap(PixmapPtr pix);
+static Bool TegraEXAPixmapBusy(TegraPixmapPtr pixmap);
 
 uint64_t tegra_profiler_seqno;
 
@@ -46,6 +47,8 @@ uint64_t tegra_profiler_seqno;
 #include "exa_composite.c"
 #include "exa_mm_fridge.c"
 #include "exa_pixmap.c"
+#include "exa_optimizations_2d.c"
+#include "exa_optimizations_3d.c"
 
 unsigned int TegraEXAPitch(unsigned int width, unsigned int height,
                            unsigned int bpp)
@@ -599,10 +602,16 @@ Bool TegraEXAScreenInit(ScreenPtr pScreen)
         goto close_gr3d;
     }
 
+    err = tegra_exa_init_optimizations(tegra, priv);
+    if (err < 0) {
+        ErrorMsg("failed to create command stream: %d\n", err);
+        goto destroy_stream;
+    }
+
     err = TegraEXAInitMM(tegra, priv);
     if (err) {
         ErrorMsg("TegraEXAInitMM failed\n");
-        goto destroy_stream;
+        goto deinit_optimization;
     }
 
     exa->exa_major = EXA_VERSION_MAJOR;
@@ -693,6 +702,8 @@ Bool TegraEXAScreenInit(ScreenPtr pScreen)
 
 release_mm:
     TegraEXAReleaseMM(tegra, priv);
+deinit_optimization:
+    tegra_exa_deinit_optimizations(priv);
 destroy_stream:
     tegra_stream_destroy(priv->cmds);
 close_gr3d:
@@ -722,6 +733,7 @@ void TegraEXAScreenExit(ScreenPtr pScreen)
         free(priv->driver);
 
         TegraEXAReleaseMM(tegra, priv);
+        tegra_exa_deinit_optimizations(priv);
         tegra_stream_destroy(priv->cmds);
         drm_tegra_channel_close(priv->gr2d);
         drm_tegra_channel_close(priv->gr3d);

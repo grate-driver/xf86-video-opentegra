@@ -23,6 +23,7 @@
 
 #include "driver.h"
 #include "exa_mm.h"
+#include "exa_optimizations.h"
 
 static const uint8_t rop3[] = {
     0x00, /* GXclear */
@@ -82,7 +83,9 @@ static Bool TegraEXAPrepareSolid(PixmapPtr pPixmap, int op, Pixel planemask,
         return FALSE;
     }
 
-    TegraEXAThawPixmap(pPixmap, TRUE);
+    TegraEXAThawPixmap2(pPixmap, THAW_ACCEL, THAW_ALLOC);
+
+    tegra->scratch.ops = 0;
 
     if (priv->type <= TEGRA_EXA_PIXMAP_TYPE_FALLBACK) {
         if (pPixmap->drawable.width == 1 &&
@@ -141,7 +144,7 @@ static Bool TegraEXAPrepareSolid(PixmapPtr pPixmap, int op, Pixel planemask,
         return FALSE;
     }
 
-    tegra->scratch.ops = 0;
+    tegra_exa_prepare_optimized_solid_fill(pPixmap, color);
 
     AccelMsg("pixmap %p %d:%d color %08lx\n",
              pPixmap,
@@ -163,6 +166,9 @@ static void TegraEXASolid(PixmapPtr pPixmap, int px1, int py1, int px2, int py2)
 
     AccelMsg("%dx%d w:h %d:%d\n", px1, py1, px2 - px1, py2 - py1);
 
+    if (tegra_exa_optimize_solid_op(pPixmap, px1, py1, px2, py2))
+        return;
+
     tegra_stream_prep(tegra->cmds, 3);
     tegra_stream_push(tegra->cmds, HOST1X_OPCODE_MASK(0x38, 0x5));
     tegra_stream_push(tegra->cmds, (py2 - py1) << 16 | (px2 - px1));
@@ -180,6 +186,8 @@ static void TegraEXADoneSolid(PixmapPtr pPixmap)
     struct tegra_fence *fence = NULL;
 
     PROFILE_DEF(solid);
+
+    tegra_exa_complete_solid_fill_optimization(pPixmap);
 
     if (tegra->scratch.ops && tegra->cmds->status == TEGRADRM_STREAM_CONSTRUCT) {
         tegra_stream_end(tegra->cmds);
@@ -260,8 +268,8 @@ static Bool TegraEXAPrepareCopyExt(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
         return FALSE;
     }
 
-    TegraEXAThawPixmap(pSrcPixmap, TRUE);
-    TegraEXAThawPixmap(pDstPixmap, TRUE);
+    TegraEXAThawPixmap2(pSrcPixmap, THAW_ACCEL, THAW_ALLOC);
+    TegraEXAThawPixmap2(pDstPixmap, THAW_ACCEL, THAW_ALLOC);
 
     priv = exaGetPixmapDriverPrivate(pSrcPixmap);
     if (priv->type <= TEGRA_EXA_PIXMAP_TYPE_FALLBACK) {
@@ -359,7 +367,12 @@ static Bool TegraEXAPrepareCopy(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
 
     tegra->scratch.orientation = TEGRA2D_IDENTITY;
 
-    return TegraEXAPrepareCopyExt(pSrcPixmap, pDstPixmap, op, planemask);
+    if (TegraEXAPrepareCopyExt(pSrcPixmap, pDstPixmap, op, planemask)) {
+        tegra_exa_prepare_optimized_copy(pSrcPixmap, pDstPixmap, op, planemask);
+        return TRUE;
+    }
+
+    return FALSE;
 }
 
 static void TegraEXACopyExt(PixmapPtr pDstPixmap, int srcX, int srcY, int dstX,
@@ -505,6 +518,9 @@ static void TegraEXACopy(PixmapPtr pDstPixmap, int srcX, int srcY, int dstX,
     AccelMsg("src %dx%d dst %dx%d w:h %d:%d\n",
              srcX, srcY, dstX, dstY, width, height);
 
+    if (tegra_exa_optimize_copy_op(pDstPixmap, dstX, dstY, width, height))
+        return;
+
     /*
      * [20:20] source color depth (0: mono, 1: same)
      * [17:16] destination color depth (0: 8 bpp, 1: 16 bpp, 2: 32 bpp)
@@ -546,6 +562,8 @@ static void TegraEXADoneCopy(PixmapPtr pDstPixmap)
     struct tegra_fence *fence = NULL;
 
     PROFILE_DEF(copy);
+
+    tegra_exa_complete_copy_optimization(pDstPixmap);
 
     if (tegra->scratch.ops && tegra->cmds->status == TEGRADRM_STREAM_CONSTRUCT) {
         tegra_stream_end(tegra->cmds);

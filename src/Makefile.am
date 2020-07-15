@@ -27,12 +27,13 @@
 AUTOMAKE_OPTIONS=subdir-objects
 
 AM_CFLAGS = $(XORG_CFLAGS) $(DRM_CFLAGS) $(UDEV_CFLAGS) $(LZ4_CFLAGS) \
-	$(CWARNFLAGS) $(JPEG_CFLAGS) $(PNG_CFLAGS) $(VALGRIND_CFLAGS)
+	$(CWARNFLAGS) $(JPEG_CFLAGS) $(PNG_CFLAGS) $(VALGRIND_CFLAGS) \
+	$(PIXMAN_CFLAGS)
 
 opentegra_drv_la_LTLIBRARIES = opentegra_drv.la
 opentegra_drv_la_LDFLAGS = -module -avoid-version
 opentegra_drv_la_LIBADD = @UDEV_LIBS@ @DRM_LIBS@ @LZ4_LIBS@ @JPEG_LIBS@ \
-			@PNG_LIBS@
+			@PNG_LIBS@ @PIXMAN_LIBS@
 opentegra_drv_ladir = @moduledir@/drivers
 
 # enable fp16 for the 3d attributes
@@ -50,6 +51,9 @@ opentegra_drv_la_DEPENDENCIES = \
 	exa_composite_2d.c \
 	exa_composite_3d.c \
 	exa_composite_3d_state_tracker.c \
+	exa_optimizations_2d.c \
+	exa_optimizations_3d.c \
+	exa_optimizations.h \
 	exa_pixmap.c \
 	pool_alloc.c \
 	gr3d.c

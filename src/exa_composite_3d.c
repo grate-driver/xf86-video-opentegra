@@ -23,6 +23,7 @@
 
 #include "driver.h"
 #include "exa_mm.h"
+#include "exa_optimizations.h"
 #include "shaders.h"
 
 #define BLUE(c)     (((c) & 0xff)         / 255.0f)
@@ -204,7 +205,8 @@ static const struct tegra_composite_config composite_cfgs[] = {
 
 #include "exa_composite_3d_state_tracker.c"
 
-static Bool TegraCompositeReducedTexture(PicturePtr pPicture)
+static Bool TegraCompositeReducedTexture(PicturePtr pPicture,
+                                         PixmapPtr pPixmap)
 {
     /*
      * GR3D performance is quite slow for a non-trivial shaders,
@@ -215,6 +217,12 @@ static Bool TegraCompositeReducedTexture(PicturePtr pPicture)
         if (pPicture->pDrawable->width == 1 &&
             pPicture->pDrawable->height == 1)
                 return TRUE;
+
+        if (pPixmap) {
+            TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pPixmap);
+            if (priv->state.solid_fill)
+                return TRUE;
+        }
     }
 
     return FALSE;
@@ -319,7 +327,7 @@ static Bool TegraCompositeCheckTexture(int op, PicturePtr pic)
     const struct tegra_composite_config *cfg = &composite_cfgs[op];
     unsigned width, height;
 
-    if (pic && pic->pDrawable && !TegraCompositeReducedTexture(pic)) {
+    if (pic && pic->pDrawable && !TegraCompositeReducedTexture(pic, NULL)) {
         width = pic->pDrawable->width;
         height = pic->pDrawable->height;
 
@@ -425,8 +433,24 @@ static Bool TegraEXACheckComposite3D(int op, PicturePtr pSrcPicture,
 
 static Pixel TegraCompositeGetReducedTextureColor(PixmapPtr pix)
 {
+    TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pix);
     Pixel color = 0x00000000;
     void *ptr;
+
+    if (priv->state.solid_fill) {
+        switch (pix->drawable.bitsPerPixel) {
+        case 8:
+            color = priv->state.solid_color << 24;
+            break;
+        case 16:
+            color = priv->state.solid_color;
+            break;
+        case 32:
+            color = priv->state.solid_color;
+            break;
+        }
+        goto done;
+    }
 
     if (TegraEXAPrepareCPUAccess(pix, EXA_PREPARE_SRC, &ptr)) {
         switch (pix->drawable.bitsPerPixel) {
@@ -444,6 +468,7 @@ static Pixel TegraCompositeGetReducedTextureColor(PixmapPtr pix)
         TegraEXAFinishCPUAccess(pix, EXA_PREPARE_SRC);
     }
 
+done:
     AccelMsg("color 0x%08lx\n", color);
 
     return color;
@@ -477,7 +502,7 @@ static Bool TegraEXAPrepareComposite3D(int op,
 
     memset(&draw_state, 0, sizeof(draw_state));
 
-    if (src_tex && TegraCompositeReducedTexture(pSrcPicture))
+    if (src_tex && TegraCompositeReducedTexture(pSrcPicture, pSrc))
         src_tex = FALSE;
     else
         src_tex_reduced = FALSE;
@@ -485,7 +510,7 @@ static Bool TegraEXAPrepareComposite3D(int op,
     if (src_tex_reduced)
         AccelMsg("src texture reduced\n");
 
-    if (mask_tex && TegraCompositeReducedTexture(pMaskPicture))
+    if (mask_tex && TegraCompositeReducedTexture(pMaskPicture, pMask))
         mask_tex = FALSE;
     else
         mask_tex_reduced = FALSE;

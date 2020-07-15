@@ -766,6 +766,7 @@ static void TegraEXACoolTegraPixmap(TegraPtr tegra, TegraPixmapPtr pix)
 
     if (pix->frozen || pix->cold || pix->scanout || pix->dri ||
         !pix->accel || !pix->offscreen || !pix->tegra_data ||
+        pix->freezer_lockcnt ||
         pix->type == TEGRA_EXA_PIXMAP_TYPE_NONE)
         return;
 
@@ -801,28 +802,53 @@ static void TegraEXACoolPixmap(PixmapPtr pPixmap, Bool write)
     }
 }
 
-static void TegraEXAClearPixmapDataCPU(TegraPixmapPtr pixmap)
+static void TegraEXAFillPixmapDataCPU(TegraPixmapPtr pixmap, Pixel color)
 {
     unsigned int size = TegraPixmapSize(pixmap);
     PixmapPtr pix = pixmap->pPixmap;
+    unsigned int x, y;
     void *ptr;
 
+    DebugMsg("%s pixmap %p\n", __FILE__, pixmap->pPixmap);
+
     if (TegraEXAPrepareCPUAccess(pix, EXA_PREPARE_DEST, &ptr)) {
-        if (TEST_FREEZER) {
-            memset(ptr, 0xff, size);
+        if (color == 0 || pixmap->pPixmap->drawable.bitsPerPixel == 8) {
+            memset(ptr, color, size);
         } else {
-            /* always zero-fill allocated data for consistency */
-            memset(ptr, 0, size);
+            for (y = 0; y < pixmap->pPixmap->drawable.height; y++) {
+                for (x = 0; x < pixmap->pPixmap->drawable.width; x++) {
+                    switch (pixmap->pPixmap->drawable.bitsPerPixel) {
+                    case 8:
+                        *(((CARD8*) ptr) + x) = color;
+                        break;
+                    case 16:
+                        *(((CARD16*) ptr) + x) = color;
+                        break;
+                    case 32:
+                        *(((CARD32*) ptr) + x) = color;
+                        break;
+                    }
+                }
+
+                ptr = (char*)ptr + pixmap->pPixmap->devKind;
+            }
         }
 
         TegraEXAFinishCPUAccess(pix, EXA_PREPARE_DEST);
     }
 }
 
-static Bool TegraEXAClearPixmapDataGPU(TegraPixmapPtr pixmap)
+static void TegraEXAClearPixmapDataCPU(TegraPixmapPtr pixmap)
 {
-    if (TegraEXAPrepareSolid(pixmap->pPixmap, GXcopy, FB_ALLONES,
-                             TEST_FREEZER ? 0xffffffff : 0)) {
+    /* always zero-fill allocated data for consistency */
+    TegraEXAFillPixmapDataCPU(pixmap, TEST_FREEZER ? 0xff : 0);
+}
+
+static Bool TegraEXAFillPixmapDataGPU(TegraPixmapPtr pixmap, Pixel color)
+{
+    DebugMsg("%s pixmap %p\n", __FILE__, pixmap->pPixmap);
+
+    if (TegraEXAPrepareSolid(pixmap->pPixmap, GXcopy, FB_ALLONES, color)) {
         TegraEXASolid(pixmap->pPixmap, 0, 0,
                       pixmap->pPixmap->drawable.width,
                       pixmap->pPixmap->drawable.height);
@@ -834,12 +860,17 @@ static Bool TegraEXAClearPixmapDataGPU(TegraPixmapPtr pixmap)
     return FALSE;
 }
 
+static Bool TegraEXAClearPixmapDataGPU(TegraPixmapPtr pixmap)
+{
+    return TegraEXAFillPixmapDataGPU(pixmap, TEST_FREEZER ? 0xffffffff : 0);
+}
+
 static Bool TegraEXAClearPixmapDataOnGPU(TegraPixmapPtr pixmap, Bool accel)
 {
     struct drm_tegra_bo *bo = NULL;
     TegraPixmapPoolPtr pool;
 
-    if (pixmap->type == TEGRA_EXA_PIXMAP_TYPE_FALLBACK)
+    if (pixmap->type <= TEGRA_EXA_PIXMAP_TYPE_FALLBACK)
         return FALSE;
 
     if (pixmap->type == TEGRA_EXA_PIXMAP_TYPE_BO)
@@ -851,13 +882,14 @@ static Bool TegraEXAClearPixmapDataOnGPU(TegraPixmapPtr pixmap, Bool accel)
         bo = pool->bo;
     }
 
+    if (TegraEXAPixmapBusy(pixmap))
+        return TRUE;
+
     /*
      * HW job execution overhead is bigger for small pixmaps than clearing
      * on CPU, so we prefer CPU for a such pixmaps.
      */
-    if (pixmap->pPixmap->drawable.width *
-        pixmap->pPixmap->drawable.height *
-        pixmap->pPixmap->drawable.bitsPerPixel / 8 < 128 * 1024 &&
+    if (TegraPixmapSize(pixmap) < TEGRA_EXA_CPU_FILL_MIN_SIZE &&
         (!accel || drm_tegra_bo_mapped(bo)))
         return FALSE;
 
@@ -869,6 +901,16 @@ static void TegraEXAClearPixmapData(TegraPixmapPtr pixmap, Bool accel)
     if (!TegraEXAClearPixmapDataOnGPU(pixmap, accel) ||
         !TegraEXAClearPixmapDataGPU(pixmap))
             TegraEXAClearPixmapDataCPU(pixmap);
+
+    tegra_exa_flush_deferred_operations(pixmap->pPixmap, accel);
+}
+
+static void TegraEXAFillPixmapData(TegraPixmapPtr pixmap, Bool accel,
+                                   Pixel color)
+{
+    if (!TegraEXAClearPixmapDataOnGPU(pixmap, accel) ||
+        !TegraEXAFillPixmapDataGPU(pixmap, color))
+            TegraEXAFillPixmapDataCPU(pixmap, color);
 }
 
 static void
@@ -896,7 +938,9 @@ TegraEXAAllocatePixmapDataNoFail(TegraPtr tegra, TegraPixmapPtr pixmap,
     }
 }
 
-static void TegraEXAThawPixmap(PixmapPtr pPixmap, Bool accel)
+static void TegraEXAThawPixmap2(PixmapPtr pPixmap,
+                                enum thaw_accel accel,
+                                enum thaw_alloc allocate)
 {
     ScrnInfoPtr pScrn;
     TegraPixmapPtr priv;
@@ -911,7 +955,7 @@ static void TegraEXAThawPixmap(PixmapPtr pPixmap, Bool accel)
 
         priv->accelerated |= accel;
 
-        if (!tegra->exa_refrigerator)
+        if (!tegra->exa_refrigerator || priv->freezer_lockcnt)
             return;
 
         if (priv->frozen) {
@@ -927,10 +971,24 @@ static void TegraEXAThawPixmap(PixmapPtr pPixmap, Bool accel)
             priv->cold = FALSE;
         }
 
-        if (accel)
-            TegraEXAResurrectAccelPixmap(tegra, priv);
+        if (allocate) {
+            if (accel)
+                TegraEXAResurrectAccelPixmap(tegra, priv);
 
-        if (priv->type == TEGRA_EXA_PIXMAP_TYPE_NONE && priv->tegra_data)
-            TegraEXAAllocatePixmapDataNoFail(tegra, priv, accel);
+            if (priv->type == TEGRA_EXA_PIXMAP_TYPE_NONE && priv->tegra_data)
+                TegraEXAAllocatePixmapDataNoFail(tegra, priv, accel);
+        }
+    }
+}
+
+static void TegraEXAThawPixmap(PixmapPtr pPixmap, Bool accel)
+{
+    TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pPixmap);
+
+    if (!priv->freezer_lockcnt) {
+        TegraEXAThawPixmap2(pPixmap, accel ? THAW_ACCEL : THAW_NOACCEL,
+                            THAW_ALLOC);
+
+        tegra_exa_flush_deferred_operations(pPixmap, accel);
     }
 }
