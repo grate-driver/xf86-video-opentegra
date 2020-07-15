@@ -211,6 +211,7 @@ static bool tegra_stream_wait_fence_v1(struct tegra_fence *base_fence)
         ret = drm_tegra_fence_wait_timeout(f->fence, 1000);
         if (ret) {
             ErrorMsg("drm_tegra_fence_wait_timeout() failed %d\n", ret);
+            return false;
         }
 
         drm_tegra_fence_free(f->fence);
@@ -221,7 +222,7 @@ static bool tegra_stream_wait_fence_v1(struct tegra_fence *base_fence)
         return true;
     }
 
-    return false;
+    return true;
 }
 
 static bool tegra_stream_free_fence_v1(struct tegra_fence *base_fence)

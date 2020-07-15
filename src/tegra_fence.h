@@ -97,7 +97,7 @@ static inline bool tegra_fence_wait(struct tegra_fence *f)
         return f->wait_fence(f);
     }
 
-    return false;
+    return true;
 }
 #define TEGRA_FENCE_WAIT(F) \
     ({ TEGRA_FENCE_DEBUG_MSG(F, "wait"); tegra_fence_wait(F); })
