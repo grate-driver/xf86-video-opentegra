@@ -328,11 +328,11 @@ TegraSelectCopyFunc(char *dst, const char *src, int line_len,
         vfp_threaded = true;
         vfp_func     = tegra_memcpy_vfp_aligned;
 
-    } if (vfp_safe && !src_cached && dst_cached) {
+    } else if (vfp_safe && !src_cached && dst_cached) {
         vfp_threaded = true;
         vfp_func     = tegra_memcpy_vfp_aligned_dst_cached;
 
-    } if (vfp_safe && src_cached && !dst_cached) {
+    } else if (vfp_safe && src_cached && !dst_cached) {
         vfp_threaded = false;
         vfp_func     = tegra_memcpy_vfp_aligned_src_cached;
 
