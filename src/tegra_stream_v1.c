@@ -202,6 +202,25 @@ done:
     return f;
 }
 
+static bool tegra_stream_check_fence_v1(struct tegra_fence *base_fence)
+{
+    struct tegra_fence_v1 *f = to_fence_v1(base_fence);
+    int ret;
+
+    if (f->fence) {
+        ret = drm_tegra_fence_is_busy(f->fence);
+        if (ret)
+            return false;
+
+        drm_tegra_fence_free(f->fence);
+        drm_tegra_job_free(f->job);
+        f->fence = NULL;
+        f->job = NULL;
+    }
+
+    return true;
+}
+
 static bool tegra_stream_wait_fence_v1(struct tegra_fence *base_fence)
 {
     struct tegra_fence_v1 *f = to_fence_v1(base_fence);
@@ -270,6 +289,7 @@ tegra_stream_create_fence_v1(struct tegra_stream_v1 *stream,
 
     f->fence = fence;
     f->job = stream->job;
+    f->base.check_fence = tegra_stream_check_fence_v1;
     f->base.wait_fence = tegra_stream_wait_fence_v1;
     f->base.free_fence = tegra_stream_free_fence_v1;
     f->base.gr2d = gr2d;

@@ -51,6 +51,7 @@ struct tegra_fence {
     int refcnt;
     bool gr2d;
 
+    bool (*check_fence)(struct tegra_fence *f);
     bool (*wait_fence)(struct tegra_fence *f);
     bool (*free_fence)(struct tegra_fence *f);
 
@@ -89,6 +90,18 @@ tegra_fence_get(struct tegra_fence *f, void *opaque)
 }
 #define TEGRA_FENCE_GET(F, OPAQUE) \
     ({ TEGRA_FENCE_DEBUG_MSG(F, "ref"); tegra_fence_get(F, OPAQUE); })
+
+static inline bool tegra_fence_check_completion(struct tegra_fence *f)
+{
+    if (f) {
+        tegra_fence_validate(f);
+        return f->check_fence(f);
+    }
+
+    return true;
+}
+#define TEGRA_FENCE_COMPLETED(F) \
+    ({ TEGRA_FENCE_DEBUG_MSG(F, "check"); tegra_fence_check_completion(F); })
 
 static inline bool tegra_fence_wait(struct tegra_fence *f)
 {

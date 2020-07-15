@@ -231,6 +231,29 @@ static int tegra_stream_create_syncobj_v2(struct tegra_stream_v2 *stream,
     return 0;
 }
 
+static bool tegra_stream_check_fence_v2(struct tegra_fence *base_fence)
+{
+#ifdef HAVE_LIBDRM_SYNCOBJ_SUPPORT
+    struct tegra_fence_v2 *f = to_fence_v2(base_fence);
+    int ret;
+
+    if (!f->syncobj_handle)
+        return true;
+
+    ret = drmSyncobjWait(f->drm_fd, &f->syncobj_handle, 1, 0,
+                         DRM_SYNCOBJ_WAIT_FLAGS_WAIT_ALL |
+                         DRM_SYNCOBJ_WAIT_FLAGS_WAIT_FOR_SUBMIT,
+                         NULL);
+    if (ret)
+        return false;
+
+    drmSyncobjDestroy(f->drm_fd, f->syncobj_handle);
+    f->syncobj_handle = 0;
+#endif
+
+    return true;
+}
+
 static bool tegra_stream_wait_fence_v2(struct tegra_fence *base_fence)
 {
 #ifdef HAVE_LIBDRM_SYNCOBJ_SUPPORT
@@ -284,6 +307,7 @@ tegra_stream_create_fence_v2(struct tegra_stream_v2 *stream, bool gr2d)
     }
 
     f->drm_fd = stream->drm_fd;
+    f->base.check_fence = tegra_stream_check_fence_v2;
     f->base.wait_fence = tegra_stream_wait_fence_v2;
     f->base.free_fence = tegra_stream_free_fence_v2;
     f->base.gr2d = gr2d;
