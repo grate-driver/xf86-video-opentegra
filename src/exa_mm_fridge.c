@@ -26,6 +26,9 @@
 
 #define TEST_FREEZER    0
 
+/* note: validation is very slow */
+#define VALIDATE_COMPRESSION    0
+
 #define TEGRA_EXA_FREEZE_ALLOWANCE_DELTA    3
 #define TEGRA_EXA_FREEZE_BOUNCE_DELTA       5
 #define TEGRA_EXA_FREEZE_MIN_DELTA          (60 * 1)
@@ -576,7 +579,7 @@ retry:
         return;
     }
 
-    if (TEST_FREEZER) {
+    if (VALIDATE_COMPRESSION) {
         unsigned int cpp = pixmap->pPixmap->drawable.bitsPerPixel / 8;
         unsigned int width_bytes = pixmap->pPixmap->drawable.width * cpp;
         unsigned int x, y, match;
@@ -597,7 +600,7 @@ retry:
 
     TegraEXADecompressPixmap(tegra, pixmap, &carg);
 
-    if (TEST_FREEZER) {
+    if (VALIDATE_COMPRESSION) {
         unsigned int cpp = pixmap->pPixmap->drawable.bitsPerPixel / 8;
         unsigned int width_bytes = pixmap->pPixmap->drawable.width * cpp;
         unsigned int x, y, match, matched = 0;
