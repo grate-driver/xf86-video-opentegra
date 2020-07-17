@@ -330,9 +330,20 @@ static void migrate_entry(struct mem_pool *pool_from,
     /* pool_from data is copied into pool_to by move_entry()! */
     move_entry(pool_from, pool_to, from, to);
     if (new_vbase != from_vbase) {
-        tegra_memcpy_vfp_threaded(new_vbase, from_vbase,
-                                  pool_to->entries[to].size,
-                                  tegra_memmove_vfp_aligned);
+        int mem_move = 1;
+
+        if (new_vbase >= from_vbase + pool_to->entries[to].size ||
+            from_vbase >= new_vbase + pool_to->entries[to].size)
+                mem_move = 0;
+
+        if (mem_move)
+            tegra_memmove_vfp_aligned(new_vbase, from_vbase,
+                                      pool_to->entries[to].size);
+        else
+            tegra_memcpy_vfp_threaded(new_vbase, from_vbase,
+                                      pool_to->entries[to].size,
+                                      tegra_memcpy_vfp_aligned);
+
         mem_pool_clear_canary(&pool_to->entries[to]);
         pool_to->entries[to].base = new_base;
     }

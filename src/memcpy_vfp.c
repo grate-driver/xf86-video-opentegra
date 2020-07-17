@@ -236,6 +236,9 @@ void tegra_memcpy_vfp_threaded(char *dst, const char *src, int size,
     void *thread_arg;
     unsigned int i;
 
+    /* memmove isn't supported by the threaded copying */
+    assert(dst >= src + size || src >= dst + size);
+
     if (threads_num > 1)
         thread_cpy_size = (size / threads_num) & (~127);
     else
