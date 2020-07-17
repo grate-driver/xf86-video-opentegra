@@ -214,6 +214,8 @@ static void TegraEXAResurrectAccelPixmap(TegraPtr tegra, TegraPixmapPtr pixmap)
     TegraEXAPtr exa;
     Bool ret;
 
+    PROFILE_DEF(ressurection);
+
     if (!pixmap->accel || !pixmap->offscreen || !pixmap->tegra_data ||
         pixmap->type != TEGRA_EXA_PIXMAP_TYPE_FALLBACK)
         return;
@@ -224,6 +226,10 @@ static void TegraEXAResurrectAccelPixmap(TegraPtr tegra, TegraPixmapPtr pixmap)
     /* don't retry too often */
     if (time.tv_sec - exa->last_resurrect_time < TEGRA_EXA_RESURRECT_DELTA)
         return;
+
+    DebugMsg("%s pixmap %p\n", __FILE__, pixmap->pPixmap);
+
+    PROFILE_START(ressurection);
 
     pixmap_data_orig = pixmap->fallback;
     data_size = TegraPixmapSize(pixmap);
@@ -256,6 +262,8 @@ static void TegraEXAResurrectAccelPixmap(TegraPtr tegra, TegraPixmapPtr pixmap)
     } else {
         pixmap->fallback = pixmap_data_orig;
     }
+
+    PROFILE_STOP(ressurection);
 }
 
 static int TegraEXACompressPixmap(TegraEXAPtr exa, TegraPixmapPtr pixmap,
@@ -539,6 +547,8 @@ static void TegraEXAThawPixmapData(TegraPtr tegra, TegraPixmapPtr pixmap,
     uint8_t *pixmap_data;
     Bool ret = FALSE;
 
+    PROFILE_DEF(decompression);
+
     carg.compression_type   = pixmap->compression_type;
     carg.buf_in             = pixmap->compressed_data;
     carg.in_size            = pixmap->compressed_size;
@@ -598,7 +608,9 @@ retry:
     carg.width              = pixmap->pPixmap->drawable.width;
     carg.pitch              = pixmap->pPixmap->devKind;
 
+    PROFILE_START(decompression);
     TegraEXADecompressPixmap(tegra, pixmap, &carg);
+    PROFILE_STOP(decompression);
 
     if (VALIDATE_COMPRESSION) {
         unsigned int cpp = pixmap->pPixmap->drawable.bitsPerPixel / 8;
@@ -630,6 +642,8 @@ static int TegraEXAFreezePixmap(TegraPtr tegra, TegraPixmapPtr pixmap)
     void *pixmap_data;
     int err;
 
+    PROFILE_DEF(compression);
+
     data_size = TegraPixmapSize(pixmap);
 
     exa->cooling_size -= data_size;
@@ -644,7 +658,10 @@ static int TegraEXAFreezePixmap(TegraPtr tegra, TegraPixmapPtr pixmap)
     }
 
     carg = TegraEXASelectCompression(tegra, pixmap, data_size, pixmap_data);
+
+    PROFILE_START(compression);
     err = TegraEXACompressPixmap(exa, pixmap, &carg);
+    PROFILE_STOP(compression);
 
     if (err < 0) {
         ErrorMsg("failed to freeze pixmap\n");
@@ -684,6 +701,8 @@ static void TegraEXAFreezePixmaps(TegraPtr tegra, time_t time_sec)
     Bool emergence = FALSE;
     int err;
 
+    PROFILE_DEF(freezing);
+
     if (TEST_FREEZER)
         goto freeze;
 
@@ -717,6 +736,8 @@ static void TegraEXAFreezePixmaps(TegraPtr tegra, time_t time_sec)
 freeze:
     cooling_size = exa->cooling_size;
     frost_size = 0;
+
+    PROFILE_START(freezing);
 
     xorg_list_for_each_entry_safe(pix, tmp, &exa->cool_pixmaps, fridge_entry) {
         if (time_sec - pix->last_use < TEGRA_EXA_FREEZE_MAX_DELTA &&
@@ -760,6 +781,8 @@ out:
         clock_gettime(CLOCK_MONOTONIC, &time);
         exa->last_freezing_time = time.tv_sec;
     }
+
+    PROFILE_STOP(freezing);
 }
 
 static void TegraEXACoolTegraPixmap(TegraPtr tegra, TegraPixmapPtr pix)
@@ -923,15 +946,18 @@ TegraEXAAllocatePixmapDataNoFail(TegraPtr tegra, TegraPixmapPtr pixmap,
     unsigned int size = TegraPixmapSize(pixmap);
     unsigned int retries = 0;
 
+    PROFILE_DEF(alloc);
+    PROFILE_START(alloc);
+
     while (1) {
         if (!accel) {
             if (TegraEXAAllocateMem(pixmap, size))
-                return;
+                break;
         } else {
             if (TegraEXAAllocateDRMFromPool(tegra, pixmap, size) ||
                 TegraEXAAllocateDRM(tegra, pixmap, size) ||
                 TegraEXAAllocateMem(pixmap, size))
-                return;
+                break;
         }
 
         if (retries++ > 100)
@@ -939,6 +965,8 @@ TegraEXAAllocatePixmapDataNoFail(TegraPtr tegra, TegraPixmapPtr pixmap,
 
         usleep(100000);
     }
+
+    PROFILE_STOP(alloc);
 }
 
 static void TegraEXAThawPixmap2(PixmapPtr pPixmap,
@@ -949,6 +977,9 @@ static void TegraEXAThawPixmap2(PixmapPtr pPixmap,
     TegraPixmapPtr priv;
     TegraEXAPtr exa;
     TegraPtr tegra;
+
+    PROFILE_DEF(thaw);
+    PROFILE_START(thaw);
 
     if (pPixmap) {
         pScrn = xf86ScreenToScrn(pPixmap->drawable.pScreen);
@@ -982,6 +1013,8 @@ static void TegraEXAThawPixmap2(PixmapPtr pPixmap,
                 TegraEXAAllocatePixmapDataNoFail(tegra, priv, accel);
         }
     }
+
+    PROFILE_STOP(thaw);
 }
 
 static void TegraEXAThawPixmap(PixmapPtr pPixmap, Bool accel)
