@@ -30,12 +30,18 @@ static Bool TegraEXAAllocateDRM(TegraPtr tegra,
 {
     TegraEXAPtr exa = tegra->exa;
     unsigned long flags;
+    int drm_ver;
     int err;
 
     if (!pixmap->accel && !pixmap->dri)
         return FALSE;
 
-    flags = exa->default_drm_bo_flags | DRM_TEGRA_GEM_CREATE_SPARSE;
+    flags = exa->default_drm_bo_flags;
+
+    drm_ver = drm_tegra_version(tegra->drm);
+    if (drm_ver >= GRATE_KERNEL_DRM_VERSION)
+        flags |= DRM_TEGRA_GEM_CREATE_SPARSE;
+
     err = drm_tegra_bo_new(&pixmap->bo, tegra->drm, flags, size);
     if (err)
         return FALSE;
