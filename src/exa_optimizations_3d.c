@@ -59,6 +59,21 @@ tegra_exa_select_optimized_gr3d_program(TegraGR3DStatePtr state)
      * couple of most popular texture-operation combinations.
      */
     if (state->new.op == PictOpOver) {
+        if (state->new.dst.alpha) {
+            if (src_sel == TEX_EMPTY ||
+                    (mask_sel == TEX_SOLID && state->new.mask.solid == 0x0)) {
+                state->new.optimized_out = 1;
+                AccelMsg("PictOpOver optimized out\n");
+                goto optimized_shader;
+            }
+        } else if (mask_sel == TEX_SOLID && state->new.mask.solid == 0x0) {
+            AccelMsg("optimized out src texture fetch\n");
+            state->new.src.tex_sel = TEX_EMPTY;
+            state->new.src.solid = 0x00000000;
+            state->new.src.pPix = NULL;
+            src_sel = TEX_EMPTY;
+        }
+
         if (src_sel == TEX_PAD && !state->new.src.alpha &&
             (mask_sel == TEX_SOLID || mask_sel == TEX_EMPTY)) {
                 prog = &prog_blend_over_opaque_pad_src_solid_mask;
@@ -185,8 +200,12 @@ tegra_exa_select_optimized_gr3d_program(TegraGR3DStatePtr state)
     return prog;
 
 optimized_shader:
-    AccelMsg("custom shader for operation %d src_sel %u mask_sel %u %s\n",
-             state->new.op, src_sel, mask_sel, prog->name);
+    if (state->new.optimized_out)
+        AccelMsg("optimized out shader for operation %d src_sel %u mask_sel %u\n",
+                state->new.op, src_sel, mask_sel);
+    else
+        AccelMsg("custom shader for operation %d src_sel %u mask_sel %u %s\n",
+                state->new.op, src_sel, mask_sel, prog->name);
 
     return prog;
 }

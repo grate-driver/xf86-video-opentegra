@@ -704,6 +704,9 @@ static void TegraEXAComposite3D(PixmapPtr pDst,
     Bool clip_mask;
     Bool clip_src;
 
+    if (draw_state->optimized_out)
+        return;
+
     /* if attributes buffer is full, do nothing for now (TODO better job) */
     if (TegraCompositeAttribBufferIsFull(&tegra->scratch)) {
         ErrorMsg("FIXME: attributes buffer is full\n");

@@ -104,6 +104,10 @@ static void TegraGR3DStateFinalize(TegraGR3DStatePtr state)
         return;
 
     prog = TegraGR3DStateSelectProgram(state);
+
+    if (state->new.optimized_out)
+        return;
+
     if (!prog) {
         ErrorMsg("BUG: no shader selected for op %u\n", state->new.op);
         return;
@@ -469,6 +473,9 @@ static struct tegra_fence * TegraGR3DStateSubmit(TegraGR3DStatePtr state)
     if (TegraGR3DStateChanged(state))
         TegraGR3DStateFinalize(state);
 
+    if (state->new.optimized_out)
+        goto reset_state;
+
     /*
      * TODO: We can't batch up draw calls until host1x driver will
      * expose controls for explicit CDMA synchronization.
@@ -492,6 +499,7 @@ static struct tegra_fence * TegraGR3DStateSubmit(TegraGR3DStatePtr state)
 
     TEGRA_FENCE_PUT(explicit_fence);
 
+reset_state:
     TegraGR3DStateReset(state);
 
     return fence;
