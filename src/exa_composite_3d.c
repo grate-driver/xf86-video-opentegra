@@ -489,6 +489,7 @@ static Bool TegraEXAPrepareComposite3D(int op,
     TegraGR3DDrawState draw_state;
     Bool mask_tex_reduced = TRUE;
     Bool src_tex_reduced = TRUE;
+    TegraPixmapPtr priv;
     unsigned mask_sel;
     unsigned src_sel;
     Pixel solid;
@@ -558,6 +559,13 @@ static Bool TegraEXAPrepareComposite3D(int op,
                                             &tegra->scratch.transform_src);
 
                 draw_state.src.transform_coords = TRUE;
+            }
+
+            if (draw_state.src.alpha &&
+                draw_state.src.format == TGR3D_PIXEL_FORMAT_RGBA8888)
+            {
+                priv = exaGetPixmapDriverPrivate(pSrc);
+                draw_state.src.alpha = !priv->alpha_0;
             }
         } else {
             if (op != PictOpClear && pSrcPicture) {
@@ -712,6 +720,11 @@ static void TegraEXAComposite3D(PixmapPtr pDst,
         ErrorMsg("FIXME: attributes buffer is full\n");
         return;
     }
+
+    if (dstX == 0 && dstY == 0 &&
+            pDst->drawable.width == width &&
+            pDst->drawable.height == height)
+        draw_state->dst_full_cover = 1;
 
     dst.x0 = dstX;
     dst.y0 = dstY;

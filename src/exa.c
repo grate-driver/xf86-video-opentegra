@@ -146,6 +146,28 @@ static Bool TegraEXAPrepareCPUAccess(PixmapPtr pPix, int idx, void **ptr)
 
 static Bool TegraEXAPrepareAccess(PixmapPtr pPix, int idx)
 {
+    TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pPix);
+
+    switch (idx) {
+    default:
+    case EXA_PREPARE_DEST:
+    case EXA_PREPARE_AUX_DEST:
+        if (priv->alpha_0)
+            DebugMsg("pixmap %p %s canceled alpha_0\n",
+                     pPix, __func__);
+
+        /* we don't know what fallback will do with pixmap, so assume the worst */
+        priv->alpha_0 = 0;
+
+        /* fall through */
+    case EXA_PREPARE_SRC:
+    case EXA_PREPARE_MASK:
+    case EXA_PREPARE_AUX_SRC:
+    case EXA_PREPARE_AUX_MASK:
+    case EXA_NUM_PREPARE_INDICES:
+        break;
+    }
+
     return TegraEXAPrepareCPUAccess(pPix, idx, &pPix->devPrivate.ptr);
 }
 
@@ -438,6 +460,11 @@ TegraEXALoadScreen(PixmapPtr pix, int x, int y, int w, int h,
             dst_cached = FALSE;
 
         src_cached = TRUE;
+
+        if (priv->alpha_0)
+            DebugMsg("pixmap %p upload canceled alpha_0\n", pix);
+
+        priv->alpha_0 = 0;
     }
 
     AccelMsg("%s pPix %p %d:%d, %dx%d %d:%d\n", download ? "download" : "upload",

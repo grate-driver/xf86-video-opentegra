@@ -499,6 +499,8 @@ static struct tegra_fence * TegraGR3DStateSubmit(TegraGR3DStatePtr state)
 
     TEGRA_FENCE_PUT(explicit_fence);
 
+    tegra_exa_optimize_alpha_component(&state->new);
+
 reset_state:
     TegraGR3DStateReset(state);
 

@@ -45,5 +45,6 @@ static void
 tegra_exa_optimize_texture_sampler(TegraGR3DStateTex *tex);
 static const struct shader_program *
 tegra_exa_select_optimized_gr3d_program(TegraGR3DStatePtr state);
+static void tegra_exa_optimize_alpha_component(TegraGR3DDrawStatePtr state);
 
 #endif

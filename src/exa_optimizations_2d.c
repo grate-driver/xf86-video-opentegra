@@ -158,7 +158,19 @@ static Bool tegra_exa_optimize_solid_op(PixmapPtr pPixmap,
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
     unsigned int cpp = pPixmap->drawable.bitsPerPixel >> 3;
     unsigned int bytes = (px2 - px1) * (py2 - py1) * cpp;
+    bool alpha_0 = 0;
     void *ptr;
+
+    if ((cpp == 4 && !(tegra->scratch.color & 0xff000000)) ||
+        (cpp == 1 && !(tegra->scratch.color & 0x00))) {
+        if (priv->alpha_0 || (px1 == 0 && py1 == 0 &&
+                              pPixmap->drawable.width == px2 &&
+                              pPixmap->drawable.height == py2))
+            alpha_0 = 1;
+    }
+
+    if (priv->alpha_0 && !alpha_0)
+        DebugMsg("pixmap %p solid-fill canceled alpha_0\n", pPixmap);
 
     if (tegra->scratch.optimize &&
         px1 == 0 && py1 == 0 &&
@@ -175,6 +187,7 @@ static Bool tegra_exa_optimize_solid_op(PixmapPtr pPixmap,
 
         priv->state.solid_color = tegra->scratch.color;
         priv->state.solid_fill = 1;
+        priv->alpha_0 = alpha_0;
 
         return TRUE;
     }
@@ -213,8 +226,12 @@ static Bool tegra_exa_optimize_solid_op(PixmapPtr pPixmap,
 
         TegraEXAFinishCPUAccess(pPixmap, EXA_PREPARE_DEST);
 
+        priv->alpha_0 = alpha_0;
+
         return TRUE;
     }
+
+    priv->alpha_0 = alpha_0;
 
     return FALSE;
 }
@@ -359,6 +376,16 @@ static Bool tegra_exa_optimize_copy_op(PixmapPtr pDstPixmap,
                    pDstPixmap->drawable.width == width &&
                    pDstPixmap->drawable.height == height) {
             tegra_exa_cancel_deferred_operations(pDstPixmap);
+
+            if (dst_priv->alpha_0 && !src_priv->alpha_0)
+                DebugMsg("pixmap %p copy canceled alpha_0\n", pDstPixmap);
+
+            dst_priv->alpha_0 = src_priv->alpha_0;
+        } else {
+            if (!src_priv->alpha_0 && dst_priv->alpha_0) {
+                DebugMsg("pixmap %p copy canceled alpha_0\n", pDstPixmap);
+                dst_priv->alpha_0 = 0;
+            }
         }
     }
 

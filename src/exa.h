@@ -146,6 +146,7 @@ typedef struct gr3d_draw_state {
     TegraGR3DStateTex src;
     TegraGR3DStateTex mask;
     TegraGR3DStateTex dst;
+    bool dst_full_cover : 1;
     bool discards_clip : 1;
     bool optimized_out : 1;
     int op;
@@ -286,6 +287,7 @@ typedef struct tegra_pixmap {
     bool no_compress : 1;       /* pixmap's data compress poorly */
     bool accelerated : 1;       /* pixmap was accelerated at least once */
     bool offscreen : 1;         /* pixmap's data resides in Tegra's GEM */
+    bool alpha_0 : 1;           /* pixmap's alpha component is 0x00 (RGBX texture) */
     bool scanout : 1;           /* pixmap backs frontbuffer BO */
     bool frozen : 1;            /* pixmap's data compressed */
     bool accel : 1;             /* pixmap acceleratable */

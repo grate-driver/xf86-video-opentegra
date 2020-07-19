@@ -34,6 +34,7 @@ static const struct shader_program *
 tegra_exa_select_optimized_gr3d_program(TegraGR3DStatePtr state)
 {
     const struct tegra_composite_config *cfg = &composite_cfgs[state->new.op];
+    TegraPixmapPtr dst_priv = exaGetPixmapDriverPrivate(state->new.dst.pPix);
     const struct shader_program *prog = NULL;
     unsigned mask_sel = state->new.mask.tex_sel;
     unsigned src_sel  = state->new.src.tex_sel;
@@ -59,7 +60,7 @@ tegra_exa_select_optimized_gr3d_program(TegraGR3DStatePtr state)
      * couple of most popular texture-operation combinations.
      */
     if (state->new.op == PictOpOver) {
-        if (state->new.dst.alpha) {
+        if (state->new.dst.alpha || dst_priv->alpha_0) {
             if (src_sel == TEX_EMPTY ||
                     (mask_sel == TEX_SOLID && state->new.mask.solid == 0x0)) {
                 state->new.optimized_out = 1;
@@ -72,6 +73,18 @@ tegra_exa_select_optimized_gr3d_program(TegraGR3DStatePtr state)
             state->new.src.solid = 0x00000000;
             state->new.src.pPix = NULL;
             src_sel = TEX_EMPTY;
+        }
+
+        if (src_sel == TEX_SOLID && mask_sel == TEX_EMPTY &&
+            !state->new.dst.alpha) {
+                prog = &prog_blend_over_solid_src_empty_mask_dst_opaque;
+
+                if ((state->new.src.solid >> 24) == 0xff) {
+                    prog = &prog_blend_src_solid_mask_src;
+                    state->new.mask.solid = 0x00fffffff;
+                }
+
+                goto optimized_shader;
         }
 
         if (src_sel == TEX_PAD && !state->new.src.alpha &&
@@ -208,4 +221,55 @@ optimized_shader:
                 state->new.op, src_sel, mask_sel, prog->name);
 
     return prog;
+}
+
+static void tegra_exa_optimize_alpha_component(TegraGR3DDrawStatePtr state)
+{
+    TegraPixmapPtr dst_priv = exaGetPixmapDriverPrivate(state->dst.pPix);
+    TegraPixmapPtr src_priv, mask_priv;
+
+    if (state->dst_full_cover && !state->dst.alpha) {
+        dst_priv->alpha_0 = !DISABLE_2D_OPTIMIZATIONS;
+    } else if (state->dst.alpha) {
+        bool mask_alpha_0 = false;
+        bool dst_alpha_0 = false;
+        bool src_alpha_0 = false;
+
+        if (state->mask.pPix) {
+            mask_priv = exaGetPixmapDriverPrivate(state->mask.pPix);
+
+            if (state->mask.alpha && mask_priv->alpha_0)
+                mask_alpha_0 = true;
+        } else {
+            if ((state->mask.solid & 0xff000000) == 0x00000000)
+                mask_alpha_0 = true;
+        }
+
+        if (state->src.pPix) {
+            src_priv = exaGetPixmapDriverPrivate(state->src.pPix);
+
+            if (state->src.alpha && src_priv->alpha_0)
+                src_alpha_0 = true;
+        } else {
+            if ((state->src.solid & 0xff000000) == 0x00000000)
+                src_alpha_0 = true;
+        }
+
+        /* check whether dst.alpha channel is changed by drawing operation */
+        switch (state->op) {
+        case PictOpSrc:
+        case PictOpOver:
+            if (src_alpha_0 || mask_alpha_0)
+                dst_alpha_0 = true;
+            break;
+
+        default:
+            break;
+        }
+
+        if (!dst_alpha_0)
+            dst_priv->alpha_0 = 0;
+        else if (state->dst_full_cover)
+            dst_priv->alpha_0 = !DISABLE_2D_OPTIMIZATIONS;
+    }
 }
