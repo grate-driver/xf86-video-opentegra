@@ -183,7 +183,7 @@ static void TegraEXADoneSolid(PixmapPtr pPixmap)
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pPixmap->drawable.pScreen);
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
     struct tegra_fence *explicit_fence;
-    struct tegra_fence *fence = NULL;
+    struct tegra_fence *fence;
 
     PROFILE_DEF(solid);
 
@@ -197,11 +197,7 @@ static void TegraEXADoneSolid(PixmapPtr pPixmap)
         explicit_fence = exa_helper_get_explicit_fence(TEGRA_3D, pPixmap, 0);
 
         PROFILE_START(solid);
-        if (PROFILE_GPU || tegra->has_iommu_bug)
-                tegra_stream_flush(tegra->cmds, explicit_fence);
-        else
-                fence = tegra_stream_submit(TEGRA_2D, tegra->cmds,
-                                            explicit_fence);
+        fence = tegra_exa_stream_submit(tegra, TEGRA_2D, explicit_fence);
         PROFILE_STOP(solid);
 
         TEGRA_FENCE_PUT(explicit_fence);
@@ -559,7 +555,7 @@ static void TegraEXADoneCopy(PixmapPtr pDstPixmap)
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pDstPixmap->drawable.pScreen);
     TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
     struct tegra_fence *explicit_fence;
-    struct tegra_fence *fence = NULL;
+    struct tegra_fence *fence;
 
     PROFILE_DEF(copy);
 
@@ -574,11 +570,7 @@ static void TegraEXADoneCopy(PixmapPtr pDstPixmap)
                                                        tegra->scratch.pSrc);
 
         PROFILE_START(copy);
-        if (PROFILE_GPU || tegra->has_iommu_bug)
-                tegra_stream_flush(tegra->cmds, explicit_fence);
-        else
-                fence = tegra_stream_submit(TEGRA_2D, tegra->cmds,
-                                            explicit_fence);
+        fence = tegra_exa_stream_submit(tegra, TEGRA_2D, explicit_fence);
         PROFILE_STOP(copy);
 
         TEGRA_FENCE_PUT(explicit_fence);

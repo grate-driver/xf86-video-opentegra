@@ -491,10 +491,7 @@ static struct tegra_fence * TegraGR3DStateSubmit(TegraGR3DStatePtr state)
     tegra = TegraPTR(pScrn)->exa;
 
     PROFILE_START(gr3d);
-    if (PROFILE_GPU || tegra->has_iommu_bug)
-        tegra_stream_flush(state->cmds, explicit_fence);
-    else
-        fence = tegra_stream_submit(TEGRA_3D, state->cmds, explicit_fence);
+    fence = tegra_exa_stream_submit(tegra, TEGRA_3D, explicit_fence);
     PROFILE_STOP(gr3d);
 
     TEGRA_FENCE_PUT(explicit_fence);

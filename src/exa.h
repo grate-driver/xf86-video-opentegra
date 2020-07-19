@@ -420,6 +420,21 @@ static inline Bool TegraCompositeFormatHasAlpha(unsigned format)
     }
 }
 
+static inline struct tegra_fence *
+tegra_exa_stream_submit(TegraEXAPtr tegra, enum host1x_engine engine,
+                        struct tegra_fence *explicit_fence)
+{
+    struct tegra_fence *out_fence = NULL;
+
+    if (PROFILE_GPU || tegra->has_iommu_bug)
+            tegra_stream_flush(tegra->cmds, explicit_fence);
+    else
+            out_fence = tegra_stream_submit(engine, tegra->cmds,
+                                            explicit_fence);
+
+    return out_fence;
+}
+
 #endif
 
 /* vim: set et sts=4 sw=4 ts=4: */
