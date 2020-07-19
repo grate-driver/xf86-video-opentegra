@@ -165,10 +165,15 @@ static TegraPixmapPoolPtr TegraEXACompactPoolsFast(TegraEXAPtr exa, size_t size)
     unsigned int transferred;
     unsigned int pass = 3;
 
+    PROFILE_DEF(fast_compaction);
+    PROFILE_START(fast_compaction);
+
 again:
     xorg_list_for_each_entry(pool_to, &exa->mem_pools, entry) {
-        if (pool_to->pool.remain >= size)
+        if (pool_to->pool.remain >= size) {
+            PROFILE_STOP(fast_compaction);
             return pool_to;
+        }
 
         if (pool_to->pool.remain < TEGRA_EXA_OFFSET_ALIGN)
             continue;
@@ -209,13 +214,17 @@ again:
             if (!transferred)
                 continue;
 
-            if (mem_pool_has_space(&pool_from->pool, size))
+            if (mem_pool_has_space(&pool_from->pool, size)) {
+                PROFILE_STOP(fast_compaction);
                 return pool_from;
+            }
         }
     }
 
     if (--pass > 0)
         goto again;
+
+    PROFILE_STOP(fast_compaction);
 
     return NULL;
 }
@@ -332,6 +341,9 @@ static void TegraEXACompactPoolsSlow(TegraPtr tegra)
     unsigned int i, l, h;
     Bool list_full;
     int err;
+
+    PROFILE_DEF(slow_compaction);
+    PROFILE_START(slow_compaction);
 
     /* merge as much as possible pools into a larger pools */
     TegraEXAMergePools(tegra);
@@ -520,6 +532,8 @@ heavy_again:
             xorg_list_add(&pool->entry, &exa->mem_pools);
         }
     }
+
+    PROFILE_STOP(slow_compaction);
 
 #ifdef POOL_DEBUG
     xorg_list_for_each_entry(pool, &exa->mem_pools, entry)
