@@ -555,7 +555,6 @@ static unsigned long TegraEXAPoolsAvailableSpaceTotal(TegraEXAPtr exa)
 static Bool TegraEXACompactPoolsSlowAllowed(TegraEXAPtr exa, size_t size_limit)
 {
     struct timespec time;
-    Bool compact = FALSE;
     Bool expired = TRUE;
 
     clock_gettime(CLOCK_MONOTONIC, &time);
@@ -566,11 +565,9 @@ static Bool TegraEXACompactPoolsSlowAllowed(TegraEXAPtr exa, size_t size_limit)
     if (size_limit) {
         if (TegraEXAPoolsAvailableSpaceTotal(exa) < size_limit)
             expired = FALSE;
-        else
-            compact = TRUE;
     }
 
-    if (!compact && size_limit)
+    if (expired)
         exa->pool_slow_compact_time = time.tv_sec;
 
     return expired;
