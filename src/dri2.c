@@ -235,12 +235,15 @@ tegra_dri2_copy_region(DrawablePtr drawable, RegionPtr pRegion,
     PixmapPtr src_pixmap = src_priv->pixmap;
     PixmapPtr dst_pixmap = dst_priv->pixmap;
     ScreenPtr screen = drawable->pScreen;
+    ScrnInfoPtr pScrn = xf86ScreenToScrn(screen);
+    TegraPtr tegra = TegraPTR(pScrn);
     DrawablePtr src = (sourceBuffer->attachment == DRI2BufferFrontLeft)
         ? drawable : &src_pixmap->drawable;
     DrawablePtr dst = (destBuffer->attachment == DRI2BufferFrontLeft)
         ? drawable : &dst_pixmap->drawable;
-    TegraPixmapPtr tegra;
+    TegraPixmapPtr tegra_pixmap;
     RegionPtr pCopyClip;
+    int drm_ver;
     GCPtr gc;
 
     gc = GetScratchGC(dst->depth, screen);
@@ -268,6 +271,8 @@ tegra_dri2_copy_region(DrawablePtr drawable, RegionPtr pRegion,
 
     FreeScratchGC(gc);
 
+    drm_ver = drm_tegra_version(tegra->drm);
+
     /*
      * We need to wait for the copying completion here because UAPI v1
      * doesn't support BO reservation, and thus, implicit fencing won't
@@ -276,13 +281,15 @@ tegra_dri2_copy_region(DrawablePtr drawable, RegionPtr pRegion,
      * asynchronous rendering in our EXA driver, so it wasn't a problem
      * back then.
      */
-    tegra = exaGetPixmapDriverPrivate(src_pixmap);
-    if (tegra && tegra->dri)
-        TEGRA_PIXMAP_WAIT_READ_FENCES(tegra);
+    if (drm_ver < GRATE_KERNEL_DRM_VERSION) {
+        tegra_pixmap = exaGetPixmapDriverPrivate(src_pixmap);
+        if (tegra_pixmap && tegra_pixmap->dri)
+            TEGRA_PIXMAP_WAIT_READ_FENCES(tegra_pixmap);
 
-    tegra = exaGetPixmapDriverPrivate(dst_pixmap);
-    if (tegra && tegra->dri)
-        TEGRA_PIXMAP_WAIT_WRITE_FENCES(tegra);
+        tegra_pixmap = exaGetPixmapDriverPrivate(dst_pixmap);
+        if (tegra_pixmap && tegra_pixmap->dri)
+            TEGRA_PIXMAP_WAIT_WRITE_FENCES(tegra_pixmap);
+    }
 }
 
 static uint64_t
