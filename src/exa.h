@@ -255,6 +255,7 @@ typedef struct _TegraEXARec{
     tjhandle jpegCompressor;
     tjhandle jpegDecompressor;
 #endif
+    struct xorg_list pixmaps_freelist;
 
     TegraGR3DState gr3d_state;
 
@@ -287,6 +288,7 @@ typedef struct tegra_pixmap {
     bool no_compress : 1;       /* pixmap's data compress poorly */
     bool accelerated : 1;       /* pixmap was accelerated at least once */
     bool offscreen : 1;         /* pixmap's data resides in Tegra's GEM */
+    bool destroyed : 1;         /* pixmap was destroyed by EXA core */
     bool alpha_0 : 1;           /* pixmap's alpha component is 0x00 (RGBX texture) */
     bool scanout : 1;           /* pixmap backs frontbuffer BO */
     bool frozen : 1;            /* pixmap's data compressed */
@@ -323,7 +325,10 @@ typedef struct tegra_pixmap {
             };
 
             time_t last_use; /* in seconds */
-            struct xorg_list fridge_entry;
+            union {
+                struct xorg_list fridge_entry;
+                struct xorg_list freelist_entry;
+            };
         };
 
         struct {

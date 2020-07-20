@@ -74,6 +74,7 @@ static int TegraEXAInitMM(TegraPtr tegra, TegraEXAPtr exa)
 
     drm_ver = drm_tegra_version(tegra->drm);
 
+    xorg_list_init(&exa->pixmaps_freelist);
     xorg_list_init(&exa->cool_pixmaps);
     xorg_list_init(&exa->mem_pools);
 
@@ -138,6 +139,8 @@ static int TegraEXAInitMM(TegraPtr tegra, TegraEXAPtr exa)
 
 static void TegraEXAReleaseMM(TegraPtr tegra, TegraEXAPtr exa)
 {
+    TegraEXACleanUpPixmapsFreelist(tegra, TRUE);
+
     if (exa->large_pool) {
         exa->large_pool->persitent = FALSE;
 

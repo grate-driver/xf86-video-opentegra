@@ -35,6 +35,7 @@ static Bool TegraEXAPrepareCPUAccess(PixmapPtr pPix, int idx, void **ptr);
 static void TegraEXAFinishCPUAccess(PixmapPtr pPix, int idx);
 static Bool TegraEXAIsPoolPixmap(PixmapPtr pix);
 static Bool TegraEXAPixmapBusy(TegraPixmapPtr pixmap);
+static void TegraEXACleanUpPixmapsFreelist(TegraPtr tegra, Bool force);
 
 uint64_t tegra_profiler_seqno;
 
@@ -252,16 +253,20 @@ static void TegraEXADestroyPixmap(ScreenPtr pScreen, void *driverPriv)
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pScreen);
     TegraPtr tegra = TegraPTR(pScrn);
     TegraPixmapPtr priv = driverPriv;
+    Bool released_data;
 
-    DebugMsg("pPix %p priv %p type %u %d:%d:%d stride %d\n",
+    released_data = TegraEXAReleasePixmapData(tegra, priv);
+
+    DebugMsg("pPix %p priv %p type %u %d:%d:%d stride %d released %d\n",
              priv->pPixmap, priv, priv->type,
              priv->pPixmap->drawable.width,
              priv->pPixmap->drawable.height,
              priv->pPixmap->drawable.bitsPerPixel,
-             priv->pPixmap->devKind);
+             priv->pPixmap->devKind,
+             released_data);
 
-    TegraEXAReleasePixmapData(tegra, priv);
-    free(priv);
+    if (released_data)
+        free(priv);
 }
 
 static Bool TegraEXAModifyPixmapHeader(PixmapPtr pPixmap, int width,
@@ -538,6 +543,7 @@ static void TegraEXABlockHandler(BLOCKHANDLER_ARGS_DECL)
     TegraEXAFreezePixmaps(tegra, time.tv_sec);
 
     drm_tegra_bo_cache_cleanup(tegra->drm, time.tv_sec);
+    TegraEXACleanUpPixmapsFreelist(tegra, FALSE);
 }
 
 static void TegraEXAWrapProc(ScreenPtr pScreen)

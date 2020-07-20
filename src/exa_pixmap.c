@@ -24,6 +24,8 @@
 
 #define TEGRA_MALLOC_TRIM_THRESHOLD     256
 
+static Bool TegraEXAReleasePixmapData(TegraPtr tegra, TegraPixmapPtr priv);
+
 static Bool TegraEXAIsPoolPixmap(PixmapPtr pix)
 {
     TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pix);
@@ -77,13 +79,50 @@ static void TegraEXATrimHeap(TegraEXAPtr exa)
 #endif
 }
 
-static void TegraEXAReleasePixmapData(TegraPtr tegra, TegraPixmapPtr priv)
+static void TegraEXADestroyFreelistPixmap(TegraPtr tegra, TegraPixmapPtr priv,
+                                          Bool wait_fences)
+{
+    Bool released_data;
+
+    if (wait_fences)
+        TEGRA_PIXMAP_WAIT_ALL_FENCES(priv);
+
+    released_data = TegraEXAReleasePixmapData(tegra, priv);
+    assert(released_data);
+
+    DebugMsg("pPix %p priv %p type %u %d:%d:%d stride %d released %d\n",
+             priv->pPixmap, priv, priv->type,
+             priv->pPixmap->drawable.width,
+             priv->pPixmap->drawable.height,
+             priv->pPixmap->drawable.bitsPerPixel,
+             priv->pPixmap->devKind,
+             released_data);
+
+    xorg_list_del(&priv->freelist_entry);
+    free(priv);
+}
+
+static void TegraEXACleanUpPixmapsFreelist(TegraPtr tegra, Bool force)
 {
     TegraEXAPtr exa = tegra->exa;
-    Bool force_fencing = false;
-    int drm_ver;
+    TegraPixmapPtr pix, tmp;
 
-    tegra_exa_cancel_deferred_operations(priv->pPixmap);
+    xorg_list_for_each_entry_safe(pix, tmp, &exa->pixmaps_freelist,
+                                  freelist_entry) {
+        if (force || !TegraEXAPixmapBusy(pix))
+            TegraEXADestroyFreelistPixmap(tegra, pix, force);
+    }
+}
+
+static Bool TegraEXAReleasePixmapData(TegraPtr tegra, TegraPixmapPtr priv)
+{
+    Bool destroy = !priv->destroyed;
+    TegraEXAPtr exa = tegra->exa;
+
+    priv->destroyed = 1;
+
+    if (destroy)
+        tegra_exa_cancel_deferred_operations(priv->pPixmap);
 
     if (priv->type == TEGRA_EXA_PIXMAP_TYPE_NONE) {
         if (priv->frozen) {
@@ -99,7 +138,7 @@ static void TegraEXAReleasePixmapData(TegraPtr tegra, TegraPixmapPtr priv)
         }
 
         goto out_final;
-    } else if (tegra->exa_erase_pixmaps) {
+    } else if (tegra->exa_erase_pixmaps && destroy) {
         /* clear released data for privacy protection */
         TegraEXAClearPixmapData(priv, TRUE);
     }
@@ -128,28 +167,21 @@ static void TegraEXAReleasePixmapData(TegraPtr tegra, TegraPixmapPtr priv)
      *
      * Secondly, we can't check the pool allocation HW usage status at
      * allocation time, so we always need to fence a such allocation.
+     *
+     * Thirdly, we have to await the fence to avoid BO re-use while job is
+     * in progress,  this will be resolved by BO reservation that right now
+     * isn't supported by vanilla upstream kernel driver.
+     *
+     * If hardware is working with pixmap, then we won't free the pixmap,
+     * but move it to a freelist where it will sit until hardware is done
+     * working with the pixmap, then pixmap will be released.
      */
-    force_fencing = (priv->type == TEGRA_EXA_PIXMAP_TYPE_POOL);
-
-    drm_ver = drm_tegra_version(tegra->drm);
-
-    /*
-     * We have to await the fence to avoid BO re-use while job is in progress,
-     * this will be resolved by BO reservation that right now isn't supported
-     * by vanilla upstream kernel driver.
-     */
-#define RELEASE_FENCE(F, FORCE, DRM_VER)                    \
-    if (F) {                                                \
-        if (FORCE || DRM_VER < GRATE_KERNEL_DRM_VERSION)    \
-            TegraEXAWaitFence(F);                           \
-        TEGRA_FENCE_PUT(F);                                 \
-        F = NULL;                                           \
+    if (TegraEXAPixmapBusy(priv)) {
+        xorg_list_append(&priv->freelist_entry, &exa->pixmaps_freelist);
+        return FALSE;
     }
 
-    RELEASE_FENCE(priv->fence_read[TEGRA_2D],  force_fencing, drm_ver);
-    RELEASE_FENCE(priv->fence_read[TEGRA_3D],  force_fencing, drm_ver);
-    RELEASE_FENCE(priv->fence_write[TEGRA_2D], force_fencing, drm_ver);
-    RELEASE_FENCE(priv->fence_write[TEGRA_3D], force_fencing, drm_ver);
+    TEGRA_PIXMAP_WAIT_ALL_FENCES(priv);
 
     if (priv->type == TEGRA_EXA_PIXMAP_TYPE_POOL) {
         TegraEXAPoolFree(&priv->pool_entry);
@@ -164,6 +196,8 @@ static void TegraEXAReleasePixmapData(TegraPtr tegra, TegraPixmapPtr priv)
 out_final:
     priv->type = TEGRA_EXA_PIXMAP_TYPE_NONE;
     TegraEXATrimHeap(exa);
+
+    return TRUE;
 }
 
 static unsigned TegraEXAPixmapSizeAligned(unsigned pitch, unsigned height,
