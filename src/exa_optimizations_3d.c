@@ -33,8 +33,8 @@ tegra_exa_optimize_texture_sampler(TegraGR3DStateTex *tex)
 static const struct shader_program *
 tegra_exa_select_optimized_gr3d_program(TegraGR3DStatePtr state)
 {
-    const struct tegra_composite_config *cfg = &composite_cfgs[state->new.op];
     TegraPixmapPtr dst_priv = exaGetPixmapDriverPrivate(state->new.dst.pPix);
+    const struct tegra_composite_config *cfg;
     const struct shader_program *prog = NULL;
     unsigned mask_sel = state->new.mask.tex_sel;
     unsigned src_sel  = state->new.src.tex_sel;
@@ -73,6 +73,13 @@ tegra_exa_select_optimized_gr3d_program(TegraGR3DStatePtr state)
             state->new.src.solid = 0x00000000;
             state->new.src.pPix = NULL;
             src_sel = TEX_EMPTY;
+        }
+
+        if ((!state->new.src.pPix && !(state->new.src.solid & 0xff000000)) ||
+            (dst_priv->state.solid_fill && dst_priv->state.solid_color == 0x0)) {
+            AccelMsg("PictOpOver optimized to PictOpSrc\n");
+            state->new.op = PictOpSrc;
+            goto op_src;
         }
 
         if (src_sel == TEX_SOLID && mask_sel == TEX_EMPTY &&
@@ -180,6 +187,7 @@ tegra_exa_select_optimized_gr3d_program(TegraGR3DStatePtr state)
     }
 
     if (state->new.op == PictOpSrc) {
+op_src:
         if (src_sel == TEX_CLIPPED &&
             (mask_sel == TEX_SOLID || mask_sel == TEX_EMPTY)) {
                 prog = &prog_blend_src_clipped_src_solid_mask;
@@ -193,6 +201,7 @@ tegra_exa_select_optimized_gr3d_program(TegraGR3DStatePtr state)
         }
     }
 
+    cfg = &composite_cfgs[state->new.op];
     prog = cfg->prog[PROG_SEL(src_sel, mask_sel)];
 
     if (prog == &prog_blend_add_solid_mask &&
