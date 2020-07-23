@@ -241,7 +241,7 @@ void drm_tegra_reset_bo(struct drm_tegra_bo *bo, uint32_t flags,
 
 	/* reset reference counters */
 	atomic_set(&bo->ref, 1);
-	bo->mmap_ref = 0;
+	atomic_set(&bo->mmap_ref, 0);
 
 	/*
 	 * Put mapping into the cache to dispose of it if new BO owner

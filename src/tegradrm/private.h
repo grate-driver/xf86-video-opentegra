@@ -86,8 +86,8 @@
 			FMT,						\
 			__func__, __LINE__, BO, BO->size, BO->handle,	\
 			BO->name, BO->flags, atomic_read(&BO->ref),	\
-			BO->map, BO->mmap_ref, BO->map_cached,		\
-			__VA_ARGS__);					\
+			BO->map, atomic_read(&BO->mmap_ref),		\
+			BO->map_cached,	__VA_ARGS__);			\
 } while (0)
 
 #define DBG_BO(BO, FMT) VDBG_BO(BO, FMT "%s", "")
@@ -166,7 +166,7 @@ struct drm_tegra_bo {
 	uint32_t size;
 	uint32_t name;
 	atomic_t ref;
-	uint32_t mmap_ref;
+	atomic_t mmap_ref;
 	void *map;
 
 #if HAVE_VALGRIND

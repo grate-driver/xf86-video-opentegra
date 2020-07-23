@@ -623,6 +623,11 @@ int drm_tegra_bo_map(struct drm_tegra_bo *bo, void **ptr)
 	if (!bo)
 		return -EINVAL;
 
+	if (atomic_inc_and_test(&bo->mmap_ref) && bo->map) {
+		DBG_BO(bo, "\n");
+		goto done;
+	}
+
 	pthread_mutex_lock(&table_lock);
 
 	if (!bo->map) {
@@ -631,17 +636,13 @@ int drm_tegra_bo_map(struct drm_tegra_bo *bo, void **ptr)
 			goto out;
 
 		VG_BO_MMAP(bo);
-
-		bo->mmap_ref = 1;
-	} else {
-		DBG_BO(bo, "\n");
-		bo->mmap_ref++;
 	}
 out:
+	pthread_mutex_unlock(&table_lock);
+
+done:
 	if (ptr)
 		*ptr = bo->map;
-
-	pthread_mutex_unlock(&table_lock);
 
 	return err;
 }
@@ -653,19 +654,18 @@ int drm_tegra_bo_unmap(struct drm_tegra_bo *bo)
 
 	DBG_BO(bo, "\n");
 
+	if (!bo->map || !atomic_dec_and_test(&bo->mmap_ref))
+		return 0;
+
 	pthread_mutex_lock(&table_lock);
 
-	if (bo->mmap_ref == 0)
-		goto unlock;
+	if (!atomic_read(&bo->mmap_ref)) {
+		VG_BO_UNMMAP(bo);
 
-	if (--bo->mmap_ref > 0)
-		goto unlock;
+		drm_tegra_bo_cache_unmap(bo);
+		bo->map = NULL;
+	}
 
-	VG_BO_UNMMAP(bo);
-
-	drm_tegra_bo_cache_unmap(bo);
-	bo->map = NULL;
-unlock:
 	pthread_mutex_unlock(&table_lock);
 
 	return 0;
@@ -683,7 +683,7 @@ int drm_tegra_bo_mapped(struct drm_tegra_bo *bo)
 	if (bo->map_cached)
 		return -1;
 
-	return bo->mmap_ref;
+	return atomic_read(&bo->mmap_ref);
 }
 
 int drm_tegra_bo_get_flags(struct drm_tegra_bo *bo, uint32_t *flags)
