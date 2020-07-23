@@ -146,11 +146,11 @@ static Bool TegraEXAPrepareSolid(PixmapPtr pPixmap, int op, Pixel planemask,
 
     tegra_exa_prepare_optimized_solid_fill(pPixmap, color);
 
-    AccelMsg("pixmap %p %d:%d color %08lx\n",
+    AccelMsg("pixmap %p %d:%d color %08lx scanout %d\n",
              pPixmap,
              pPixmap->drawable.width,
              pPixmap->drawable.height,
-             color);
+             color, priv->scanout);
 
     return TRUE;
 }
@@ -276,12 +276,13 @@ static Bool TegraEXAPrepareCopyExt(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
         return FALSE;
     }
 
-    AccelMsg("pSrcPixmap %p priv %p type %u %d:%d:%d stride %d\n",
+    AccelMsg("pSrcPixmap %p priv %p type %u %d:%d:%d stride %d scanout %d\n",
              pSrcPixmap, priv, priv->type,
              pSrcPixmap->drawable.width,
              pSrcPixmap->drawable.height,
              pSrcPixmap->drawable.bitsPerPixel,
-             pSrcPixmap->devKind);
+             pSrcPixmap->devKind,
+             priv->scanout);
 
     priv = exaGetPixmapDriverPrivate(pDstPixmap);
     if (priv->type <= TEGRA_EXA_PIXMAP_TYPE_FALLBACK) {
@@ -292,12 +293,13 @@ static Bool TegraEXAPrepareCopyExt(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap,
         return FALSE;
     }
 
-    AccelMsg("pDstPixmap %p priv %p type %u %d:%d:%d stride %d\n",
+    AccelMsg("pDstPixmap %p priv %p type %u %d:%d:%d stride %d scanout %d\n",
              pDstPixmap, priv, priv->type,
              pDstPixmap->drawable.width,
              pDstPixmap->drawable.height,
              pDstPixmap->drawable.bitsPerPixel,
-             pDstPixmap->devKind);
+             pDstPixmap->devKind,
+             priv->scanout);
 
     err = tegra_stream_begin(tegra->cmds, tegra->gr2d);
     if (err < 0)
