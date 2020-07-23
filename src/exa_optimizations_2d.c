@@ -145,6 +145,7 @@ tegra_exa_prepare_optimized_solid_fill(PixmapPtr pPixmap, Pixel color)
     tegra->scratch.color = color;
     tegra->scratch.optimize = optimize;
     tegra->scratch.cpu_access = cpu_access;
+    tegra->scratch.cpu_ptr = NULL;
 
     priv->freezer_lockcnt++;
 }
@@ -159,7 +160,6 @@ static Bool tegra_exa_optimize_solid_op(PixmapPtr pPixmap,
     unsigned int cpp = pPixmap->drawable.bitsPerPixel >> 3;
     unsigned int bytes = (px2 - px1) * (py2 - py1) * cpp;
     bool alpha_0 = 0;
-    void *ptr;
 
     if ((cpp == 4 && !(tegra->scratch.color & 0xff000000)) ||
         (cpp == 1 && !(tegra->scratch.color & 0x00))) {
@@ -213,18 +213,17 @@ static Bool tegra_exa_optimize_solid_op(PixmapPtr pPixmap,
      * + this allows to perform operation in parallel with GPU.
      */
     if (tegra->scratch.cpu_access && bytes < TEGRA_EXA_CPU_FILL_MIN_SIZE &&
-        TegraEXAPrepareCPUAccess(pPixmap, EXA_PREPARE_DEST, &ptr))
+        (tegra->scratch.cpu_ptr || TegraEXAPrepareCPUAccess(pPixmap, EXA_PREPARE_DEST,
+                                                            &tegra->scratch.cpu_ptr)))
     {
         DebugMsg("pixmap %p partial solid-fill optimized to a CPU-fill\n",
                  pPixmap);
 
-        pixman_fill(ptr,
+        pixman_fill(tegra->scratch.cpu_ptr,
                     pPixmap->devKind / 4,
                     pPixmap->drawable.bitsPerPixel,
                     px1, py1, px2 - px1, py2 - py1,
                     tegra->scratch.color);
-
-        TegraEXAFinishCPUAccess(pPixmap, EXA_PREPARE_DEST);
 
         priv->alpha_0 = alpha_0;
 
@@ -244,6 +243,11 @@ static void tegra_exa_complete_solid_fill_optimization(PixmapPtr pPixmap)
 
     if (tegra->scratch.ops)
         tegra_exa_flush_deferred_operations(pPixmap, TRUE);
+
+    if (tegra->scratch.cpu_ptr) {
+        tegra->scratch.cpu_ptr = NULL;
+        TegraEXAFinishCPUAccess(pPixmap, EXA_PREPARE_DEST);
+    }
 
     tegra->scratch.optimize = FALSE;
 

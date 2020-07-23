@@ -202,6 +202,7 @@ typedef struct tegra_exa_scratch {
     unsigned vtx_cnt;
     PixmapPtr pMask;
     Bool cpu_access;
+    void *cpu_ptr;
     Bool optimize;
     PixmapPtr pSrc;
     unsigned ops;
