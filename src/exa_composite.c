@@ -173,15 +173,18 @@ static __maybe_unused char const * pict_filter(PicturePtr pict)
     return "???";
 }
 
-static void dump_pict(const char *prefix, PicturePtr pict, Bool accel)
+static void
+dump_pict(const char *prefix, PixmapPtr pPixmap, PicturePtr pict, Bool accel)
 {
+    TegraPixmapPtr priv __maybe_unused = pPixmap ? exaGetPixmapDriverPrivate(pPixmap) : NULL;
+
     if (!pict)
         return;
 
     if (accel)
-        AccelMsg("%s: %p type %s %dx%d format %s repeat %s transform %s alphamap %s componentalpha %s filter %s\n",
+        AccelMsg("%s: pixmap %p type %s %dx%d format %s repeat %s transform %s alphamap %s componentalpha %s filter %s scanout %d\n",
                  prefix,
-                 pict,
+                 pPixmap,
                  pict_type(pict),
                  pict_width(pict),
                  pict_height(pict),
@@ -190,11 +193,12 @@ static void dump_pict(const char *prefix, PicturePtr pict, Bool accel)
                  pict_transform(pict),
                  pict_alphamap(pict),
                  pict_componentalpha(pict),
-                 pict_filter(pict));
+                 pict_filter(pict),
+                 priv ? priv->scanout : 0);
     else
-        FallbackMsg("%s: %p type %s %dx%d format %s repeat %s transform %s alphamap %s componentalpha %s filter %s\n",
+        FallbackMsg("%s: %p type %s %dx%d format %s repeat %s transform %s alphamap %s componentalpha %s filter %s scanout %d\n",
                     prefix,
-                    pict,
+                    pPixmap,
                     pict_type(pict),
                     pict_width(pict),
                     pict_height(pict),
@@ -203,7 +207,8 @@ static void dump_pict(const char *prefix, PicturePtr pict, Bool accel)
                     pict_transform(pict),
                     pict_alphamap(pict),
                     pict_componentalpha(pict),
-                    pict_filter(pict));
+                    pict_filter(pict),
+                    priv ? priv->scanout : 0);
 }
 
 static Bool TegraEXACheckComposite(int op, PicturePtr pSrcPicture,
@@ -219,9 +224,9 @@ static Bool TegraEXACheckComposite(int op, PicturePtr pSrcPicture,
         return TRUE;
 
     FallbackMsg("op: %s\n", op_name(op));
-    dump_pict("src", pSrcPicture, FALSE);
-    dump_pict("mask", pMaskPicture, FALSE);
-    dump_pict("dst", pDstPicture, FALSE);
+    dump_pict("src", NULL, pSrcPicture, FALSE);
+    dump_pict("mask", NULL, pMaskPicture, FALSE);
+    dump_pict("dst", NULL, pDstPicture, FALSE);
 
     return FALSE;
 }
@@ -246,8 +251,8 @@ static Bool TegraEXAPrepareComposite(int op, PicturePtr pSrcPicture,
     if (TegraEXAPrepareComposite2D(op, pSrcPicture, pMaskPicture,
                                    pDstPicture, pSrc, pMask, pDst)) {
         AccelMsg("GR2D: op: %s\n", op_name(op));
-        dump_pict("GR2D: src", pSrcPicture, TRUE);
-        dump_pict("GR2D: dst", pDstPicture, TRUE);
+        dump_pict("GR2D: src", pSrc, pSrcPicture, TRUE);
+        dump_pict("GR2D: dst", pDst, pDstPicture, TRUE);
 
         PROFILE_STOP(composite)
         PROFILE_START(composite)
@@ -261,9 +266,9 @@ static Bool TegraEXAPrepareComposite(int op, PicturePtr pSrcPicture,
     if (TegraEXAPrepareComposite3D(op, pSrcPicture, pMaskPicture,
                                    pDstPicture, pSrc, pMask, pDst)) {
         AccelMsg("GR3D: op: %s\n", op_name(op));
-        dump_pict("GR3D: src", pSrcPicture, TRUE);
-        dump_pict("GR3D: mask", pMaskPicture, TRUE);
-        dump_pict("GR3D: dst", pDstPicture, TRUE);
+        dump_pict("GR3D: src", pSrc, pSrcPicture, TRUE);
+        dump_pict("GR3D: mask", pMask, pMaskPicture, TRUE);
+        dump_pict("GR3D: dst", pDst, pDstPicture, TRUE);
 
         PROFILE_STOP(composite)
         PROFILE_START(composite)
@@ -288,9 +293,9 @@ static Bool TegraEXAPrepareComposite(int op, PicturePtr pSrcPicture,
 
 fallback:
     FallbackMsg("op: %s\n", op_name(op));
-    dump_pict("src", pSrcPicture, FALSE);
-    dump_pict("mask", pMaskPicture, FALSE);
-    dump_pict("dst", pDstPicture, FALSE);
+    dump_pict("src", pSrc, pSrcPicture, FALSE);
+    dump_pict("mask", pMask, pMaskPicture, FALSE);
+    dump_pict("dst", pDst, pDstPicture, FALSE);
 
     return FALSE;
 }
