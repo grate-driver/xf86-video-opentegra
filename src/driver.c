@@ -602,10 +602,10 @@ TegraCloseScreen(CLOSE_SCREEN_ARGS_DECL)
 
     xf86_cursors_fini(pScreen);
     TegraDRI2ScreenExit(pScreen);
+    TegraVBlankScreenExit(pScreen);
 #ifdef HAVE_DRM_MODE_ATOMIC
     TegraXvScreenExit(pScreen);
 #endif
-    TegraVBlankScreenExit(pScreen);
     TegraEXAScreenExit(pScreen);
 
     drmmode_free_bos(pScrn, &tegra->drmmode);
