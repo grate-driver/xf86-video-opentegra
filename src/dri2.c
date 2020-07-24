@@ -93,7 +93,7 @@ tegra_dri2_create_buffer(DrawablePtr drawable, unsigned int attachment,
     DRI2Buffer2Ptr buffer;
     PixmapPtr pixmap;
     tegra_dri2_buffer_private_ptr private;
-    TegraPixmapPtr tegra;
+    struct tegra_pixmap *tegra;
     int err;
 
     if (!TegraPTR(scrn)->exa)
@@ -241,7 +241,7 @@ tegra_dri2_copy_region(DrawablePtr drawable, RegionPtr pRegion,
         ? drawable : &src_pixmap->drawable;
     DrawablePtr dst = (destBuffer->attachment == DRI2BufferFrontLeft)
         ? drawable : &dst_pixmap->drawable;
-    TegraPixmapPtr tegra_pixmap;
+    struct tegra_pixmap *tegra_pixmap;
     RegionPtr pCopyClip;
     int drm_ver;
     GCPtr gc;

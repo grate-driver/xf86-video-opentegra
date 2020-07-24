@@ -29,12 +29,14 @@
 #define TEGRA_STREAM_H_
 
 #include <assert.h>
+#include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 
+#include "tegradrm/opentegra_lib.h"
+
 #include "host1x.h"
-#include "opentegra_lib.h"
 #include "tegra_fence.h"
 
 #define TEGRA_STREAM_ERR_MSG(fmt, args...) \

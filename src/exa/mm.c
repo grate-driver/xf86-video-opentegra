@@ -21,20 +21,17 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#include "driver.h"
-#include "exa_mm.h"
-
-static Bool TegraEXAAllocateDRM(TegraPtr tegra,
-                                TegraPixmapPtr pixmap,
-                                unsigned int size)
+static bool tegra_exa_pixmap_allocate_from_bo(TegraPtr tegra,
+                                              struct tegra_pixmap * pixmap,
+                                              unsigned int size)
 {
-    TegraEXAPtr exa = tegra->exa;
+    struct tegra_exa *exa = tegra->exa;
     unsigned long flags;
     int drm_ver;
     int err;
 
     if (!pixmap->accel && !pixmap->dri)
-        return FALSE;
+        return false;
 
     flags = exa->default_drm_bo_flags;
 
@@ -44,32 +41,33 @@ static Bool TegraEXAAllocateDRM(TegraPtr tegra,
 
     err = drm_tegra_bo_new(&pixmap->bo, tegra->drm, flags, size);
     if (err)
-        return FALSE;
+        return false;
 
     pixmap->type = TEGRA_EXA_PIXMAP_TYPE_BO;
 
-    return TRUE;
+    return true;
 }
 
-static Bool TegraEXAAllocateMem(TegraPixmapPtr pixmap, unsigned int size)
+static bool tegra_exa_pixmap_allocate_from_sysmem(struct tegra_pixmap * pixmap,
+                                                  unsigned int size)
 {
     int err;
 
     if (pixmap->dri)
-        return FALSE;
+        return false;
 
     err = posix_memalign(&pixmap->fallback, 128, size);
     if (err)
-        return FALSE;
+        return false;
 
     pixmap->type = TEGRA_EXA_PIXMAP_TYPE_FALLBACK;
 
-    return TRUE;
+    return true;
 }
 
-static int TegraEXAInitMM(TegraPtr tegra, TegraEXAPtr exa)
+static int tegra_exa_init_mm(TegraPtr tegra, struct tegra_exa *exa)
 {
-    Bool has_iommu = FALSE;
+    bool has_iommu = false;
     int drm_ver;
 
     drm_ver = drm_tegra_version(tegra->drm);
@@ -89,8 +87,7 @@ static int TegraEXAInitMM(TegraPtr tegra, TegraEXAPtr exa)
         has_iommu = drm_tegra_channel_has_iommu(exa->gr2d) &&
                     drm_tegra_channel_has_iommu(exa->gr3d);
 
-        xf86DrvMsg(-1, X_INFO, "Tegra DRM uses IOMMU: %s\n",
-                   has_iommu ? "YES" : "NO");
+        INFO_MSG2("Tegra DRM uses IOMMU: %s\n", has_iommu ? "YES" : "NO");
     }
 
     /*
@@ -105,47 +102,46 @@ static int TegraEXAInitMM(TegraPtr tegra, TegraEXAPtr exa)
 
         if (err) {
             size = 24 * 1024 * 1024;
-            err = TegraEXACreatePool(tegra, &exa->large_pool, 4, size);
+            err = tegra_exa_pixmap_pool_create(tegra, &exa->large_pool, 4, size);
             if (err)
-                ErrorMsg("failed to preallocate %uMB for a larger pool\n",
-                        size / (1024 * 1024));
+                ERROR_MSG("failed to preallocate %uMB for a larger pool\n",
+                          size / (1024 * 1024));
         }
 
         if (err) {
             size = 16 * 1024 * 1024;
-            err = TegraEXACreatePool(tegra, &exa->large_pool, 4, size);
+            err = tegra_exa_pixmap_pool_create(tegra, &exa->large_pool, 4, size);
             if (err)
-                ErrorMsg("failed to preallocate %uMB for a larger pool\n",
-                        size / (1024 * 1024));
+                ERROR_MSG("failed to preallocate %uMB for a larger pool\n",
+                          size / (1024 * 1024));
         }
 
         if (err) {
             size = 8 * 1024 * 1024;
-            err = TegraEXACreatePool(tegra, &exa->large_pool, 4, size);
+            err = tegra_exa_pixmap_pool_create(tegra, &exa->large_pool, 4, size);
             if (err)
-                ErrorMsg("failed to preallocate %uMB for a larger pool\n",
-                        size / (1024 * 1024));
+                ERROR_MSG("failed to preallocate %uMB for a larger pool\n",
+                          size / (1024 * 1024));
         }
 
         if (!err) {
-            xf86DrvMsg(-1, X_INFO,
-                       "EXA %uMB pool preallocated\n", size / (1024 * 1024));
-            exa->large_pool->persitent = TRUE;
+            INFO_MSG2("EXA %uMB pool preallocated\n", size / (1024 * 1024));
+            exa->large_pool->persistent = true;
         }
     }
 
     return 0;
 }
 
-static void TegraEXAReleaseMM(TegraPtr tegra, TegraEXAPtr exa)
+static void tegra_exa_release_mm(TegraPtr tegra, struct tegra_exa *exa)
 {
-    TegraEXACleanUpPixmapsFreelist(tegra, TRUE);
+    tegra_exa_clean_up_pixmaps_freelist(tegra, true);
 
     if (exa->large_pool) {
-        exa->large_pool->persitent = FALSE;
+        exa->large_pool->persistent = false;
 
         if (mem_pool_empty(&exa->large_pool->pool)) {
-            TegraEXADestroyPool(exa->large_pool);
+            tegra_exa_pixmap_pool_destroy(exa->large_pool);
             exa->large_pool = NULL;
         }
     }
@@ -158,8 +154,10 @@ static void TegraEXAReleaseMM(TegraPtr tegra, TegraEXAPtr exa)
 #endif
 
     if (!xorg_list_is_empty(&exa->mem_pools))
-        ErrorMsg("FATAL: Memory leak! Unreleased memory pools\n");
+        ERROR_MSG("FATAL: Memory leak! Unreleased memory pools\n");
 
     if (!xorg_list_is_empty(&exa->cool_pixmaps))
-        ErrorMsg("FATAL: Memory leak! Cooled pixmaps\n");
+        ERROR_MSG("FATAL: Memory leak! Cooled pixmaps\n");
 }
+
+/* vim: set et sts=4 sw=4 ts=4: */

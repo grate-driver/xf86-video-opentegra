@@ -46,6 +46,9 @@ struct mem_pool_entry {
     unsigned int id : 16;
 };
 
+typedef void (*mem_pool_memcpy)(char *dst, const char *src, int size);
+typedef void (*mem_pool_memmove)(char *dst, const char *src, int size);
+
 struct mem_pool {
     char *base;
     char *vbase;
@@ -58,8 +61,24 @@ struct mem_pool {
     unsigned long *bitmap;
     unsigned long base_offset;
     struct __mem_pool_entry *entries;
+    mem_pool_memcpy  memcpy;
+    mem_pool_memmove memmove;
 };
 
+int mem_pool_init(struct mem_pool *pool, unsigned long size,
+                  unsigned int bitmap_size,
+                  mem_pool_memcpy memcpy,
+                  mem_pool_memmove memmove);
+void mem_pool_destroy(struct mem_pool *pool);
+int mem_pool_transfer_entries(struct mem_pool * restrict pool_to,
+                              struct mem_pool * restrict pool_from);
+int mem_pool_transfer_entries_fast(struct mem_pool * restrict pool_to,
+                                   struct mem_pool * restrict pool_from);
+void *mem_pool_alloc(struct mem_pool * restrict pool, unsigned long size,
+                     struct mem_pool_entry *ret_entry, int defrag);
+void mem_pool_free(struct mem_pool_entry *entry);
+void mem_pool_defrag(struct mem_pool *pool);
+void mem_pool_debug_dump(struct mem_pool *pool);
 void mem_pool_check_canary(struct __mem_pool_entry *entry);
 void mem_pool_check_entry(struct mem_pool_entry *entry);
 

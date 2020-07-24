@@ -1,5 +1,6 @@
 /*
  * Copyright © 2014 NVIDIA Corporation
+ * Copyright (c) GRATE-DRIVER project
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the
@@ -25,42 +26,54 @@
 #ifndef __TEGRA_EXA_H
 #define __TEGRA_EXA_H
 
-#include "pool_alloc.h"
-#include "tegra_stream.h"
+#include "driver.h"
+
+#include "gpu/tegra_stream.h"
+#include "mempool/pool_alloc.h"
 
 #ifndef __maybe_unused
 #define __maybe_unused  __attribute__((unused))
 #endif
 
-#define TEGRA_DRI_USAGE_HINT ('D' << 16 | 'R' << 8 | 'I')
+#define TEGRA_DRI_USAGE_HINT    ('D' << 16 | 'R' << 8 | 'I')
 
 /*
  * The maximum alignment required by hardware seems is 64 bytes,
  * but we are also using VFP for copying write-combined data and
  * it requires a 128 bytes alignment.
  */
-#define TEGRA_EXA_OFFSET_ALIGN          128
+#define TEGRA_EXA_OFFSET_ALIGN  128
 
 #if 0
-#define FallbackMsg(fmt, args...)                                           \
+#define FALLBACK_MSG(fmt, args...) \
     printf("FALLBACK: %s:%d/%s(): " fmt, __FILE__, __LINE__, __func__, ##args)
 #else
-#define FallbackMsg(fmt, args...) do {} while(0)
+#define FALLBACK_MSG(fmt, args...) do {} while(0)
 #endif
 
 #if 0
-#define AccelMsg(fmt, args...)                                              \
+#define ACCEL_MSG(fmt, args...) \
     printf("ACCELERATE: %s:%d/%s(): " fmt, __FILE__, __LINE__, __func__, ##args)
 #else
-#define AccelMsg(fmt, args...) do {} while(0)
+#define ACCEL_MSG(fmt, args...) do {} while(0)
 #endif
 
 #if 0
-#define DebugMsg(fmt, args...)                                              \
+#define DEBUG_MSG(fmt, args...) \
     printf("DEBUG: %s:%d/%s(): " fmt, __FILE__, __LINE__, __func__, ##args)
 #else
-#define DebugMsg(fmt, args...) do {} while(0)
+#define DEBUG_MSG(fmt, args...) do {} while(0)
 #endif
+
+#define ERROR_MSG(fmt, args...)                                             \
+    xf86DrvMsg(-1, X_ERROR, "%s:%d/%s(): " fmt, __FILE__,                   \
+               __LINE__, __func__, ##args)
+
+#define INFO_MSG(scrn, fmt, args...)                                        \
+    xf86DrvMsg((scrn)->scrnIndex, X_INFO, fmt, ##args)
+
+#define INFO_MSG2(fmt, args...)                                             \
+    xf86DrvMsg(-1, X_INFO, fmt, ##args)
 
 #define TEGRA_EXA_CPU_FILL_MIN_SIZE     (128 * 1024)
 
@@ -68,7 +81,7 @@
 #define PROFILE_GPU                     0
 
 #define PROFILE_REPORT_MIN_TIME_US      1000
-#define PROFILE_REPORT_START            FALSE
+#define PROFILE_REPORT_START            false
 
 static inline float timespec_diff(const struct timespec *start,
                                   const struct timespec *end)
@@ -92,45 +105,50 @@ struct tegra_profiler {
     uint64_t seqno;
 };
 
-#define PROFILE_DEF(PNAME)                                          \
-    struct tegra_profiler profile_##PNAME __maybe_unused = {        \
-        .name = "",                                                 \
-    };                                                              \
+#define PROFILE_DEF(PNAME)                                      \
+    struct tegra_profiler profile_##PNAME __maybe_unused = {    \
+        .name = "",                                             \
+    };
 
-#define PROFILE_SET_NAME(PNAME, PEXT_NAME)                          \
+#define PROFILE_SET_NAME(PNAME, PEXT_NAME)                      \
     profile_##PNAME.name = PEXT_NAME;
 
-#define PROFILE_START(PNAME)                                        \
-    if (PROFILE) {                                                  \
-        profile_##PNAME.seqno = tegra_profiler_seqno++;             \
-        if (PROFILE_REPORT_START)                                   \
-            printf("%s:%d: profile(%llu:%s) start\n",               \
-                   __func__, __LINE__,                              \
-                   profile_##PNAME.seqno,                           \
-                   profile_##PNAME.name);                           \
-        clock_gettime(CLOCK_MONOTONIC,                              \
-                      &profile_##PNAME.start_time);                 \
+#define PROFILE_START(PNAME)                                    \
+    if (PROFILE) {                                              \
+        profile_##PNAME.seqno = tegra_profiler_seqno++;         \
+                                                                \
+        if (PROFILE_REPORT_START)                               \
+            printf("%s:%d: profile(%llu:%s) start\n",           \
+                   __func__, __LINE__,                          \
+                   profile_##PNAME.seqno,                       \
+                   profile_##PNAME.name);                       \
+                                                                \
+        clock_gettime(CLOCK_MONOTONIC,                          \
+                      &profile_##PNAME.start_time);             \
     }
 
-#define PROFILE_STOP(PNAME)                                         \
-    if (PROFILE) {                                                  \
-        unsigned profile_time;                                      \
-        static struct timespec profile_end;                         \
-        clock_gettime(CLOCK_MONOTONIC, &profile_end);               \
-        profile_time = timespec_diff(&profile_##PNAME.start_time,   \
-                                     &profile_end);                 \
-        if (profile_time >= PROFILE_REPORT_MIN_TIME_US)             \
-            printf("%s:%d: profile(%llu:%s) stop: %u us\n",         \
-               __func__, __LINE__,                                  \
-               profile_##PNAME.seqno,                               \
-               profile_##PNAME.name,                                \
-               profile_time);                                       \
+#define PROFILE_STOP(PNAME)                                     \
+    if (PROFILE) {                                              \
+        unsigned profile_time;                                  \
+        static struct timespec profile_end;                     \
+                                                                \
+        clock_gettime(CLOCK_MONOTONIC, &profile_end);           \
+                                                                \
+        profile_time = timespec_diff(&profile_##PNAME.start_time,\
+                                     &profile_end);             \
+                                                                \
+        if (profile_time >= PROFILE_REPORT_MIN_TIME_US)         \
+            printf("%s:%d: profile(%llu:%s) stop: %u us\n",     \
+                   __func__, __LINE__,                          \
+                   profile_##PNAME.seqno,                       \
+                   profile_##PNAME.name,                        \
+                   profile_time);                               \
     }
 
 struct tegra_pixmap;
 
-typedef struct gr3d_tex_state {
-    PixmapPtr pPix;
+struct tegra_texture_state {
+    PixmapPtr pix;
     Pixel solid;
     unsigned format : 5;
     unsigned tex_sel : 3;
@@ -140,33 +158,33 @@ typedef struct gr3d_tex_state {
     bool alpha : 1;
     bool pow2 : 1;
     bool transform_coords : 1;
-} TegraGR3DStateTex, *TegraGR3DStateTexPtr;
+};
 
-typedef struct gr3d_draw_state {
-    TegraGR3DStateTex src;
-    TegraGR3DStateTex mask;
-    TegraGR3DStateTex dst;
+struct tegra_3d_draw_state {
+    struct tegra_texture_state src;
+    struct tegra_texture_state mask;
+    struct tegra_texture_state dst;
     bool dst_full_cover : 1;
     bool discards_clip : 1;
     bool optimized_out : 1;
     int op;
-} TegraGR3DDrawState, *TegraGR3DDrawStatePtr;
+};
 
-typedef struct gr3d_state {
+struct tegra_3d_state {
     struct tegra_exa_scratch *scratch;
     struct tegra_stream *cmds;
-    TegraGR3DDrawState new;
-    TegraGR3DDrawState cur;
+    struct tegra_3d_draw_state new;
+    struct tegra_3d_draw_state cur;
     bool inited : 1;
     bool clean : 1;
-} TegraGR3DState, *TegraGR3DStatePtr;
+};
 
-typedef struct tegra_attrib_bo {
+struct tegra_attrib_bo {
     struct drm_tegra_bo *bo;
     __fp16 *map;
-} TegraEXAAttribBo;
+};
 
-enum Tegra2DOrientation {
+enum tegra_2d_orientation {
     TEGRA2D_FLIP_X,
     TEGRA2D_FLIP_Y,
     TEGRA2D_TRANS_LR,
@@ -177,16 +195,16 @@ enum Tegra2DOrientation {
     TEGRA2D_IDENTITY,
 };
 
-enum Tegra2DCompositeOp {
+enum tegra_2d_composite_op {
     TEGRA2D_NONE,
     TEGRA2D_SOLID,
     TEGRA2D_COPY,
 };
 
-typedef struct tegra_exa_scratch {
-    enum Tegra2DOrientation orientation;
-    enum Tegra2DCompositeOp op2d;
-    TegraEXAAttribBo attribs;
+struct tegra_exa_scratch {
+    enum tegra_2d_orientation orientation;
+    enum tegra_2d_composite_op op2d;
+    struct tegra_attrib_bo attribs;
     union {
         PictTransform transform;
 
@@ -200,27 +218,27 @@ typedef struct tegra_exa_scratch {
     struct drm_tegra *drm;
     unsigned attrib_itr;
     unsigned vtx_cnt;
-    PixmapPtr pMask;
-    Bool cpu_access;
+    bool cpu_access;
+    PixmapPtr mask;
     void *cpu_ptr;
-    Bool optimize;
-    PixmapPtr pSrc;
+    bool optimize;
+    PixmapPtr src;
     unsigned ops;
     Pixel color;
-    int srcX;
-    int srcY;
-    int dstX;
-    int dstY;
-} TegraEXAScratch, *TegraEXAScratchPtr;
+    int src_x;
+    int src_y;
+    int dst_x;
+    int dst_y;
+};
 
-typedef struct {
+struct tegra_pixmap_pool {
     struct drm_tegra_bo *bo;
     struct xorg_list entry;
     struct mem_pool pool;
-    Bool heavy : 1;
-    Bool light : 1;
-    Bool persitent : 1;
-} TegraPixmapPool, *TegraPixmapPoolPtr;
+    bool heavy : 1;
+    bool light : 1;
+    bool persistent : 1;
+};
 
 enum {
     TEGRA_OPT_SOLID,
@@ -231,59 +249,62 @@ enum {
 struct tegra_optimization_state {
     struct tegra_stream *cmds_tmp;
     struct tegra_stream *cmds;
-    TegraEXAScratch scratch_tmp;
-    TegraEXAScratch scratch;
+    struct tegra_exa_scratch scratch_tmp;
+    struct tegra_exa_scratch scratch;
 };
 
-typedef struct _TegraEXARec{
+struct tegra_exa {
     struct drm_tegra_channel *gr2d;
     struct drm_tegra_channel *gr3d;
     struct tegra_stream *cmds;
-    TegraEXAScratch scratch;
-    TegraPixmapPoolPtr large_pool;
+    struct tegra_exa_scratch scratch;
+
+    struct tegra_pixmap_pool *large_pool;
     struct xorg_list mem_pools;
     time_t pool_slow_compact_time;
     time_t pool_fast_compact_time;
+
     struct xorg_list cool_pixmaps;
     unsigned long cooling_size;
     time_t last_resurrect_time;
     time_t last_freezing_time;
-    unsigned release_count;
-    unsigned long default_drm_bo_flags;
-    CreatePictureProcPtr CreatePicture;
-    ScreenBlockHandlerProcPtr BlockHandler;
 #ifdef HAVE_JPEG
     tjhandle jpegCompressor;
     tjhandle jpegDecompressor;
 #endif
+
+    unsigned release_count;
+    unsigned long default_drm_bo_flags;
+
+    CreatePictureProcPtr create_picture;
+    ScreenBlockHandlerProcPtr block_handler;
+
     struct xorg_list pixmaps_freelist;
 
-    TegraGR3DState gr3d_state;
+    struct tegra_3d_state gr3d_state;
 
-    Bool has_iommu_bug;
+    bool has_iommu_bug;
 
     struct tegra_optimization_state opt_state[TEGRA_OPT_NUM];
-    Bool in_flush;
+    bool in_flush;
+};
 
-    ExaDriverPtr driver;
-} *TegraEXAPtr;
+#define TEGRA_EXA_PIXMAP_TYPE_NONE              0
+#define TEGRA_EXA_PIXMAP_TYPE_FALLBACK          1
+#define TEGRA_EXA_PIXMAP_TYPE_BO                2
+#define TEGRA_EXA_PIXMAP_TYPE_POOL              3
 
-#define TEGRA_EXA_PIXMAP_TYPE_NONE      0
-#define TEGRA_EXA_PIXMAP_TYPE_FALLBACK  1
-#define TEGRA_EXA_PIXMAP_TYPE_BO        2
-#define TEGRA_EXA_PIXMAP_TYPE_POOL      3
-
-#define TEGRA_EXA_COMPRESSION_UNCOMPRESSED  1
-#define TEGRA_EXA_COMPRESSION_LZ4           2
-#define TEGRA_EXA_COMPRESSION_JPEG          3
-#define TEGRA_EXA_COMPRESSION_PNG           4
+#define TEGRA_EXA_COMPRESSION_UNCOMPRESSED      1
+#define TEGRA_EXA_COMPRESSION_LZ4               2
+#define TEGRA_EXA_COMPRESSION_JPEG              3
+#define TEGRA_EXA_COMPRESSION_PNG               4
 
 struct tegra_pixmap_upload_buffer {
     unsigned int refcount;
     void *data;
 };
 
-typedef struct tegra_pixmap {
+struct tegra_pixmap {
     bool tegra_data : 1;        /* pixmap's data allocated by Opentegra */
     bool scanout_rotated : 1;   /* pixmap backs rotated frontbuffer BO */
     bool no_compress : 1;       /* pixmap's data compress poorly */
@@ -340,106 +361,70 @@ typedef struct tegra_pixmap {
         };
     };
 
-    PixmapPtr pPixmap;
+    PixmapPtr base;
 
     unsigned picture_format;
-} TegraPixmapRec, *TegraPixmapPtr;
+};
 
-unsigned int TegraEXAPitch(unsigned int width, unsigned int height,
-                           unsigned int bpp);
-
-#define TegraEXAWaitFence(F)                                \
-({                                                          \
-    PROFILE_DEF(wait_fence);                                \
-    profile_wait_fence.name = "wait_fence";                 \
-    PROFILE_START(wait_fence);                              \
-    TEGRA_FENCE_DEBUG_MSG(F, "wait"); tegra_fence_wait(F);  \
-    PROFILE_STOP(wait_fence);                               \
+#define TEGRA_WAIT_FENCE(F)                                     \
+({                                                              \
+    PROFILE_DEF(wait_fence);                                    \
+    profile_wait_fence.name = "wait_fence";                     \
+    PROFILE_START(wait_fence);                                  \
+    TEGRA_FENCE_DEBUG_MSG(F, "wait"); tegra_fence_wait(F);      \
+    PROFILE_STOP(wait_fence);                                   \
 })
 
-#define TEGRA_EXA_WAIT_AND_PUT_FENCE(F)     \
-({                                          \
-    if (F) {                                \
-        TegraEXAWaitFence(F);               \
-        TEGRA_FENCE_PUT(F);                 \
-        F = NULL;                           \
-    }                                       \
+#define TEGRA_WAIT_AND_PUT_FENCE(F)                             \
+({                                                              \
+    if (F) {                                                    \
+        TEGRA_WAIT_FENCE(F);                                    \
+        TEGRA_FENCE_PUT(F);                                     \
+        F = NULL;                                               \
+    }                                                           \
 })
 
 #define TEGRA_PIXMAP_WAIT_READ_FENCES(P)                        \
 ({                                                              \
-    TEGRA_EXA_WAIT_AND_PUT_FENCE((P)->fence_read[TEGRA_2D]);    \
-    TEGRA_EXA_WAIT_AND_PUT_FENCE((P)->fence_read[TEGRA_3D]);    \
+    TEGRA_WAIT_AND_PUT_FENCE((P)->fence_read[TEGRA_2D]);        \
+    TEGRA_WAIT_AND_PUT_FENCE((P)->fence_read[TEGRA_3D]);        \
 })
 
 #define TEGRA_PIXMAP_WAIT_WRITE_FENCES(P)                       \
 ({                                                              \
-    TEGRA_EXA_WAIT_AND_PUT_FENCE((P)->fence_write[TEGRA_2D]);   \
-    TEGRA_EXA_WAIT_AND_PUT_FENCE((P)->fence_write[TEGRA_3D]);   \
+    TEGRA_WAIT_AND_PUT_FENCE((P)->fence_write[TEGRA_2D]);       \
+    TEGRA_WAIT_AND_PUT_FENCE((P)->fence_write[TEGRA_3D]);       \
 })
 
-#define TEGRA_PIXMAP_WAIT_ALL_FENCES(P) \
-({                                      \
-    TEGRA_PIXMAP_WAIT_READ_FENCES(P);   \
-    TEGRA_PIXMAP_WAIT_WRITE_FENCES(P);  \
+#define TEGRA_PIXMAP_WAIT_ALL_FENCES(P)                         \
+({                                                              \
+    TEGRA_PIXMAP_WAIT_READ_FENCES(P);                           \
+    TEGRA_PIXMAP_WAIT_WRITE_FENCES(P);                          \
 })
-
-unsigned TegraEXAHeightHwAligned(unsigned int height, unsigned int bpp);
-
-static inline Pixel TegraPixelRGB565to888(Pixel pixel)
-{
-    Pixel p = 0;
-
-    p |= 0xff000000;
-    p |=  ((pixel >> 11)   * 255 + 15) / 31;
-    p |=  (((pixel >> 5) & 0x3f) * 255 + 31) / 63;
-    p |=  ((pixel & 0x3f)  * 255 + 15) / 31;
-
-    return p;
-}
-
-static inline Pixel TegraPixelRGB888to565(Pixel pixel)
-{
-    unsigned red, green, blue;
-    Pixel p = 0;
-
-    red   = (pixel & 0x00ff0000) >> 16;
-    green = (pixel & 0x0000ff00) >> 8;
-    blue  = (pixel & 0x000000ff) >> 0;
-
-    p |= ((red >> 3) & 0x1f) << 11;
-    p |= ((green >> 2) & 0x3f) << 5;
-    p |= (blue >> 3) & 0x1f;
-
-    return p;
-}
-
-static inline Bool TegraCompositeFormatHasAlpha(unsigned format)
-{
-    switch (format) {
-    case PICT_a8:
-    case PICT_a8r8g8b8:
-        return TRUE;
-
-    default:
-        return FALSE;
-    }
-}
 
 static inline struct tegra_fence *
-tegra_exa_stream_submit(TegraEXAPtr tegra, enum host1x_engine engine,
+tegra_exa_stream_submit(struct tegra_exa *tegra, enum host1x_engine engine,
                         struct tegra_fence *explicit_fence)
 {
     struct tegra_fence *out_fence = NULL;
 
     if (PROFILE_GPU || tegra->has_iommu_bug)
-            tegra_stream_flush(tegra->cmds, explicit_fence);
+        tegra_stream_flush(tegra->cmds, explicit_fence);
     else
-            out_fence = tegra_stream_submit(engine, tegra->cmds,
-                                            explicit_fence);
+        out_fence = tegra_stream_submit(engine, tegra->cmds, explicit_fence);
 
     return out_fence;
 }
+
+enum thaw_accel {
+    THAW_NOACCEL,
+    THAW_ACCEL,
+};
+
+enum thaw_alloc {
+    THAW_NOALLOC,
+    THAW_ALLOC,
+};
 
 #endif
 

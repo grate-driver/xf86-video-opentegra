@@ -103,20 +103,16 @@
 #include <xf86drm.h>
 #include <xf86drmMode.h>
 
-#include "opentegra_drm.h"
-#include "opentegra_lib.h"
+#include "tegradrm/opentegra_drm.h"
+#include "tegradrm/opentegra_lib.h"
 
 #include "common_helpers.h"
 #include "compat-api.h"
 #include "drmmode_display.h"
 #include "drm_plane.h"
-#include "tegra_stream.h"
-#include "exa.h"
-#include "host1x.h"
+#include "exa/exa.h"
 #include "vblank.h"
 #include "xv.h"
-#include "shaders/prog.h"
-#include "memcpy_vfp.h"
 
 #ifdef LONG64
 #  define FMT_CARD32 "x"
@@ -181,7 +177,8 @@ typedef struct _TegraRec
 
     uint32_t cursor_width, cursor_height;
 
-    TegraEXAPtr exa;
+    struct tegra_exa *exa;
+    ExaDriverPtr exa_driver;
 
     Bool dri2_enabled;
 
@@ -215,6 +212,30 @@ void TegraDRI2ScreenExit(ScreenPtr pScreen);
 
 Bool TegraVBlankScreenInit(ScreenPtr screen);
 void TegraVBlankScreenExit(ScreenPtr screen);
+
+#define TEGRA_IS_POW2(v)    (((v) & ((v) - 1)) == 0)
+
+static inline unsigned int
+tegra_hw_pitch(unsigned int width, unsigned int height, unsigned int bpp)
+{
+    unsigned int alignment = 64;
+
+    /* GR3D texture sampler has specific alignment restrictions. */
+    if (TEGRA_IS_POW2(width) && TEGRA_IS_POW2(height))
+        alignment = 16;
+
+    return TEGRA_PITCH_ALIGN(width, bpp, alignment);
+}
+
+static inline unsigned int
+tegra_height_hw_aligned(unsigned int height, unsigned int bpp)
+{
+    /*
+     * Some of GR2D units operate with 16x16 (bytes) blocks, other HW units
+     * may too.
+     */
+    return TEGRA_ALIGN(height, 16 / (bpp >> 3));
+}
 
 #endif
 

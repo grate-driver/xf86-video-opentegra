@@ -23,6 +23,7 @@
  */
 
 #include "driver.h"
+#include "gpu/tegra_stream.h"
 
 #define ErrorMsg(fmt, args...) \
     xf86DrvMsg(scrn->scrnIndex, X_ERROR, "%s:%d/%s(): " fmt, __FILE__, \

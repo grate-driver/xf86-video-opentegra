@@ -22,6 +22,9 @@
  */
 
 #include "gr3d.h"
+#include "tegra_stream.h"
+
+#define TGE3D_ARRAY_SIZE(x) (sizeof(x) / sizeof(*x))
 
 static const uint32_t state_reset[] = {
     /* Tegra30 specific stuff */
@@ -100,22 +103,19 @@ static const uint32_t state_reset[] = {
         0x0f0f0f0f, 0x00000000, 0x00000000, 0x00000000,
 };
 
-static void TegraGR3D_InitState(struct tegra_stream *cmds)
+static void tgr3d_init_state(struct tegra_stream *cmds)
 {
-    tegra_stream_prep(cmds, TEGRA_ARRAY_SIZE(state_reset));
-    tegra_stream_push_words(cmds, state_reset,
-                            TEGRA_ARRAY_SIZE(state_reset), 0);
+    tegra_stream_prep(cmds, TGE3D_ARRAY_SIZE(state_reset));
+    tegra_stream_push_words(cmds, state_reset, TGE3D_ARRAY_SIZE(state_reset), 0);
 }
 
-static void TegraGR3D_UploadConstVP(struct tegra_stream *cmds, unsigned index,
-                                    float x, float y, float z, float w)
+void tgr3d_upload_const_vp(struct tegra_stream *cmds, unsigned index,
+                           float x, float y, float z, float w)
 {
     tegra_stream_prep(cmds, 6);
 
-    tegra_stream_push(cmds,
-                      HOST1X_OPCODE_IMM(TGR3D_VP_UPLOAD_CONST_ID, index * 4));
-    tegra_stream_push(cmds,
-                      HOST1X_OPCODE_NONINCR(TGR3D_VP_UPLOAD_CONST, 4));
+    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(TGR3D_VP_UPLOAD_CONST_ID, index * 4));
+    tegra_stream_push(cmds, HOST1X_OPCODE_NONINCR(TGR3D_VP_UPLOAD_CONST, 4));
 
     tegra_stream_pushf(cmds, x);
     tegra_stream_pushf(cmds, y);
@@ -123,19 +123,19 @@ static void TegraGR3D_UploadConstVP(struct tegra_stream *cmds, unsigned index,
     tegra_stream_pushf(cmds, w);
 }
 
-static void TegraGR3D_UploadConstFP(struct tegra_stream *cmds, unsigned index,
-                                    uint32_t constant)
+void tgr3d_upload_const_fp(struct tegra_stream *cmds, unsigned index,
+                           uint32_t constant)
 {
     tegra_stream_prep(cmds, 2);
     tegra_stream_push(cmds, HOST1X_OPCODE_INCR(TGR3D_FP_CONST(index), 1));
     tegra_stream_push(cmds, constant);
 }
 
-static void TegraGR3D_SetupScissor(struct tegra_stream *cmds,
-                                   unsigned scissor_x,
-                                   unsigned scissor_y,
-                                   unsigned scissor_width,
-                                   unsigned scissor_heigth)
+void tgr3d_set_scissor(struct tegra_stream *cmds,
+                       unsigned scissor_x,
+                       unsigned scissor_y,
+                       unsigned scissor_width,
+                       unsigned scissor_heigth)
 {
     uint32_t value;
 
@@ -154,7 +154,7 @@ static void TegraGR3D_SetupScissor(struct tegra_stream *cmds,
     tegra_stream_push(cmds, value);
 }
 
-static void TegraGR3D_SetupGuardband(struct tegra_stream *cmds)
+static void tgr3d_set_guardband(struct tegra_stream *cmds)
 {
     tegra_stream_prep(cmds, 4);
 
@@ -164,7 +164,7 @@ static void TegraGR3D_SetupGuardband(struct tegra_stream *cmds)
     tegra_stream_pushf(cmds, 1.0f);
 }
 
-static void TegraGR3D_SetupLateTest(struct tegra_stream *cmds)
+static void tgr3d_set_late_test(struct tegra_stream *cmds)
 {
     uint32_t value = 0x48;
 
@@ -172,7 +172,7 @@ static void TegraGR3D_SetupLateTest(struct tegra_stream *cmds)
     tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0x40f, value));
 }
 
-static void TegraGR3D_SetupDepthRange(struct tegra_stream *cmds)
+static void tgr3d_set_depth_range(struct tegra_stream *cmds)
 {
     tegra_stream_prep(cmds, 3);
 
@@ -181,7 +181,7 @@ static void TegraGR3D_SetupDepthRange(struct tegra_stream *cmds)
     tegra_stream_push(cmds, (uint32_t)(0xFFFFF * 1.0f));
 }
 
-static void TegraGR3D_SetupDepthBuffer(struct tegra_stream *cmds)
+static void tgr3d_set_depth_buffer(struct tegra_stream *cmds)
 {
     uint32_t value = 0;
 
@@ -194,7 +194,7 @@ static void TegraGR3D_SetupDepthBuffer(struct tegra_stream *cmds)
     tegra_stream_pushf(cmds, value);
 }
 
-static void TegraGR3D_SetupPolygonOffset(struct tegra_stream *cmds)
+static void tgr3d_set_polygon_offset(struct tegra_stream *cmds)
 {
     tegra_stream_prep(cmds, 3);
     tegra_stream_push(cmds, HOST1X_OPCODE_INCR(TGR3D_POLYGON_OFFSET_UNITS, 2));
@@ -202,8 +202,8 @@ static void TegraGR3D_SetupPolygonOffset(struct tegra_stream *cmds)
     tegra_stream_pushf(cmds, 0.0f);
 }
 
-static void TegraGR3D_SetupPSEQ_DW_cfg(struct tegra_stream *cmds,
-                                       unsigned pseq_to_dw_nb)
+static void tgr3d_set_pseq_dw_cfg(struct tegra_stream *cmds,
+                                  unsigned pseq_to_dw_nb)
 {
     uint32_t value = TGR3D_VAL(FP_PSEQ_DW_CFG, PSEQ_TO_DW_EXEC_NB,
                                pseq_to_dw_nb);
@@ -213,8 +213,8 @@ static void TegraGR3D_SetupPSEQ_DW_cfg(struct tegra_stream *cmds,
     tegra_stream_push(cmds, value);
 }
 
-static void TegraGR3D_SetupALUBufferSize(struct tegra_stream *cmds,
-                                         unsigned alu_buf_size)
+static void tgr3d_set_alu_buffer_size(struct tegra_stream *cmds,
+                                      unsigned alu_buf_size)
 {
     unsigned unk_pseq_cfg = 0x12C;
     uint32_t value = 0;
@@ -232,7 +232,7 @@ static void TegraGR3D_SetupALUBufferSize(struct tegra_stream *cmds,
     tegra_stream_push(cmds, (0x0032 << 16) | (unk_pseq_cfg << 4) | 0xF);
 }
 
-static void TegraGR3D_SetupStencilTest(struct tegra_stream *cmds)
+static void tgr3d_set_stencil_test(struct tegra_stream *cmds)
 {
     uint32_t value;
 
@@ -270,16 +270,16 @@ static void TegraGR3D_SetupStencilTest(struct tegra_stream *cmds)
     tegra_stream_push(cmds, value);
 }
 
-static void TegraGR3D_Startup_PSEQ_Engine(struct tegra_stream *cmds,
-                                          unsigned pseq_inst_nb)
+static void tgr3d_startup_pseq_engine(struct tegra_stream *cmds,
+                                      unsigned pseq_inst_nb)
 {
     tegra_stream_prep(cmds, 2);
     tegra_stream_push(cmds, HOST1X_OPCODE_INCR(TGR3D_FP_PSEQ_ENGINE_INST, 1));
     tegra_stream_push(cmds, 0x20006000 | pseq_inst_nb);
 }
 
-static void TegraGR3D_SetUsed_TRAM_RowsNum(struct tegra_stream *cmds,
-                                           unsigned used_tram_rows_nb)
+static void tgr3d_set_used_tram_rows_num(struct tegra_stream *cmds,
+                                         unsigned used_tram_rows_nb)
 {
     uint32_t value = 0;
 
@@ -292,13 +292,13 @@ static void TegraGR3D_SetUsed_TRAM_RowsNum(struct tegra_stream *cmds,
     tegra_stream_push(cmds, value);
 }
 
-static void TegraGR3D_SetupViewportBiasScale(struct tegra_stream *cmds,
-                                             float viewport_x_bias,
-                                             float viewport_y_bias,
-                                             float viewport_z_bias,
-                                             float viewport_x_scale,
-                                             float viewport_y_scale,
-                                             float viewport_z_scale)
+void tgr3d_set_viewport_bias_scale(struct tegra_stream *cmds,
+                                   float viewport_x_bias,
+                                   float viewport_y_bias,
+                                   float viewport_z_bias,
+                                   float viewport_x_scale,
+                                   float viewport_y_scale,
+                                   float viewport_z_scale)
 {
     tegra_stream_prep(cmds, 7);
     tegra_stream_push(cmds, HOST1X_OPCODE_INCR(TGR3D_VIEWPORT_X_BIAS, 6));
@@ -310,8 +310,8 @@ static void TegraGR3D_SetupViewportBiasScale(struct tegra_stream *cmds,
     tegra_stream_pushf(cmds, viewport_z_scale - 4.76837158203125e-07);
 }
 
-static void TegraGR3D_SetupCullFaceAndLinkerInstNum(struct tegra_stream *cmds,
-                                                    unsigned linker_inst_nb)
+static void tgr3d_set_cullface_and_linker_inst_num(struct tegra_stream *cmds,
+                                                   unsigned linker_inst_nb)
 {
     uint32_t unk = 0x2E38;
     uint32_t value = 0;
@@ -319,22 +319,20 @@ static void TegraGR3D_SetupCullFaceAndLinkerInstNum(struct tegra_stream *cmds,
     tegra_stream_prep(cmds, 2);
 
     value |= TGR3D_VAL(CULL_FACE_LINKER_SETUP, CULL_FACE, TGR3D_CULL_FACE_NONE);
-
-    value |= TGR3D_VAL(CULL_FACE_LINKER_SETUP, LINKER_INST_COUNT,
-                       linker_inst_nb - 1);
+    value |= TGR3D_VAL(CULL_FACE_LINKER_SETUP, LINKER_INST_COUNT, linker_inst_nb - 1);
     value |= TGR3D_VAL(CULL_FACE_LINKER_SETUP, UNK_18_31, unk);
 
     tegra_stream_push(cmds,
-                      HOST1X_OPCODE_INCR(TGR3D_CULL_FACE_LINKER_SETUP, 1));
+              HOST1X_OPCODE_INCR(TGR3D_CULL_FACE_LINKER_SETUP, 1));
     tegra_stream_push(cmds, value);
 }
 
-static void TegraGR3D_SetupAttribute(struct tegra_stream *cmds,
-                                     unsigned index,
-                                     struct drm_tegra_bo *bo,
-                                     unsigned offset, unsigned type,
-                                     unsigned size, unsigned stride,
-                                     bool explicit_fencing)
+void tgr3d_set_vp_attrib_buf(struct tegra_stream *cmds,
+                             unsigned index,
+                             struct drm_tegra_bo *bo,
+                             unsigned offset, unsigned type,
+                             unsigned size, unsigned stride,
+                             bool explicit_fencing)
 {
     uint32_t value = 0;
 
@@ -349,22 +347,22 @@ static void TegraGR3D_SetupAttribute(struct tegra_stream *cmds,
     tegra_stream_push(cmds, value);
 }
 
-static void TegraGR3D_SetupVpAttributesInOutMask(struct tegra_stream *cmds,
-                                               uint32_t in_mask,
-                                               uint32_t out_mask)
+void tgr3d_set_vp_attributes_inout_mask(struct tegra_stream *cmds,
+                                        uint32_t in_mask,
+                                        uint32_t out_mask)
 {
     tegra_stream_prep(cmds, 2);
     tegra_stream_push(cmds, HOST1X_OPCODE_INCR(TGR3D_VP_ATTRIB_IN_OUT_SELECT, 1));
     tegra_stream_push(cmds, in_mask << 16 | out_mask);
 }
 
-static void TegraGR3D_SetupRenderTarget(struct tegra_stream *cmds,
-                                        unsigned index,
-                                        struct drm_tegra_bo *bo,
-                                        unsigned offset,
-                                        unsigned pixel_format,
-                                        unsigned pitch,
-                                        bool explicit_fencing)
+void tgr3d_set_render_target(struct tegra_stream *cmds,
+                             unsigned index,
+                             struct drm_tegra_bo *bo,
+                             unsigned offset,
+                             unsigned pixel_format,
+                             unsigned pitch,
+                             bool explicit_fencing)
 {
     uint32_t value = 0;
 
@@ -381,27 +379,26 @@ static void TegraGR3D_SetupRenderTarget(struct tegra_stream *cmds,
     tegra_stream_push_reloc(cmds, bo, offset, true, explicit_fencing);
 }
 
-static void TegraGR3D_EnableRenderTargets(struct tegra_stream *cmds,
-                                          uint32_t mask)
+void tgr3d_enable_render_targets(struct tegra_stream *cmds, uint32_t mask)
 {
     tegra_stream_prep(cmds, 2);
     tegra_stream_push(cmds, HOST1X_OPCODE_INCR(TGR3D_RT_ENABLE, 1));
     tegra_stream_push(cmds, mask);
 }
 
-static void TegraGR3D_SetupTextureDesc(struct tegra_stream *cmds,
-                                       unsigned index,
-                                       struct drm_tegra_bo *bo,
-                                       unsigned offset,
-                                       unsigned width,
-                                       unsigned height,
-                                       unsigned pixel_format,
-                                       bool min_filter_linear,
-                                       bool mip_filter_linear,
-                                       bool mag_filter_linear,
-                                       bool clamp_to_edge,
-                                       bool mirrored_repeat,
-                                       bool explicit_fencing)
+void tgr3d_set_texture_desc(struct tegra_stream *cmds,
+                            unsigned index,
+                            struct drm_tegra_bo *bo,
+                            unsigned offset,
+                            unsigned width,
+                            unsigned height,
+                            unsigned pixel_format,
+                            bool min_filter_linear,
+                            bool mip_filter_linear,
+                            bool mag_filter_linear,
+                            bool clamp_to_edge,
+                            bool mirrored_repeat,
+                            bool explicit_fencing)
 {
     uint32_t value = 0;
 
@@ -435,10 +432,10 @@ static void TegraGR3D_SetupTextureDesc(struct tegra_stream *cmds,
     tegra_stream_push_reloc(cmds, bo, offset, false, explicit_fencing);
 }
 
-static void TegraGR3D_SetupDrawParams(struct tegra_stream *cmds,
-                                      unsigned primitive_type,
-                                      unsigned index_mode,
-                                      unsigned first_vtx)
+void tgr3d_set_draw_params(struct tegra_stream *cmds,
+                           unsigned primitive_type,
+                           unsigned index_mode,
+                           unsigned first_vtx)
 {
     uint32_t value = 0;
 
@@ -454,8 +451,8 @@ static void TegraGR3D_SetupDrawParams(struct tegra_stream *cmds,
     tegra_stream_push(cmds, value);
 }
 
-static void TegraGR3D_DrawPrimitives(struct tegra_stream *cmds,
-                                     unsigned first_index, unsigned count)
+void tgr3d_draw_primitives(struct tegra_stream *cmds,
+                           unsigned first_index, unsigned count)
 {
     uint32_t value = 0;
 
@@ -486,14 +483,14 @@ static void TegraGR3D_DrawPrimitives(struct tegra_stream *cmds,
     tegra_stream_sync(cmds, DRM_TEGRA_SYNCPT_COND_OP_DONE, true);
 }
 
-static void TegraGR3D_UploadProgram(struct tegra_stream *cmds,
-                                    const struct shader_program *prog)
+void tgr3d_upload_program(struct tegra_stream *cmds,
+                          const struct shader_program *prog)
 {
-    TegraGR3D_SetupPSEQ_DW_cfg(cmds, prog->fs_pseq_to_dw);
-    TegraGR3D_SetupALUBufferSize(cmds, prog->fs_alu_buf_size);
-    TegraGR3D_Startup_PSEQ_Engine(cmds, prog->fs_pseq_inst_nb);
-    TegraGR3D_SetUsed_TRAM_RowsNum(cmds, prog->used_tram_rows_nb);
-    TegraGR3D_SetupCullFaceAndLinkerInstNum(cmds, prog->linker_inst_nb);
+    tgr3d_set_pseq_dw_cfg(cmds, prog->fs_pseq_to_dw);
+    tgr3d_set_alu_buffer_size(cmds, prog->fs_alu_buf_size);
+    tgr3d_startup_pseq_engine(cmds, prog->fs_pseq_inst_nb);
+    tgr3d_set_used_tram_rows_num(cmds, prog->used_tram_rows_nb);
+    tgr3d_set_cullface_and_linker_inst_num(cmds, prog->linker_inst_nb);
 
     tegra_stream_prep(cmds, 4);
     tegra_stream_push(cmds, HOST1X_OPCODE_IMM(TGR3D_VP_UPLOAD_INST_ID, 0));
@@ -501,23 +498,18 @@ static void TegraGR3D_UploadProgram(struct tegra_stream *cmds,
     tegra_stream_push(cmds, HOST1X_OPCODE_IMM(TGR3D_FP_UPLOAD_MFU_INST_ID, 0));
     tegra_stream_push(cmds, HOST1X_OPCODE_IMM(TGR3D_FP_UPLOAD_ALU_INST_ID, 0));
 
-    tegra_stream_push_words(cmds, prog->vs_prog_words,
-                            prog->vs_prog_words_nb, 0);
-
-    tegra_stream_push_words(cmds, prog->fs_prog_words,
-                            prog->fs_prog_words_nb, 0);
-
-    tegra_stream_push_words(cmds, prog->linker_words,
-                            prog->linker_words_nb, 0);
+    tegra_stream_push_words(cmds, prog->vs_prog_words, prog->vs_prog_words_nb, 0);
+    tegra_stream_push_words(cmds, prog->fs_prog_words, prog->fs_prog_words_nb, 0);
+    tegra_stream_push_words(cmds, prog->linker_words,  prog->linker_words_nb, 0);
 }
 
-static void TegraGR3D_Initialize(struct tegra_stream *cmds)
+void tgr3d_initialize(struct tegra_stream *cmds)
 {
-    TegraGR3D_InitState(cmds);
-    TegraGR3D_SetupGuardband(cmds);
-    TegraGR3D_SetupLateTest(cmds);
-    TegraGR3D_SetupDepthRange(cmds);
-    TegraGR3D_SetupDepthBuffer(cmds);
-    TegraGR3D_SetupStencilTest(cmds);
-    TegraGR3D_SetupPolygonOffset(cmds);
+    tgr3d_init_state(cmds);
+    tgr3d_set_guardband(cmds);
+    tgr3d_set_late_test(cmds);
+    tgr3d_set_depth_range(cmds);
+    tgr3d_set_depth_buffer(cmds);
+    tgr3d_set_stencil_test(cmds);
+    tgr3d_set_polygon_offset(cmds);
 }

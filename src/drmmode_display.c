@@ -43,8 +43,8 @@ dumb_bo_create(struct drm_tegra *drm,
     if (!bo)
         return NULL;
 
-    bo->pitch = TegraEXAPitch(width, height, bpp);
-    size = bo->pitch * TegraEXAHeightHwAligned(height, bpp);
+    bo->pitch = tegra_hw_pitch(width, height, bpp);
+    size = bo->pitch * tegra_height_hw_aligned(height, bpp);
 
     drm_ver = drm_tegra_version(drm);
     if (drm_ver >= GRATE_KERNEL_DRM_VERSION)

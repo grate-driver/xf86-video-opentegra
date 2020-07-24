@@ -56,7 +56,7 @@ tegra_memcpy_vfp_unaligned(char *dst, const char *src, int size)
 }
 
 static inline bool
-tegra_memcpy_vfp_copy_safe(char *dst, const char *src, int size)
+tegra_memcpy_vfp_copy_is_safe(char *dst, const char *src, int size)
 {
     return (((uintptr_t)src & 127) == 0 &&
             ((uintptr_t)dst & 127) == 0 &&
@@ -71,7 +71,7 @@ tegra_memcpy_vfp_aligned(char *dst, const char *src, int size)
     if (__builtin_expect(dst == src || !size, 0))
         return;
 
-    assert(tegra_memcpy_vfp_copy_safe(dst, src, size));
+    assert(tegra_memcpy_vfp_copy_is_safe(dst, src, size));
 
     tegra_copy_block_vfp_2_pass(dst, src, size);
 }
@@ -83,7 +83,7 @@ tegra_memcpy_vfp_aligned_dst_cached(char *dst, const char *src, int size)
     if (__builtin_expect(dst == src || !size, 0))
         return;
 
-    assert(tegra_memcpy_vfp_copy_safe(dst, src, size));
+    assert(tegra_memcpy_vfp_copy_is_safe(dst, src, size));
 
     tegra_copy_block_vfp(dst, src, size);
 }
@@ -95,7 +95,7 @@ tegra_memcpy_vfp_aligned_src_cached(char *dst, const char *src, int size)
     if (__builtin_expect(dst == src || !size, 0))
         return;
 
-    assert(tegra_memcpy_vfp_copy_safe(dst, src, size));
+    assert(tegra_memcpy_vfp_copy_is_safe(dst, src, size));
 
     tegra_copy_block_vfp_arm(dst, src, size);
 }

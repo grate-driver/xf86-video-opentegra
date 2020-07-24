@@ -26,37 +26,27 @@
 
 AUTOMAKE_OPTIONS=subdir-objects
 
-AM_CFLAGS = $(XORG_CFLAGS) $(DRM_CFLAGS) $(UDEV_CFLAGS) $(LZ4_CFLAGS) \
-	$(CWARNFLAGS) $(JPEG_CFLAGS) $(PNG_CFLAGS) $(VALGRIND_CFLAGS) \
-	$(PIXMAN_CFLAGS)
+AM_CFLAGS  = $(CWARNFLAGS) $(DEFINES)
+AM_CFLAGS += $(UDEV_CFLAGS)
+AM_CFLAGS += $(DRM_CFLAGS)
+AM_CFLAGS += $(JPEG_CFLAGS)
+AM_CFLAGS += $(LZ4_CFLAGS)
+AM_CFLAGS += $(PIXMAN_CFLAGS)
+AM_CFLAGS += $(PNG_CFLAGS)
+AM_CFLAGS += $(VALGRIND_CFLAGS)
+AM_CFLAGS += $(XORG_CFLAGS)
 
 opentegra_drv_la_LTLIBRARIES = opentegra_drv.la
 opentegra_drv_la_LDFLAGS = -module -avoid-version
-opentegra_drv_la_LIBADD = @UDEV_LIBS@ @DRM_LIBS@ @LZ4_LIBS@ @JPEG_LIBS@ \
-			@PNG_LIBS@ @PIXMAN_LIBS@
+opentegra_drv_la_LIBADD = @UDEV_LIBS@ @DRM_LIBS@ @LZ4_LIBS@ @JPEG_LIBS@ @PNG_LIBS@ @PIXMAN_LIBS@
+opentegra_drv_la_CFLAGS = $(AM_CFLAGS)
 opentegra_drv_ladir = @moduledir@/drivers
 
-# enable fp16 for the 3d attributes
-opentegra_drv_la_CFLAGS = $(AM_CFLAGS) $(DEFINES) -mfp16-format=ieee
-opentegra_drv_la_CFLAGS +=-I$(srcdir)/tegradrm -pthread
+opentegra_drv_la_CFLAGS += -pthread
+opentegra_drv_la_CFLAGS += -I$(srcdir)/tegradrm
 
-opentegra_drv_la_DEPENDENCIES = \
-	shaders.h \
-	exa_mm.c \
-	exa_mm_pool.c \
-	exa_mm_fridge.c \
-	exa_helpers.c \
-	exa_2d.c \
-	exa_composite.c \
-	exa_composite_2d.c \
-	exa_composite_3d.c \
-	exa_composite_3d_state_tracker.c \
-	exa_optimizations_2d.c \
-	exa_optimizations_3d.c \
-	exa_optimizations.h \
-	exa_pixmap.c \
-	pool_alloc.c \
-	gr3d.c
+# enable fp16 for the 3d vertex attributes
+opentegra_drv_la_CFLAGS += -mfp16-format=ieee
 
 opentegra_drv_la_SOURCES = \
 	compat-api.h \
@@ -67,25 +57,56 @@ opentegra_drv_la_SOURCES = \
 	driver.h \
 	drmmode_display.c \
 	drmmode_display.h \
-	host1x.h \
 	xv.h \
-	exa.c \
-	exa.h \
 	vblank.c \
-	vblank.h \
-	tegra_fence.h \
-	tegra_stream_v1.c \
-	tegra_stream_v2.c \
-	tegra_stream.h \
-	shaders/prog.h \
-	shaders.h \
-	tgr_3d.xml.h \
-	gr3d.h \
-	memcpy_vfp.c
+	vblank.h
 
 if HAVE_DRM_ATOMIC
 opentegra_drv_la_SOURCES += drm_plane.c xv.c
 endif
+
+opentegra_drv_la_DEPENDENCIES = \
+	exa/composite.c \
+	exa/composite_2d.c \
+	exa/composite_3d.c \
+	exa/composite_3d_state_tracker.c \
+	exa/copy_2d.c \
+	exa/tegra_exa.c \
+	exa/tegra_exa.h \
+	exa/cpu_access.c \
+	exa/helpers.c \
+	exa/load_screen.c \
+	exa/mm.c \
+	exa/mm_fridge.c \
+	exa/mm_pool.c \
+	exa/optimizations_2d.c \
+	exa/optimizations_3d.c \
+	exa/pixmap.c \
+	exa/solid_2d.c\
+	exa/shaders.h
+
+opentegra_drv_la_SOURCES += \
+	exa/exa.c \
+	exa/exa.h \
+	exa/shaders.h
+
+opentegra_drv_la_SOURCES += \
+	gpu/gr3d.c \
+	gpu/gr3d.h \
+	gpu/host1x.h \
+	gpu/tegra_fence.h \
+	gpu/tegra_stream_v1.c \
+	gpu/tegra_stream_v2.c \
+	gpu/tegra_stream.h \
+	gpu/tgr_3d.xml.h
+
+opentegra_drv_la_SOURCES += \
+	memcpy-vfp/memcpy_vfp.c \
+	memcpy-vfp/memcpy_vfp.h
+
+opentegra_drv_la_SOURCES += \
+	mempool/pool_alloc.c \
+	mempool/pool_alloc.h
 
 opentegra_drv_la_SOURCES += \
 	tegradrm/atomic.h \
@@ -101,28 +122,28 @@ opentegra_drv_la_SOURCES += \
 	tegradrm/uapi_v1/pushbuf.c \
 	tegradrm/uapi_v2/job.c
 
-shaders_dir := $(filter %/, $(wildcard $(srcdir)/shaders/*/*/))
+shaders_dir := $(filter %/, $(wildcard $(srcdir)/exa/shaders/*/*/))
 shaders_gen := $(addsuffix .bin.h, $(shaders_dir:%/=%))
 
-%.bin.h: gen_shader_bin $(srcdir)/shaders/prog.h \
-			$(srcdir)/shaders/vertex_common.asm \
-			$(srcdir)/shaders/linker_common.asm \
+%.bin.h: gen_shader_bin $(srcdir)/gpu/gr3d.h \
+			$(srcdir)/exa/shaders/vertex_common.asm \
+			$(srcdir)/exa/shaders/linker_common.asm \
 			%/fragment.asm
 	$(builddir)/gen_shader_bin \
-		--vs $(srcdir)/shaders/vertex_common.asm \
-		--lnk $(srcdir)/shaders/linker_common.asm \
+		--vs $(srcdir)/exa/shaders/vertex_common.asm \
+		--lnk $(srcdir)/exa/shaders/linker_common.asm \
 		--fs $*/fragment.asm \
 		--fpname $(*F) \
 		--vpname vertex_common \
 		--lpname linker_common \
 		--out $@
 
-shaders.h: $(shaders_gen) $(srcdir)/gen_shaders_h.sh
-	$(srcdir)/gen_shaders_h.sh $(srcdir)
+exa/shaders.h: $(shaders_gen) $(srcdir)/exa/gen_shaders_h.sh
+	$(srcdir)/exa/gen_shaders_h.sh $(srcdir)/exa
 
-asm_grammars := $(wildcard $(srcdir)/asm/*.y)
-asm_headers  := $(wildcard $(srcdir)/asm/*.h)
-asm_lexers   := $(wildcard $(srcdir)/asm/*.l)
+asm_grammars := $(wildcard $(srcdir)/gpu/gr3d-asm/*.y)
+asm_headers  := $(wildcard $(srcdir)/gpu/gr3d-asm/*.h)
+asm_lexers   := $(wildcard $(srcdir)/gpu/gr3d-asm/*.l)
 
 asm_gen_c := \
 	$(asm_lexers:%.l=%.lex.c) \
@@ -139,19 +160,19 @@ asm_gen_h := \
 
 HOSTCC = gcc
 
-gen_shader_bin: gen_shader_bin.c $(asm_gen_c) $(asm_headers)
-	$(HOSTCC) -I $(srcdir)/asm -o $(builddir)/$@ $< $(asm_gen_c)
+gen_shader_bin: $(srcdir)/exa/gen_shader_bin.c $(asm_gen_c) $(asm_headers)
+	$(HOSTCC) -I$(srcdir)/gpu/gr3d-asm -o $(builddir)/$@ $< $(asm_gen_c)
 
 BUILT_SOURCES = \
 	$(asm_gen_c) \
 	$(asm_gen_h) \
 	$(shaders_gen) \
-	shaders.h
+	$(srcdir)/exa/shaders.h
 
 CLEANFILES = \
 	$(asm_gen_c) \
 	$(asm_gen_h) \
 	$(shaders_gen) \
 	$(builddir)/gen_shader_bin \
-	$(shell find $(srcdir)/shaders/ -type f -name '*.bin.h') \
-	shaders.h
+	$(shell find $(srcdir)/exa/shaders/ -type f -name '*.bin.h') \
+	$(srcdir)/exa/shaders.h

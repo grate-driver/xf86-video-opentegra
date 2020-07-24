@@ -26,8 +26,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
 #include "pool_alloc.h"
-#include "memcpy_vfp.h"
 
 #ifdef POOL_DEBUG
 static struct {
@@ -75,9 +75,17 @@ static struct {
  *         pool-owners back.
  */
 
-static int mem_pool_init(struct mem_pool *pool, unsigned long size,
-                         unsigned int bitmap_size)
+int mem_pool_init(struct mem_pool *pool, unsigned long size,
+                  unsigned int bitmap_size,
+                  mem_pool_memcpy memcpy,
+                  mem_pool_memmove memmove)
 {
+    assert(pool);
+    assert(size);
+    assert(memcpy);
+    assert(memmove);
+    assert(bitmap_size);
+
     pool->bitmap_size = bitmap_size;
     pool->fragmented = 0;
     pool->bitmap_full = 0;
@@ -87,6 +95,8 @@ static int mem_pool_init(struct mem_pool *pool, unsigned long size,
     pool->remain = size;
     pool->vbase = NULL;
     pool->base = NULL;
+    pool->memcpy = memcpy;
+    pool->memmove = memmove;
 
     /*
      * TODO: Rework address handling, for now the base must be non-NULL,
@@ -336,13 +346,13 @@ static void migrate_entry(struct mem_pool *pool_from,
             from_vbase >= new_vbase + pool_to->entries[to].size)
                 mem_move = 0;
 
+        assert(pool_from->memmove == pool_to->memmove);
+        assert(pool_from->memcpy == pool_to->memcpy);
+
         if (mem_move)
-            tegra_memmove_vfp_aligned(new_vbase, from_vbase,
-                                      pool_to->entries[to].size);
+            pool_to->memmove(new_vbase, from_vbase, pool_to->entries[to].size);
         else
-            tegra_memcpy_vfp_threaded(new_vbase, from_vbase,
-                                      pool_to->entries[to].size,
-                                      tegra_memcpy_vfp_aligned);
+            pool_to->memcpy(new_vbase, from_vbase, pool_to->entries[to].size);
 
         mem_pool_clear_canary(&pool_to->entries[to]);
         pool_to->entries[to].base = new_base;
@@ -479,8 +489,8 @@ static int mem_pool_grow_bitmap(struct mem_pool * restrict pool)
     return mem_pool_resize_bitmap(pool, pool->bitmap_size + 1);
 }
 
-static void *mem_pool_alloc(struct mem_pool * restrict pool, unsigned long size,
-                            struct mem_pool_entry *ret_entry, int defrag)
+void *mem_pool_alloc(struct mem_pool * restrict pool, unsigned long size,
+                     struct mem_pool_entry *ret_entry, int defrag)
 {
     struct __mem_pool_entry *empty;
     struct __mem_pool_entry *busy;
@@ -590,7 +600,7 @@ retry:
     return start;
 }
 
-static void mem_pool_free(struct mem_pool_entry *entry)
+void mem_pool_free(struct mem_pool_entry *entry)
 {
     struct mem_pool *pool = entry->pool;
     unsigned int entry_id = entry->id;
@@ -629,7 +639,7 @@ static void mem_pool_free(struct mem_pool_entry *entry)
 #endif
 }
 
-static void mem_pool_destroy(struct mem_pool *pool)
+void mem_pool_destroy(struct mem_pool *pool)
 {
 #ifdef POOL_DEBUG
     PRINTF("%s: pool %p: size=%lu remain=%lu pools_num=%u\n",
@@ -660,8 +670,8 @@ static void mem_pool_destroy(struct mem_pool *pool)
  * Returns number of transferred entries. The "pool_to" is in defragmented
  * state.
  */
-static int mem_pool_transfer_entries(struct mem_pool * restrict pool_to,
-                                     struct mem_pool * restrict pool_from)
+int mem_pool_transfer_entries(struct mem_pool * restrict pool_to,
+                              struct mem_pool * restrict pool_from)
 {
     struct __mem_pool_entry *busy_from;
     struct __mem_pool_entry *busy_to;
@@ -759,8 +769,8 @@ next_from:
  *
  * Returns number of transferred entries.
  */
-static int mem_pool_transfer_entries_fast(struct mem_pool * restrict pool_to,
-                                          struct mem_pool * restrict pool_from)
+int mem_pool_transfer_entries_fast(struct mem_pool * restrict pool_to,
+                                   struct mem_pool * restrict pool_from)
 {
     struct __mem_pool_entry *busy_from;
     struct mem_pool_entry empty_to;
@@ -844,13 +854,13 @@ static int mem_pool_transfer_entries_fast(struct mem_pool * restrict pool_to,
     return transferred_entries;
 }
 
-static __maybe_unused void mem_pool_defrag(struct mem_pool *pool)
+void mem_pool_defrag(struct mem_pool *pool)
 {
     if (!mem_pool_empty(pool))
         defrag_pool(pool, ~0ul, 0);
 }
 
-static __maybe_unused void mem_pool_debug_dump(struct mem_pool *pool)
+void mem_pool_debug_dump(struct mem_pool *pool)
 {
 #ifdef POOL_DEBUG_VERBOSE
     struct __mem_pool_entry *busy;

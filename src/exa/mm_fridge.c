@@ -21,13 +21,10 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#include "driver.h"
-#include "exa_mm.h"
-
-#define TEST_FREEZER    0
+#define TEST_FREEZER                        0
 
 /* note: validation is very slow */
-#define VALIDATE_COMPRESSION    0
+#define VALIDATE_COMPRESSION                0
 
 #define TEGRA_EXA_FREEZE_ALLOWANCE_DELTA    3
 #define TEGRA_EXA_FREEZE_BOUNCE_DELTA       5
@@ -55,7 +52,7 @@ struct compression_arg {
     unsigned quality;
 };
 
-static int TegraEXAToPNGFormat(TegraPtr tegra, TegraPixmapPtr pixmap)
+static int tegra_exa_to_png_format(TegraPtr tegra, struct tegra_pixmap *pixmap)
 {
     if (!tegra->exa_compress_png)
         return -1;
@@ -91,7 +88,8 @@ static int TegraEXAToPNGFormat(TegraPtr tegra, TegraPixmapPtr pixmap)
     return -1;
 }
 
-static int TegraEXAToJpegTurboFormat(TegraPtr tegra, TegraPixmapPtr pixmap)
+static int
+tegra_exa_to_jpeg_turbo_format(TegraPtr tegra, struct tegra_pixmap *pixmap)
 {
     if (!tegra->exa_compress_jpeg)
         return -1;
@@ -127,10 +125,10 @@ static int TegraEXAToJpegTurboFormat(TegraPtr tegra, TegraPixmapPtr pixmap)
     return -1;
 }
 
-static int TegraEXAToJpegTurboSampling(TegraPixmapPtr pixmap)
+static int tegra_exa_to_jpeg_turbo_sampling(struct tegra_pixmap *pixmap)
 {
 #ifdef HAVE_JPEG
-    switch (pixmap->pPixmap->drawable.bitsPerPixel) {
+    switch (pixmap->base->drawable.bitsPerPixel) {
     case 8:
         return TJSAMP_GRAY;
 
@@ -142,7 +140,7 @@ static int TegraEXAToJpegTurboSampling(TegraPixmapPtr pixmap)
     return -1;
 }
 
-static void * TegraEXAFridgeMapPixmap(TegraPixmapPtr pixmap)
+static void * tegra_exa_mm_fridge_map_pixmap(struct tegra_pixmap *pixmap)
 {
     void *data_ptr;
     int err;
@@ -153,7 +151,7 @@ static void * TegraEXAFridgeMapPixmap(TegraPixmapPtr pixmap)
     TEGRA_PIXMAP_WAIT_ALL_FENCES(pixmap);
 
     if (pixmap->type == TEGRA_EXA_PIXMAP_TYPE_POOL)
-        return TegraEXAPoolMapEntry(&pixmap->pool_entry);
+        return tegra_exa_pixmap_pool_map_entry(&pixmap->pool_entry);
 
     if (pixmap->type == TEGRA_EXA_PIXMAP_TYPE_BO) {
         err = drm_tegra_bo_map(pixmap->bo, &data_ptr);
@@ -163,28 +161,29 @@ static void * TegraEXAFridgeMapPixmap(TegraPixmapPtr pixmap)
         return NULL;
     }
 
-    ErrorMsg("FATAL: invalid pixmap type\n");
+    ERROR_MSG("FATAL: invalid pixmap type\n");
 
     return NULL;
 }
 
-static void TegraEXAFridgeUnMapPixmap(TegraPixmapPtr pixmap)
+static void tegra_exa_mm_fridge_unmap_pixmap(struct tegra_pixmap *pixmap)
 {
     int err;
 
     if (pixmap->type == TEGRA_EXA_PIXMAP_TYPE_BO) {
         err = drm_tegra_bo_unmap(pixmap->bo);
         if (err < 0)
-            ErrorMsg("FATAL: failed to unmap buffer object: %d\n", err);
+            ERROR_MSG("FATAL: failed to unmap buffer object: %d\n", err);
     }
 
     if (pixmap->type == TEGRA_EXA_PIXMAP_TYPE_POOL)
-        TegraEXAPoolUnmapEntry(&pixmap->pool_entry);
+        tegra_exa_pixmap_pool_unmap_entry(&pixmap->pool_entry);
 }
 
-static void TegraEXAFridgeReleaseUncompressedData(TegraEXAPtr exa,
-                                                  TegraPixmapPtr pixmap,
-                                                  Bool keep_fallback)
+static void
+tegra_exa_mm_fridge_release_uncompressed_data(struct tegra_exa *exa,
+                                              struct tegra_pixmap *pixmap,
+                                              bool keep_fallback)
 {
     switch (pixmap->type) {
     case TEGRA_EXA_PIXMAP_TYPE_FALLBACK:
@@ -195,8 +194,8 @@ static void TegraEXAFridgeReleaseUncompressedData(TegraEXAPtr exa,
         break;
 
     case TEGRA_EXA_PIXMAP_TYPE_POOL:
-        TegraEXAPoolUnmapEntry(&pixmap->pool_entry);
-        TegraEXAPoolFree(&pixmap->pool_entry);
+        tegra_exa_pixmap_pool_unmap_entry(&pixmap->pool_entry);
+        tegra_exa_pixmap_pool_free_entry(&pixmap->pool_entry);
         break;
 
     case TEGRA_EXA_PIXMAP_TYPE_BO:
@@ -205,14 +204,15 @@ static void TegraEXAFridgeReleaseUncompressedData(TegraEXAPtr exa,
     }
 }
 
-static void TegraEXAResurrectAccelPixmap(TegraPtr tegra, TegraPixmapPtr pixmap)
+static void tegra_exa_mm_resurrect_accel_pixmap(TegraPtr tegra,
+                                                struct tegra_pixmap *pixmap)
 {
     void *pixmap_data_orig;
     unsigned int data_size;
     struct timespec time;
     void *pixmap_data;
-    TegraEXAPtr exa;
-    Bool ret;
+    struct tegra_exa *exa;
+    bool ret;
 
     PROFILE_DEF(ressurection);
 
@@ -227,25 +227,25 @@ static void TegraEXAResurrectAccelPixmap(TegraPtr tegra, TegraPixmapPtr pixmap)
     if (time.tv_sec - exa->last_resurrect_time < TEGRA_EXA_RESURRECT_DELTA)
         return;
 
-    DebugMsg("%s pixmap %p\n", __FILE__, pixmap->pPixmap);
+    DEBUG_MSG("%s pixmap %p\n", __FILE__, pixmap->base);
 
     PROFILE_START(ressurection);
 
     pixmap_data_orig = pixmap->fallback;
-    data_size = TegraPixmapSize(pixmap);
+    data_size = tegra_exa_pixmap_size(pixmap);
 
-    ret = (TegraEXAAllocateDRMFromPool(tegra, pixmap, data_size) ||
-           TegraEXAAllocateDRM(tegra, pixmap, data_size));
+    ret = (tegra_exa_pixmap_allocate_from_pool(tegra, pixmap, data_size) ||
+           tegra_exa_pixmap_allocate_from_bo(tegra, pixmap, data_size));
 
-    if (ret == TRUE) {
+    if (ret == true) {
         pixmap->fence_write[TEGRA_2D] = NULL;
         pixmap->fence_write[TEGRA_3D] = NULL;
         pixmap->fence_read[TEGRA_2D]  = NULL;
         pixmap->fence_read[TEGRA_3D]  = NULL;
-        pixmap_data = TegraEXAFridgeMapPixmap(pixmap);
+        pixmap_data = tegra_exa_mm_fridge_map_pixmap(pixmap);
 
         if (!pixmap_data) {
-            TegraEXAFridgeReleaseUncompressedData(exa, pixmap, FALSE);
+            tegra_exa_mm_fridge_release_uncompressed_data(exa, pixmap, false);
             pixmap->type = TEGRA_EXA_PIXMAP_TYPE_FALLBACK;
         }
     } else {
@@ -256,7 +256,7 @@ static void TegraEXAResurrectAccelPixmap(TegraPtr tegra, TegraPixmapPtr pixmap)
     if (pixmap_data) {
         tegra_memcpy_vfp_aligned_src_cached(pixmap_data, pixmap_data_orig,
                                             data_size);
-        TegraEXAFridgeUnMapPixmap(pixmap);
+        tegra_exa_mm_fridge_unmap_pixmap(pixmap);
         free(pixmap_data_orig);
         exa->release_count++;
     } else {
@@ -266,8 +266,9 @@ static void TegraEXAResurrectAccelPixmap(TegraPtr tegra, TegraPixmapPtr pixmap)
     PROFILE_STOP(ressurection);
 }
 
-static int TegraEXACompressPixmap(TegraEXAPtr exa, TegraPixmapPtr pixmap,
-                                  struct compression_arg *c)
+static int tegra_exa_mm_compress_pixmap(struct tegra_exa *exa,
+                                        struct tegra_pixmap *pixmap,
+                                        struct compression_arg *c)
 {
     unsigned long compressed_bound;
     unsigned long compressed_max;
@@ -277,7 +278,7 @@ static int TegraEXACompressPixmap(TegraEXAPtr exa, TegraPixmapPtr pixmap,
     if (c->compression_type == TEGRA_EXA_COMPRESSION_UNCOMPRESSED)
         goto uncompressed;
 
-    DebugMsg("priv %p compressing\n", pixmap);
+    DEBUG_MSG("priv %p compressing\n", pixmap);
 
     if (c->in_size > TEGRA_EXA_COMPRESS_SMALL_SIZE)
         compressed_max = c->in_size - TEGRA_EXA_COMPRESS_SMALL_SIZE / 8;
@@ -291,17 +292,17 @@ static int TegraEXACompressPixmap(TegraEXAPtr exa, TegraPixmapPtr pixmap,
         c->buf_out = malloc(compressed_bound);
 
         if (!c->buf_out) {
-            ErrorMsg("failed to allocate buffer for compression of size %lu\n",
-                     compressed_bound);
+            ERROR_MSG("failed to allocate buffer for compression of size %lu\n",
+                      compressed_bound);
             return -1;
         }
 
-        c->out_size = LZ4_compress_default(c->buf_in, c->buf_out,
-                                           c->in_size, compressed_bound);
+        c->out_size = LZ4_compress_default(c->buf_in, c->buf_out, c->in_size,
+                                           compressed_bound);
         if (!c->out_size || c->out_size > compressed_max) {
             free(c->buf_out);
             /* just swap out poorly compressed pixmap from CMA */
-            DebugMsg("priv %p poor compression\n", pixmap);
+            DEBUG_MSG("priv %p poor compression\n", pixmap);
             goto uncompressed;
         }
 
@@ -320,7 +321,7 @@ static int TegraEXACompressPixmap(TegraEXAPtr exa, TegraPixmapPtr pixmap,
                           (uint8_t **) &c->buf_out, &c->out_size,
                           c->samping, c->quality, TJFLAG_FASTDCT);
         if (err) {
-            ErrorMsg("JPEG compression failed\n");
+            ERROR_MSG("JPEG compression failed\n");
             tjFree(c->buf_out);
             goto uncompressed;
         }
@@ -328,7 +329,7 @@ static int TegraEXACompressPixmap(TegraEXAPtr exa, TegraPixmapPtr pixmap,
         if (c->out_size > compressed_max) {
             tjFree(c->buf_out);
             /* just swap out poorly compressed pixmap from CMA */
-            DebugMsg("priv %p poor compression\n", pixmap);
+            DEBUG_MSG("priv %p poor compression\n", pixmap);
             goto uncompressed;
         }
 
@@ -353,15 +354,15 @@ static int TegraEXACompressPixmap(TegraEXAPtr exa, TegraPixmapPtr pixmap,
         c->buf_out = malloc(png_size);
 
         if (!c->buf_out) {
-            ErrorMsg("failed to allocate buffer for PNG compression of size %u\n",
-                     png_size);
+            ERROR_MSG("failed to allocate buffer for PNG compression of size %u\n",
+                      png_size);
             return -1;
         }
 
         err = png_image_write_to_memory(&png, c->buf_out, &png_size, 0,
                                         c->buf_in, c->pitch, NULL);
         if (err == 0) {
-            ErrorMsg("PNG compression failed %s\n", png.message);
+            ERROR_MSG("PNG compression failed %s\n", png.message);
             free(c->buf_out);
             goto uncompressed;
         }
@@ -369,7 +370,7 @@ static int TegraEXACompressPixmap(TegraEXAPtr exa, TegraPixmapPtr pixmap,
         if (png_size > compressed_max) {
             free(c->buf_out);
             /* just swap out poorly compressed pixmap from CMA */
-            DebugMsg("priv %p poor compression\n", pixmap);
+            DEBUG_MSG("priv %p poor compression\n", pixmap);
             goto uncompressed;
         }
 
@@ -378,7 +379,7 @@ static int TegraEXACompressPixmap(TegraEXAPtr exa, TegraPixmapPtr pixmap,
             c->out_size = png_size;
             c->buf_out = tmp;
         } else {
-            DebugMsg("priv %p realloc failure\n", pixmap);
+            DEBUG_MSG("priv %p realloc failure\n", pixmap);
             free(c->buf_out);
             goto uncompressed;
         }
@@ -387,12 +388,12 @@ static int TegraEXACompressPixmap(TegraEXAPtr exa, TegraPixmapPtr pixmap,
     }
 #endif
 
-    DebugMsg("priv %p compressed\n", pixmap);
+    DEBUG_MSG("priv %p compressed\n", pixmap);
 
     return 0;
 
 uncompressed:
-    DebugMsg("priv %p going uncompressed\n", pixmap);
+    DEBUG_MSG("priv %p going uncompressed\n", pixmap);
 
     if (c->keep_fallback) {
         /* this is fallback allocation that failed to be compressed */
@@ -419,20 +420,22 @@ uncompressed:
     return 1;
 }
 
-static void TegraEXADecompressPixmap(TegraPtr tegra, TegraPixmapPtr pixmap,
-                                     struct compression_arg *c)
+static void
+tegra_exa_mm_decompress_pixmap(TegraPtr tegra,
+                               struct tegra_pixmap *pixmap,
+                               struct compression_arg *c)
 {
-    TegraEXAPtr exa = tegra->exa;
+    struct tegra_exa *exa = tegra->exa;
 #ifdef HAVE_PNG
     png_image png = { 0 };
 #endif
 
-    DebugMsg("priv %p decompressing\n", pixmap);
+    DEBUG_MSG("priv %p decompressing\n", pixmap);
 
     switch (c->compression_type) {
     case TEGRA_EXA_COMPRESSION_UNCOMPRESSED:
         tegra_memcpy_vfp_aligned_src_cached(c->buf_out, c->buf_in, c->out_size);
-        DebugMsg("priv %p decompressed: uncompressed\n", pixmap);
+        DEBUG_MSG("priv %p decompressed: uncompressed\n", pixmap);
 
         /* clear released data for privacy protection */
         if (TEST_FREEZER || tegra->exa_erase_pixmaps)
@@ -443,7 +446,7 @@ static void TegraEXADecompressPixmap(TegraPtr tegra, TegraPixmapPtr pixmap,
 #ifdef HAVE_LZ4
     case TEGRA_EXA_COMPRESSION_LZ4:
         LZ4_decompress_fast(c->buf_in, c->buf_out, c->out_size);
-        DebugMsg("priv %p decompressed: lz4\n", pixmap);
+        DEBUG_MSG("priv %p decompressed: lz4\n", pixmap);
 
         free(c->buf_in);
         break;
@@ -452,9 +455,9 @@ static void TegraEXADecompressPixmap(TegraPtr tegra, TegraPixmapPtr pixmap,
 #ifdef HAVE_JPEG
     case TEGRA_EXA_COMPRESSION_JPEG:
         tjDecompress2(exa->jpegDecompressor, c->buf_in, c->in_size,
-                      c->buf_out, c->width, c->pitch, c->height,
-                      c->format, TJFLAG_FASTDCT);
-        DebugMsg("priv %p decompressed: jpeg\n", pixmap);
+                  c->buf_out, c->width, c->pitch, c->height,
+                  c->format, TJFLAG_FASTDCT);
+        DEBUG_MSG("priv %p decompressed: jpeg\n", pixmap);
 
         tjFree(c->buf_in);
         break;
@@ -466,21 +469,22 @@ static void TegraEXADecompressPixmap(TegraPtr tegra, TegraPixmapPtr pixmap,
         png.version = PNG_IMAGE_VERSION;
         png_image_begin_read_from_memory(&png, c->buf_in, c->in_size);
         if (png.warning_or_error)
-            ErrorMsg("png error: %s\n", png.message);
+            ERROR_MSG("png error: %s\n", png.message);
         png.format = c->format;
         png_image_finish_read(&png, NULL, c->buf_out, c->pitch, NULL);
         if (png.warning_or_error)
-            ErrorMsg("png error: %s\n", png.message);
-        DebugMsg("priv %p decompressed: png\n", pixmap);
+            ERROR_MSG("png error: %s\n", png.message);
+        DEBUG_MSG("priv %p decompressed: png\n", pixmap);
         break;
 #endif
     }
 }
 
-static struct compression_arg TegraEXASelectCompression(TegraPtr tegra,
-                                                        TegraPixmapPtr pixmap,
-                                                        unsigned int data_size,
-                                                        void *pixmap_data)
+static struct compression_arg
+tegra_exa_select_compression(TegraPtr tegra,
+                             struct tegra_pixmap *pixmap,
+                             unsigned int data_size,
+                             void *pixmap_data)
 {
     struct compression_arg carg = { 0 };
 
@@ -489,9 +493,9 @@ static struct compression_arg TegraEXASelectCompression(TegraPtr tegra,
     carg.buf_in             = pixmap_data;
     carg.out_size           = 0;
     carg.in_size            = data_size;
-    carg.height             = pixmap->pPixmap->drawable.height;
-    carg.width              = pixmap->pPixmap->drawable.width;
-    carg.pitch              = pixmap->pPixmap->devKind;
+    carg.height             = pixmap->base->drawable.height;
+    carg.width              = pixmap->base->drawable.width;
+    carg.pitch              = pixmap->base->devKind;
     carg.format             = -1;
     carg.keep_fallback      = 0;
 
@@ -501,18 +505,18 @@ static struct compression_arg TegraEXASelectCompression(TegraPtr tegra,
 
     /* don't compress if failed previously or if size is too small */
     if (pixmap->no_compress || data_size < TEGRA_EXA_OFFSET_ALIGN) {
-        DebugMsg("priv %p selected compression: uncompressed\n", pixmap);
+        DEBUG_MSG("priv %p selected compression: uncompressed\n", pixmap);
         return carg;
     }
 
     /* JPEG is the preferred compression */
     if (tegra->exa_compress_jpeg) {
-        carg.format     = TegraEXAToJpegTurboFormat(tegra, pixmap);
-        carg.samping    = TegraEXAToJpegTurboSampling(pixmap);
+        carg.format     = tegra_exa_to_jpeg_turbo_format(tegra, pixmap);
+        carg.samping    = tegra_exa_to_jpeg_turbo_sampling(pixmap);
         carg.quality    = tegra->exa_compress_jpeg_quality;
 
         if (carg.format > -1) {
-            DebugMsg("priv %p selected compression: jpeg\n", pixmap);
+            DEBUG_MSG("priv %p selected compression: jpeg\n", pixmap);
             carg.compression_type = TEGRA_EXA_COMPRESSION_JPEG;
             return carg;
         }
@@ -520,10 +524,10 @@ static struct compression_arg TegraEXASelectCompression(TegraPtr tegra,
 
     /* select PNG if pixmap's format is unsuitable for JPEG compression */
     if (tegra->exa_compress_png) {
-        carg.format = TegraEXAToPNGFormat(tegra, pixmap);
+        carg.format = tegra_exa_to_png_format(tegra, pixmap);
 
         if (carg.format > -1) {
-            DebugMsg("priv %p selected compression: png\n", pixmap);
+            DEBUG_MSG("priv %p selected compression: png\n", pixmap);
             carg.compression_type = TEGRA_EXA_COMPRESSION_PNG;
             return carg;
         }
@@ -531,21 +535,23 @@ static struct compression_arg TegraEXASelectCompression(TegraPtr tegra,
 
     /* select LZ4 if pixmap's format is unsuitable for PNG / JPEG compression */
     if (tegra->exa_compress_lz4) {
-        DebugMsg("priv %p selected compression: lz4\n", pixmap);
+        DEBUG_MSG("priv %p selected compression: lz4\n", pixmap);
         carg.compression_type = TEGRA_EXA_COMPRESSION_LZ4;
     }
 
     return carg;
 }
 
-static void TegraEXAThawPixmapData(TegraPtr tegra, TegraPixmapPtr pixmap,
-                                   Bool accel)
+static void
+tegra_exa_thaw_pixmap_data(TegraPtr tegra,
+                           struct tegra_pixmap *pixmap,
+                           bool accel)
 {
     struct compression_arg carg;
     unsigned int retries = 0;
     unsigned int data_size;
     uint8_t *pixmap_data;
-    Bool ret = FALSE;
+    bool ret = false;
 
     PROFILE_DEF(decompression);
 
@@ -554,7 +560,7 @@ static void TegraEXAThawPixmapData(TegraPtr tegra, TegraPixmapPtr pixmap,
     carg.in_size            = pixmap->compressed_size;
     carg.format             = pixmap->compression_fmt;
 
-    data_size = TegraPixmapSize(pixmap);
+    data_size = tegra_exa_pixmap_size(pixmap);
     pixmap->fence_write[TEGRA_2D] = NULL;
     pixmap->fence_write[TEGRA_3D] = NULL;
     pixmap->fence_read[TEGRA_2D]  = NULL;
@@ -562,39 +568,39 @@ static void TegraEXAThawPixmapData(TegraPtr tegra, TegraPixmapPtr pixmap,
 
 retry:
     if (accel || pixmap->accelerated)
-        ret = (TegraEXAAllocateDRMFromPool(tegra, pixmap, data_size) ||
-               TegraEXAAllocateDRM(tegra, pixmap, data_size));
+        ret = (tegra_exa_pixmap_allocate_from_pool(tegra, pixmap, data_size) ||
+               tegra_exa_pixmap_allocate_from_bo(tegra, pixmap, data_size));
 
-    if (ret == FALSE) {
+    if (ret == false) {
         if (carg.compression_type == TEGRA_EXA_COMPRESSION_UNCOMPRESSED) {
             pixmap->type = TEGRA_EXA_PIXMAP_TYPE_FALLBACK;
             pixmap->fallback = carg.buf_in;
             return;
         }
 
-        ret = TegraEXAAllocateMem(pixmap, data_size);
+        ret = tegra_exa_pixmap_allocate_from_sysmem(pixmap, data_size);
     }
 
-    if (ret == FALSE) {
+    if (ret == false) {
         if (retries++ > 100)
-            ErrorMsg("stuck! size %u\n", data_size);
+            ERROR_MSG("stuck! size %u\n", data_size);
 
         usleep(100000);
         goto retry;
     }
 
-    pixmap_data = TegraEXAFridgeMapPixmap(pixmap);
+    pixmap_data = tegra_exa_mm_fridge_map_pixmap(pixmap);
     if (!pixmap_data) {
-        ErrorMsg("FATAL: can't restore pixmap data\n");
+        ERROR_MSG("FATAL: can't restore pixmap data\n");
         return;
     }
 
     if (VALIDATE_COMPRESSION) {
-        unsigned int cpp = pixmap->pPixmap->drawable.bitsPerPixel / 8;
-        unsigned int width_bytes = pixmap->pPixmap->drawable.width * cpp;
+        unsigned int cpp = pixmap->base->drawable.bitsPerPixel / 8;
+        unsigned int width_bytes = pixmap->base->drawable.width * cpp;
         unsigned int x, y, match;
 
-        for (y = 0; y < pixmap->pPixmap->drawable.height; y++) {
+        for (y = 0; y < pixmap->base->drawable.height; y++) {
             for (x = 0; x < width_bytes; x++) {
                 match = y * width_bytes + x + 0x55;
                 pixmap_data[y * width_bytes + x] = match;
@@ -602,22 +608,22 @@ retry:
         }
     }
 
-    carg.buf_out            = pixmap_data;
-    carg.out_size           = data_size;
-    carg.height             = pixmap->pPixmap->drawable.height;
-    carg.width              = pixmap->pPixmap->drawable.width;
-    carg.pitch              = pixmap->pPixmap->devKind;
+    carg.buf_out    = pixmap_data;
+    carg.out_size   = data_size;
+    carg.height     = pixmap->base->drawable.height;
+    carg.width      = pixmap->base->drawable.width;
+    carg.pitch      = pixmap->base->devKind;
 
     PROFILE_START(decompression);
-    TegraEXADecompressPixmap(tegra, pixmap, &carg);
+    tegra_exa_mm_decompress_pixmap(tegra, pixmap, &carg);
     PROFILE_STOP(decompression);
 
     if (VALIDATE_COMPRESSION) {
-        unsigned int cpp = pixmap->pPixmap->drawable.bitsPerPixel / 8;
-        unsigned int width_bytes = pixmap->pPixmap->drawable.width * cpp;
+        unsigned int cpp = pixmap->base->drawable.bitsPerPixel / 8;
+        unsigned int width_bytes = pixmap->base->drawable.width * cpp;
         unsigned int x, y, match, matched = 0;
 
-        for (y = 0; y < pixmap->pPixmap->drawable.height; y++) {
+        for (y = 0; y < pixmap->base->drawable.height; y++) {
             for (x = 0; x < width_bytes; x++) {
                 match = y * width_bytes + x + 0x55;
 
@@ -627,16 +633,16 @@ retry:
         }
 
         if (matched > data_size / 2)
-            ErrorMsg("priv %p decompression failure! data_size %u\n",
-                     pixmap, data_size);
+            ERROR_MSG("priv %p decompression failure! data_size %u\n",
+                      pixmap, data_size);
     }
 
-    TegraEXAFridgeUnMapPixmap(pixmap);
+    tegra_exa_mm_fridge_unmap_pixmap(pixmap);
 }
 
-static int TegraEXAFreezePixmap(TegraPtr tegra, TegraPixmapPtr pixmap)
+static int tegra_exa_freeze_pixmap(TegraPtr tegra, struct tegra_pixmap *pixmap)
 {
-    TegraEXAPtr exa = tegra->exa;
+    struct tegra_exa *exa = tegra->exa;
     struct compression_arg carg;
     unsigned int data_size;
     void *pixmap_data;
@@ -644,27 +650,27 @@ static int TegraEXAFreezePixmap(TegraPtr tegra, TegraPixmapPtr pixmap)
 
     PROFILE_DEF(compression);
 
-    data_size = TegraPixmapSize(pixmap);
+    data_size = tegra_exa_pixmap_size(pixmap);
 
     exa->cooling_size -= data_size;
     xorg_list_del(&pixmap->fridge_entry);
-    pixmap->cold = FALSE;
+    pixmap->cold = false;
 
-    pixmap_data = TegraEXAFridgeMapPixmap(pixmap);
+    pixmap_data = tegra_exa_mm_fridge_map_pixmap(pixmap);
 
     if (!pixmap_data) {
-        ErrorMsg("failed to map pixmap data\n");
+        ERROR_MSG("failed to map pixmap data\n");
         return -1;
     }
 
-    carg = TegraEXASelectCompression(tegra, pixmap, data_size, pixmap_data);
+    carg = tegra_exa_select_compression(tegra, pixmap, data_size, pixmap_data);
 
     PROFILE_START(compression);
-    err = TegraEXACompressPixmap(exa, pixmap, &carg);
+    err = tegra_exa_mm_compress_pixmap(exa, pixmap, &carg);
     PROFILE_STOP(compression);
 
     if (err < 0) {
-        ErrorMsg("failed to freeze pixmap\n");
+        ERROR_MSG("failed to freeze pixmap\n");
         goto fail_unmap;
     }
 
@@ -675,30 +681,31 @@ static int TegraEXAFreezePixmap(TegraPtr tegra, TegraPixmapPtr pixmap)
 
     pixmap->no_compress = err;
 
-    TegraEXAFridgeReleaseUncompressedData(exa, pixmap, carg.keep_fallback);
+    tegra_exa_mm_fridge_release_uncompressed_data(exa, pixmap,
+                                                  carg.keep_fallback);
 
-    pixmap->compression_type = carg.compression_type;
-    pixmap->compressed_data  = carg.buf_out;
-    pixmap->compressed_size  = carg.out_size;
-    pixmap->compression_fmt  = carg.format;
-    pixmap->type             = TEGRA_EXA_PIXMAP_TYPE_NONE;
-    pixmap->frozen           = TRUE;
+    pixmap->compression_type    = carg.compression_type;
+    pixmap->compressed_data     = carg.buf_out;
+    pixmap->compressed_size     = carg.out_size;
+    pixmap->compression_fmt     = carg.format;
+    pixmap->type                = TEGRA_EXA_PIXMAP_TYPE_NONE;
+    pixmap->frozen              = true;
 
     return 0;
 
 fail_unmap:
-    TegraEXAFridgeUnMapPixmap(pixmap);
+    tegra_exa_mm_fridge_unmap_pixmap(pixmap);
 
     return -1;
 }
 
-static void TegraEXAFreezePixmaps(TegraPtr tegra, time_t time_sec)
+static void tegra_exa_freeze_pixmaps(TegraPtr tegra, time_t time_sec)
 {
-    TegraEXAPtr exa = tegra->exa;
-    TegraPixmapPtr pix, tmp;
-    unsigned long cooling_size;
+    struct tegra_exa *exa = tegra->exa;
+    struct tegra_pixmap *pix, *tmp;
     unsigned long frost_size = 1;
-    Bool emergence = FALSE;
+    unsigned long cooling_size;
+    bool emergence = false;
     int err;
 
     PROFILE_DEF(freezing);
@@ -719,15 +726,15 @@ static void TegraEXAFreezePixmaps(TegraPtr tegra, time_t time_sec)
     if (time_sec - exa->last_freezing_time > TEGRA_EXA_FREEZE_BOUNCE_DELTA)
         goto out;
 
-    DebugMsg("time_sec %ld last_freezing_time %ld cooling_size %lu\n",
-             time_sec, exa->last_freezing_time, exa->cooling_size);
+    DEBUG_MSG("time_sec %ld last_freezing_time %ld cooling_size %lu\n",
+              time_sec, exa->last_freezing_time, exa->cooling_size);
 
     /*
      * Enforce freezing if there are more than several megabytes of pixmaps
      * pending to be frozen.
      */
     if (exa->cooling_size > TEGRA_EXA_COOLING_LIMIT_MAX)
-        emergence = TRUE;
+        emergence = true;
 
     /* allow freezing only once per couple seconds */
     if (time_sec - exa->last_freezing_time < TEGRA_EXA_FREEZE_ALLOWANCE_DELTA)
@@ -744,19 +751,19 @@ freeze:
             !TEST_FREEZER)
             break;
 
-        DebugMsg("priv %p last_use %ld stalled\n", pix, pix->last_use);
+        DEBUG_MSG("priv %p last_use %ld stalled\n", pix, pix->last_use);
 
         /* enforce freezing of staled pixmaps */
-        TegraEXAFreezePixmap(tegra, pix);
+        tegra_exa_freeze_pixmap(tegra, pix);
     }
 
     xorg_list_for_each_entry_safe(pix, tmp, &exa->cool_pixmaps, fridge_entry) {
         if (time_sec - pix->last_use < TEGRA_EXA_FREEZE_MIN_DELTA)
             break;
 
-        DebugMsg("priv %p last_use %ld cool\n", pix, pix->last_use);
+        DEBUG_MSG("priv %p last_use %ld cool\n", pix, pix->last_use);
 
-        err = TegraEXAFreezePixmap(tegra, pix);
+        err = tegra_exa_freeze_pixmap(tegra, pix);
         if (err)
             break;
 
@@ -785,9 +792,10 @@ out:
     PROFILE_STOP(freezing);
 }
 
-static void TegraEXACoolTegraPixmap(TegraPtr tegra, TegraPixmapPtr pix)
+static void tegra_exa_cool_tegra_pixmap(TegraPtr tegra,
+                                        struct tegra_pixmap *pix)
 {
-    TegraEXAPtr exa = tegra->exa;
+    struct tegra_exa *exa = tegra->exa;
     struct timespec time;
 
     if (pix->frozen || pix->cold || pix->scanout || pix->dri ||
@@ -803,47 +811,48 @@ static void TegraEXACoolTegraPixmap(TegraPtr tegra, TegraPixmapPtr pix)
 
     xorg_list_append(&pix->fridge_entry, &exa->cool_pixmaps);
     pix->last_use = time.tv_sec;
-    pix->cold = TRUE;
+    pix->cold = true;
 
-    exa->cooling_size += TegraPixmapSize(pix);
+    exa->cooling_size += tegra_exa_pixmap_size(pix);
 }
 
-static void TegraEXACoolPixmap(PixmapPtr pPixmap, Bool write)
+static void tegra_exa_cool_pixmap(PixmapPtr pixmap, bool write)
 {
     ScrnInfoPtr pScrn;
-    TegraPixmapPtr priv;
+    struct tegra_pixmap *priv;
     TegraPtr tegra;
 
-    if (pPixmap) {
-        pScrn = xf86ScreenToScrn(pPixmap->drawable.pScreen);
-        priv  = exaGetPixmapDriverPrivate(pPixmap);
+    if (pixmap) {
+        pScrn = xf86ScreenToScrn(pixmap->drawable.pScreen);
+        priv  = exaGetPixmapDriverPrivate(pixmap);
         tegra = TegraPTR(pScrn);
 
         if (tegra->exa_refrigerator) {
-            TegraEXACoolTegraPixmap(tegra, priv);
+            tegra_exa_cool_tegra_pixmap(tegra, priv);
 
             if (write)
-                priv->no_compress = FALSE;
+                priv->no_compress = false;
         }
     }
 }
 
-static void TegraEXAFillPixmapDataCPU(TegraPixmapPtr pixmap, Pixel color)
+static void
+tegra_exa_fill_pixmap_data_sw(struct tegra_pixmap *pixmap, Pixel color)
 {
-    unsigned int size = TegraPixmapSize(pixmap);
-    PixmapPtr pix = pixmap->pPixmap;
+    unsigned int size = tegra_exa_pixmap_size(pixmap);
+    PixmapPtr pix = pixmap->base;
     unsigned int x, y;
     void *ptr;
 
-    DebugMsg("%s pixmap %p\n", __FILE__, pixmap->pPixmap);
+    DEBUG_MSG("%s pixmap %p\n", __FILE__, pixmap->base);
 
-    if (TegraEXAPrepareCPUAccess(pix, EXA_PREPARE_DEST, &ptr)) {
-        if (color == 0 || pixmap->pPixmap->drawable.bitsPerPixel == 8) {
+    if (tegra_exa_prepare_cpu_access(pix, EXA_PREPARE_DEST, &ptr, false)) {
+        if (color == 0 || pixmap->base->drawable.bitsPerPixel == 8) {
             memset(ptr, color, size);
         } else {
-            for (y = 0; y < pixmap->pPixmap->drawable.height; y++) {
-                for (x = 0; x < pixmap->pPixmap->drawable.width; x++) {
-                    switch (pixmap->pPixmap->drawable.bitsPerPixel) {
+            for (y = 0; y < pixmap->base->drawable.height; y++) {
+                for (x = 0; x < pixmap->base->drawable.width; x++) {
+                    switch (pixmap->base->drawable.bitsPerPixel) {
                     case 8:
                         *(((CARD8*) ptr) + x) = color;
                         break;
@@ -856,94 +865,95 @@ static void TegraEXAFillPixmapDataCPU(TegraPixmapPtr pixmap, Pixel color)
                     }
                 }
 
-                ptr = (char*)ptr + pixmap->pPixmap->devKind;
+                ptr = (char*)ptr + pixmap->base->devKind;
             }
         }
 
-        TegraEXAFinishCPUAccess(pix, EXA_PREPARE_DEST);
+        tegra_exa_finish_cpu_access(pix, EXA_PREPARE_DEST);
     }
 }
 
-static void TegraEXAClearPixmapDataCPU(TegraPixmapPtr pixmap)
+static void tegra_exa_clear_pixmap_data_sw(struct tegra_pixmap *pixmap)
 {
     /* always zero-fill allocated data for consistency */
-    TegraEXAFillPixmapDataCPU(pixmap, TEST_FREEZER ? 0xff : 0);
+    tegra_exa_fill_pixmap_data_sw(pixmap, TEST_FREEZER ? 0xff : 0);
 }
 
-static Bool TegraEXAFillPixmapDataGPU(TegraPixmapPtr pixmap, Pixel color)
+static bool
+tegra_exa_fill_pixmap_data_hw(struct tegra_pixmap *pixmap, Pixel color)
 {
-    DebugMsg("%s pixmap %p\n", __FILE__, pixmap->pPixmap);
+    DEBUG_MSG("%s pixmap %p\n", __FILE__, pixmap->base);
 
-    if (TegraEXAPrepareSolid(pixmap->pPixmap, GXcopy, FB_ALLONES, color)) {
-        TegraEXASolid(pixmap->pPixmap, 0, 0,
-                      pixmap->pPixmap->drawable.width,
-                      pixmap->pPixmap->drawable.height);
-        TegraEXADoneSolid(pixmap->pPixmap);
+    if (tegra_exa_prepare_solid_2d(pixmap->base, GXcopy, FB_ALLONES, color)) {
+        tegra_exa_solid_2d(pixmap->base, 0, 0,
+                           pixmap->base->drawable.width,
+                           pixmap->base->drawable.height);
+        tegra_exa_done_solid_2d(pixmap->base);
 
-        return TRUE;
+        return true;
     }
 
-    return FALSE;
+    return false;
 }
 
-static Bool TegraEXAClearPixmapDataGPU(TegraPixmapPtr pixmap)
+static bool tegra_exa_clear_pixmap_data_hw(struct tegra_pixmap *pixmap)
 {
-    return TegraEXAFillPixmapDataGPU(pixmap, TEST_FREEZER ? 0xffffffff : 0);
+    return tegra_exa_fill_pixmap_data_hw(pixmap, TEST_FREEZER ? 0xffffffff : 0);
 }
 
-static Bool TegraEXAClearPixmapDataOnGPU(TegraPixmapPtr pixmap, Bool accel)
+static bool tegra_exa_prefer_hw_fill(struct tegra_pixmap *pixmap, bool accel)
 {
     struct drm_tegra_bo *bo = NULL;
-    TegraPixmapPoolPtr pool;
+    struct tegra_pixmap_pool *pool;
 
     if (pixmap->type <= TEGRA_EXA_PIXMAP_TYPE_FALLBACK)
-        return FALSE;
+        return false;
 
     if (pixmap->type == TEGRA_EXA_PIXMAP_TYPE_BO)
         bo = pixmap->bo;
 
     if (pixmap->type == TEGRA_EXA_PIXMAP_TYPE_POOL) {
-        pool = TEGRA_CONTAINER_OF(pixmap->pool_entry.pool, TegraPixmapPool,
-                                  pool);
+        pool = to_tegra_pool(pixmap->pool_entry.pool);
         bo = pool->bo;
     }
 
-    if (TegraEXAPixmapBusy(pixmap))
-        return TRUE;
+    if (tegra_exa_pixmap_is_busy(pixmap))
+        return true;
 
     /*
      * HW job execution overhead is bigger for small pixmaps than clearing
      * on CPU, so we prefer CPU for a such pixmaps.
      */
-    if (TegraPixmapSize(pixmap) < TEGRA_EXA_CPU_FILL_MIN_SIZE &&
+    if (tegra_exa_pixmap_size(pixmap) < TEGRA_EXA_CPU_FILL_MIN_SIZE &&
         (!accel || drm_tegra_bo_mapped(bo)))
-        return FALSE;
+        return false;
 
-    return TRUE;
+    return true;
 }
 
-static void TegraEXAClearPixmapData(TegraPixmapPtr pixmap, Bool accel)
+static void tegra_exa_clear_pixmap_data(struct tegra_pixmap *pixmap, bool accel)
 {
-    if (!TegraEXAClearPixmapDataOnGPU(pixmap, accel) ||
-        !TegraEXAClearPixmapDataGPU(pixmap))
-            TegraEXAClearPixmapDataCPU(pixmap);
+    if (!tegra_exa_prefer_hw_fill(pixmap, accel) ||
+        !tegra_exa_clear_pixmap_data_hw(pixmap))
+            tegra_exa_clear_pixmap_data_sw(pixmap);
 
-    tegra_exa_flush_deferred_operations(pixmap->pPixmap, accel);
-}
-
-static void TegraEXAFillPixmapData(TegraPixmapPtr pixmap, Bool accel,
-                                   Pixel color)
-{
-    if (!TegraEXAClearPixmapDataOnGPU(pixmap, accel) ||
-        !TegraEXAFillPixmapDataGPU(pixmap, color))
-            TegraEXAFillPixmapDataCPU(pixmap, color);
+    tegra_exa_flush_deferred_operations(pixmap->base, accel);
 }
 
 static void
-TegraEXAAllocatePixmapDataNoFail(TegraPtr tegra, TegraPixmapPtr pixmap,
-                                 Bool accel)
+tegra_exa_fill_pixmap_data(struct tegra_pixmap *pixmap, bool accel, Pixel color)
 {
-    unsigned int size = TegraPixmapSize(pixmap);
+    if (!tegra_exa_prefer_hw_fill(pixmap, accel) ||
+        !tegra_exa_fill_pixmap_data_hw(pixmap, color))
+            tegra_exa_fill_pixmap_data_sw(pixmap, color);
+}
+
+static void
+tegra_exa_allocate_pixmap_data_no_fail(TegraPtr tegra,
+                                       struct tegra_pixmap *pixmap,
+                                       bool accel)
+{
+    unsigned int size = tegra_exa_pixmap_size(pixmap);
     unsigned int retries = 0;
 
     PROFILE_DEF(alloc);
@@ -951,17 +961,17 @@ TegraEXAAllocatePixmapDataNoFail(TegraPtr tegra, TegraPixmapPtr pixmap,
 
     while (1) {
         if (!accel) {
-            if (TegraEXAAllocateMem(pixmap, size))
+            if (tegra_exa_pixmap_allocate_from_sysmem(pixmap, size))
                 break;
         } else {
-            if (TegraEXAAllocateDRMFromPool(tegra, pixmap, size) ||
-                TegraEXAAllocateDRM(tegra, pixmap, size) ||
-                TegraEXAAllocateMem(pixmap, size))
+            if (tegra_exa_pixmap_allocate_from_pool(tegra, pixmap, size) ||
+                tegra_exa_pixmap_allocate_from_bo(tegra, pixmap, size) ||
+                tegra_exa_pixmap_allocate_from_sysmem(pixmap, size))
                 break;
         }
 
         if (retries++ > 100)
-            ErrorMsg("stuck! size %u\n", size);
+            ERROR_MSG("stuck! size %u\n", size);
 
         usleep(100000);
     }
@@ -969,21 +979,21 @@ TegraEXAAllocatePixmapDataNoFail(TegraPtr tegra, TegraPixmapPtr pixmap,
     PROFILE_STOP(alloc);
 }
 
-static void TegraEXAThawPixmap2(PixmapPtr pPixmap,
-                                enum thaw_accel accel,
-                                enum thaw_alloc allocate)
+static void tegra_exa_thaw_pixmap2(PixmapPtr pixmap,
+                                   enum thaw_accel accel,
+                                   enum thaw_alloc allocate)
 {
     ScrnInfoPtr pScrn;
-    TegraPixmapPtr priv;
-    TegraEXAPtr exa;
+    struct tegra_pixmap *priv;
+    struct tegra_exa *exa;
     TegraPtr tegra;
 
     PROFILE_DEF(thaw);
     PROFILE_START(thaw);
 
-    if (pPixmap) {
-        pScrn = xf86ScreenToScrn(pPixmap->drawable.pScreen);
-        priv  = exaGetPixmapDriverPrivate(pPixmap);
+    if (pixmap) {
+        pScrn = xf86ScreenToScrn(pixmap->drawable.pScreen);
+        priv  = exaGetPixmapDriverPrivate(pixmap);
         tegra = TegraPTR(pScrn);
         exa   = tegra->exa;
 
@@ -993,38 +1003,39 @@ static void TegraEXAThawPixmap2(PixmapPtr pPixmap,
             return;
 
         if (priv->frozen) {
-            TegraEXAThawPixmapData(tegra, priv, accel);
+            tegra_exa_thaw_pixmap_data(tegra, priv, accel);
             priv->accelerated = accel;
-            priv->frozen = FALSE;
+            priv->frozen = false;
             return;
         }
 
         if (priv->cold) {
-            exa->cooling_size -= TegraPixmapSize(priv);
+            exa->cooling_size -= tegra_exa_pixmap_size(priv);
             xorg_list_del(&priv->fridge_entry);
-            priv->cold = FALSE;
+            priv->cold = false;
         }
 
         if (allocate) {
             if (accel)
-                TegraEXAResurrectAccelPixmap(tegra, priv);
+                tegra_exa_mm_resurrect_accel_pixmap(tegra, priv);
 
             if (priv->type == TEGRA_EXA_PIXMAP_TYPE_NONE && priv->tegra_data)
-                TegraEXAAllocatePixmapDataNoFail(tegra, priv, accel);
+                tegra_exa_allocate_pixmap_data_no_fail(tegra, priv, accel);
         }
     }
 
     PROFILE_STOP(thaw);
 }
 
-static void TegraEXAThawPixmap(PixmapPtr pPixmap, Bool accel)
+static void tegra_exa_thaw_pixmap(PixmapPtr pixmap, bool accel)
 {
-    TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pPixmap);
+    struct tegra_pixmap *priv = exaGetPixmapDriverPrivate(pixmap);
 
     if (!priv->freezer_lockcnt) {
-        TegraEXAThawPixmap2(pPixmap, accel ? THAW_ACCEL : THAW_NOACCEL,
-                            THAW_ALLOC);
-
-        tegra_exa_flush_deferred_operations(pPixmap, accel);
+        tegra_exa_thaw_pixmap2(pixmap, accel ? THAW_ACCEL : THAW_NOACCEL,
+                               THAW_ALLOC);
+        tegra_exa_flush_deferred_operations(pixmap, accel);
     }
 }
+
+/* vim: set et sts=4 sw=4 ts=4: */

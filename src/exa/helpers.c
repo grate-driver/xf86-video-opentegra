@@ -25,12 +25,12 @@ struct tegra_box {
     int x1; int y1;
 };
 
-static Bool exa_helper_is_simple_transform(PictTransformPtr t)
+static bool tegra_exa_simple_transform(PictTransformPtr t)
 {
     double e[4];
 
     if (!t)
-        return TRUE;
+        return true;
 
     e[0] = pixman_fixed_to_double(t->matrix[0][0]);
     e[1] = pixman_fixed_to_double(t->matrix[0][1]);
@@ -41,35 +41,34 @@ static Bool exa_helper_is_simple_transform(PictTransformPtr t)
         (e[0] == 0   && e[1] < 0.0f && e[2] > 0.0f && e[3] == 0) ||
         (e[0] < 0.0f && e[1] == 0   && e[2] == 0   && e[3] < 0.0f) ||
         (e[0] == 0   && e[1] > 0.0f && e[2] < 0.0f && e[3] == 0))
-            return TRUE;
+        return true;
 
-    return FALSE;
+    return false;
 }
 
-static Bool exa_helper_is_simple_transform_scale(PictTransformPtr t)
+static bool tegra_exa_simple_transform_scale(PictTransformPtr t)
 {
     if (!t)
-        return TRUE;
+        return true;
 
     /*
      * This is very unlikely to happen in reality, hence ignore this
      * odd case of texture coordinates scaling to simplify vertex program.
      */
     if (t->matrix[2][0] || t->matrix[2][1])
-            return FALSE;
+        return false;
 
-    return TRUE;
+    return true;
 }
 
-static void
-exa_helper_apply_transform(PictTransformPtr t,
-                           struct tegra_box *in,
-                           struct tegra_box *out_transformed)
+static void tegra_exa_apply_transform(PictTransformPtr t,
+                                      struct tegra_box *in,
+                                      struct tegra_box *out_transformed)
 {
     PictVector v;
 
     if (t) {
-        AccelMsg("orig: %d:%d  %d:%d\n", in->x0, in->y0, in->x1, in->y1);
+        ACCEL_MSG("orig: %d:%d  %d:%d\n", in->x0, in->y0, in->x1, in->y1);
 
         v.vector[0] = pixman_int_to_fixed(in->x0);
         v.vector[1] = pixman_int_to_fixed(in->y0);
@@ -89,11 +88,11 @@ exa_helper_apply_transform(PictTransformPtr t,
         out_transformed->x1 = pixman_fixed_to_int(v.vector[0]);
         out_transformed->y1 = pixman_fixed_to_int(v.vector[1]);
 
-        AccelMsg("transformed: %d:%d  %d:%d\n",
-                 out_transformed->x0,
-                 out_transformed->y0,
-                 out_transformed->x1,
-                 out_transformed->y1);
+        ACCEL_MSG("transformed: %d:%d  %d:%d\n",
+                  out_transformed->x0,
+                  out_transformed->y0,
+                  out_transformed->x1,
+                  out_transformed->y1);
     } else {
         out_transformed->x0 = in->x0;
         out_transformed->y0 = in->y0;
@@ -102,13 +101,12 @@ exa_helper_apply_transform(PictTransformPtr t,
     }
 }
 
-static void
-exa_helper_clip_to_pixmap_area(PixmapPtr pix,
-                               struct tegra_box *in,
-                               struct tegra_box *out_clipped)
+static void tegra_exa_clip_to_pixmap_area(PixmapPtr pix,
+                                          struct tegra_box *in,
+                                          struct tegra_box *out_clipped)
 {
-    AccelMsg("in: %d:%d  %d:%d\n", in->x0, in->y0, in->x1, in->y1);
-    AccelMsg("pix: %d:%d\n", pix->drawable.width, pix->drawable.height);
+    ACCEL_MSG("in: %d:%d  %d:%d\n", in->x0, in->y0, in->x1, in->y1);
+    ACCEL_MSG("pix: %d:%d\n", pix->drawable.width, pix->drawable.height);
 
     if (in->x0 < in->x1) {
         out_clipped->x0 = max(in->x0, 0);
@@ -126,15 +124,14 @@ exa_helper_clip_to_pixmap_area(PixmapPtr pix,
         out_clipped->y1 = min(in->y0, pix->drawable.height);
     }
 
-    AccelMsg("out_clipped: %d:%d  %d:%d\n",
-             out_clipped->x0, out_clipped->y0,
-             out_clipped->x1, out_clipped->y1);
+    ACCEL_MSG("out_clipped: %d:%d  %d:%d\n",
+              out_clipped->x0, out_clipped->y0,
+              out_clipped->x1, out_clipped->y1);
 }
 
-static void
-exa_helper_get_untransformed(PictTransformPtr t_inv,
-                             struct tegra_box *in,
-                             struct tegra_box *out_untransformed)
+static void tegra_exa_get_untransformed(PictTransformPtr t_inv,
+                                        struct tegra_box *in,
+                                        struct tegra_box *out_untransformed)
 {
     PictVector v;
 
@@ -157,11 +154,11 @@ exa_helper_get_untransformed(PictTransformPtr t_inv,
         out_untransformed->x1 = pixman_fixed_to_int(v.vector[0]);
         out_untransformed->y1 = pixman_fixed_to_int(v.vector[1]);
 
-        AccelMsg("untransformed: %d:%d  %d:%d\n",
-                 out_untransformed->x0,
-                 out_untransformed->y0,
-                 out_untransformed->x1,
-                 out_untransformed->y1);
+        ACCEL_MSG("untransformed: %d:%d  %d:%d\n",
+                  out_untransformed->x0,
+                  out_untransformed->y0,
+                  out_untransformed->x1,
+                  out_untransformed->y1);
     } else {
         out_untransformed->x0 = in->x0;
         out_untransformed->y0 = in->y0;
@@ -170,37 +167,35 @@ exa_helper_get_untransformed(PictTransformPtr t_inv,
     }
 }
 
-static void
-exa_helper_clip(struct tegra_box *in_out,
-                struct tegra_box *clip,
-                int offset_x, int offset_y)
+static void tegra_exa_apply_clip(struct tegra_box *in_out,
+                                 struct tegra_box *clip,
+                                 int offset_x, int offset_y)
 {
-    AccelMsg("in: %d:%d  %d:%d\n", in_out->x0, in_out->y0, in_out->x1, in_out->y1);
-    AccelMsg("clip: %d:%d  %d:%d\n", clip->x0, clip->y0, clip->x1, clip->y1);
-    AccelMsg("offset_x: %d offset_y: %d\n", offset_x, offset_y);
+    ACCEL_MSG("in: %d:%d  %d:%d\n", in_out->x0, in_out->y0, in_out->x1, in_out->y1);
+    ACCEL_MSG("clip: %d:%d  %d:%d\n", clip->x0, clip->y0, clip->x1, clip->y1);
+    ACCEL_MSG("offset_x: %d offset_y: %d\n", offset_x, offset_y);
 
     in_out->x0 = max(in_out->x0, clip->x0 + offset_x);
     in_out->y0 = max(in_out->y0, clip->y0 + offset_y);
     in_out->x1 = min(in_out->x1, clip->x1 + offset_x);
     in_out->y1 = min(in_out->y1, clip->y1 + offset_y);
 
-    AccelMsg("out: %d:%d  %d:%d\n",
-             in_out->x0, in_out->y0,
-             in_out->x1, in_out->y1);
+    ACCEL_MSG("out: %d:%d  %d:%d\n",
+              in_out->x0, in_out->y0,
+              in_out->x1, in_out->y1);
 }
 
-static inline Bool
-exa_helper_degenerate(struct tegra_box *b)
+static inline bool tegra_exa_is_degenerate(struct tegra_box *b)
 {
     return (b->x0 >= b->x1 || b->y0 >= b->y1);
 }
 
 static void
-exa_helper_wait_pixmaps(enum host1x_engine engine, PixmapPtr dst_pix,
-                        int num_src_pixmaps, ...)
+tegra_exa_wait_pixmaps(enum host1x_engine engine, PixmapPtr dst_pix,
+                       int num_src_pixmaps, ...)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(dst_pix->drawable.pScreen);
-    TegraPixmapPtr priv;
+    struct tegra_pixmap *priv;
     PixmapPtr pix_arg;
     int drm_ver;
     va_list ap;
@@ -217,22 +212,21 @@ exa_helper_wait_pixmaps(enum host1x_engine engine, PixmapPtr dst_pix,
             continue;
 
         priv = exaGetPixmapDriverPrivate(pix_arg);
-        TEGRA_EXA_WAIT_AND_PUT_FENCE(priv->fence_write[engine]);
+        TEGRA_WAIT_AND_PUT_FENCE(priv->fence_write[engine]);
     }
     va_end(ap);
 
     priv = exaGetPixmapDriverPrivate(dst_pix);
-    TEGRA_EXA_WAIT_AND_PUT_FENCE(priv->fence_write[engine]);
-    TEGRA_EXA_WAIT_AND_PUT_FENCE(priv->fence_read[engine]);
+    TEGRA_WAIT_AND_PUT_FENCE(priv->fence_write[engine]);
+    TEGRA_WAIT_AND_PUT_FENCE(priv->fence_read[engine]);
 }
 
-static void
-exa_helper_replace_pixmaps_fence(enum host1x_engine engine,
-                                 struct tegra_fence *fence,
-                                 void *opaque, PixmapPtr dst_pix,
-                                 int num_src_pixmaps, ...)
+static void tegra_exa_replace_pixmaps_fence(enum host1x_engine engine,
+                                            struct tegra_fence *fence,
+                                            void *opaque, PixmapPtr dst_pix,
+                                            int num_src_pixmaps, ...)
 {
-    TegraPixmapPtr priv;
+    struct tegra_pixmap *priv;
     PixmapPtr pix_arg;
     va_list ap;
 
@@ -259,13 +253,13 @@ exa_helper_replace_pixmaps_fence(enum host1x_engine engine,
     va_end(ap);
 }
 
-#define SWAP_EXPLICIT_FENCE(EXPLICIT_FENCE, FENCE, LAST_SEQNO)          \
-{                                                                       \
-    if (FENCE && FENCE->seqno >= LAST_SEQNO) {                          \
-        TEGRA_FENCE_PUT(EXPLICIT_FENCE);                                \
-        EXPLICIT_FENCE = TEGRA_FENCE_GET(FENCE, NULL);                  \
-        LAST_SEQNO = EXPLICIT_FENCE->seqno;                             \
-    }                                                                   \
+#define SWAP_EXPLICIT_FENCE(EXPLICIT_FENCE, FENCE, LAST_SEQNO)      \
+{                                                                   \
+    if (FENCE && FENCE->seqno >= LAST_SEQNO) {                      \
+        TEGRA_FENCE_PUT(EXPLICIT_FENCE);                            \
+        EXPLICIT_FENCE = TEGRA_FENCE_GET(FENCE, NULL);              \
+        LAST_SEQNO = EXPLICIT_FENCE->seqno;                         \
+    }                                                               \
 }
 
 /*
@@ -275,16 +269,17 @@ exa_helper_replace_pixmaps_fence(enum host1x_engine engine,
  * to avoid unnecessary stalls on pool-allocated pixmaps that share the same
  * BO.
  *
- * The returned explicit shall be put once done with it.
+ * The returned explicit fence shall be put once done with it.
  */
 static struct tegra_fence *
-exa_helper_get_explicit_fence(enum host1x_engine engine, PixmapPtr dst_pix,
-                              int num_src_pixmaps, ...)
+tegra_exa_get_explicit_fence(enum host1x_engine engine,
+                             PixmapPtr dst_pix,
+                             int num_src_pixmaps, ...)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(dst_pix->drawable.pScreen);
     struct tegra_fence *explicit_fence = NULL;
     uint64_t last_seqno = 0;
-    TegraPixmapPtr priv;
+    struct tegra_pixmap *priv;
     PixmapPtr pix_arg;
     int drm_ver;
     va_list ap;
@@ -319,3 +314,5 @@ exa_helper_get_explicit_fence(enum host1x_engine engine, PixmapPtr dst_pix,
 
     return explicit_fence;
 }
+
+/* vim: set et sts=4 sw=4 ts=4: */

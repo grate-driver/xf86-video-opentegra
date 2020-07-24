@@ -20,13 +20,9 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#include "driver.h"
-#include "exa_mm.h"
-#include "exa_optimizations.h"
+#define DISABLE_2D_OPTIMIZATIONS    false
 
-#define DISABLE_2D_OPTIMIZATIONS    FALSE
-
-static int tegra_exa_init_optimizations(TegraPtr tegra, TegraEXAPtr exa)
+static int tegra_exa_init_optimizations(TegraPtr tegra, struct tegra_exa *exa)
 {
     unsigned int i;
     int err;
@@ -40,7 +36,7 @@ static int tegra_exa_init_optimizations(TegraPtr tegra, TegraEXAPtr exa)
     for (i = 0; i < TEGRA_OPT_NUM; i++) {
         err = tegra_stream_create(&exa->opt_state[i].cmds, tegra);
         if (err < 0) {
-            ErrorMsg("failed to create command stream: %d\n", err);
+            ERROR_MSG("failed to create command stream: %d\n", err);
             goto fail;
         }
 
@@ -56,7 +52,7 @@ fail:
     return err;
 }
 
-static void tegra_exa_deinit_optimizations(TegraEXAPtr tegra)
+static void tegra_exa_deinit_optimizations(struct tegra_exa *tegra)
 {
     unsigned int i = TEGRA_OPT_NUM;
 
@@ -86,7 +82,7 @@ static void tegra_exa_transfer_stream_fences(struct tegra_stream *stream_dst,
     }
 }
 
-static void tegra_exa_wrap_state(TegraEXAPtr tegra,
+static void tegra_exa_wrap_state(struct tegra_exa *tegra,
                                  struct tegra_optimization_state *state)
 {
     /*
@@ -101,7 +97,7 @@ static void tegra_exa_wrap_state(TegraEXAPtr tegra,
     tegra->scratch = state->scratch;
 }
 
-static void tegra_exa_unwrap_state(TegraEXAPtr tegra,
+static void tegra_exa_unwrap_state(struct tegra_exa *tegra,
                                    struct tegra_optimization_state *state)
 {
     /*
@@ -117,19 +113,19 @@ static void tegra_exa_unwrap_state(TegraEXAPtr tegra,
 }
 
 static void
-tegra_exa_prepare_optimized_solid_fill(PixmapPtr pPixmap, Pixel color)
+tegra_exa_prepare_optimized_solid_fill(PixmapPtr pixmap, Pixel color)
 {
-    TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pPixmap);
-    ScrnInfoPtr pScrn = xf86ScreenToScrn(pPixmap->drawable.pScreen);
-    TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
-    Bool cpu_access = TRUE;
-    Bool optimize = TRUE;
+    struct tegra_pixmap *priv = exaGetPixmapDriverPrivate(pixmap);
+    ScrnInfoPtr scrn = xf86ScreenToScrn(pixmap->drawable.pScreen);
+    struct tegra_exa *tegra = TegraPTR(scrn)->exa;
+    bool cpu_access = true;
+    bool optimize = true;
 
     if (tegra->in_flush || priv->scanout)
-        optimize = FALSE;
+        optimize = false;
 
-    if (TegraEXAPixmapBusy(priv))
-        cpu_access = FALSE;
+    if (tegra_exa_pixmap_is_busy(priv))
+        cpu_access = false;
 
     /*
      * This optimization pass skips the solid-fill drawing operation if
@@ -138,8 +134,8 @@ tegra_exa_prepare_optimized_solid_fill(PixmapPtr pPixmap, Pixel color)
      */
 
     if (DISABLE_2D_OPTIMIZATIONS) {
-        cpu_access = FALSE;
-        optimize = FALSE;
+        cpu_access = false;
+        optimize = false;
     }
 
     tegra->scratch.color = color;
@@ -150,61 +146,63 @@ tegra_exa_prepare_optimized_solid_fill(PixmapPtr pPixmap, Pixel color)
     priv->freezer_lockcnt++;
 }
 
-static Bool tegra_exa_optimize_solid_op(PixmapPtr pPixmap,
+static bool tegra_exa_optimize_solid_op(PixmapPtr pixmap,
                                         int px1, int py1,
                                         int px2, int py2)
 {
-    TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pPixmap);
-    ScrnInfoPtr pScrn = xf86ScreenToScrn(pPixmap->drawable.pScreen);
-    TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
-    unsigned int cpp = pPixmap->drawable.bitsPerPixel >> 3;
+    struct tegra_pixmap *priv = exaGetPixmapDriverPrivate(pixmap);
+    ScrnInfoPtr scrn = xf86ScreenToScrn(pixmap->drawable.pScreen);
+    struct tegra_exa *tegra = TegraPTR(scrn)->exa;
+    unsigned int cpp = pixmap->drawable.bitsPerPixel >> 3;
     unsigned int bytes = (px2 - px1) * (py2 - py1) * cpp;
     bool alpha_0 = 0;
 
     if ((cpp == 4 && !(tegra->scratch.color & 0xff000000)) ||
-        (cpp == 1 && !(tegra->scratch.color & 0x00))) {
+        (cpp == 1 && !(tegra->scratch.color & 0x00)))
+    {
         if (priv->alpha_0 || (px1 == 0 && py1 == 0 &&
-                              pPixmap->drawable.width == px2 &&
-                              pPixmap->drawable.height == py2))
+            pixmap->drawable.width == px2 &&
+            pixmap->drawable.height == py2))
             alpha_0 = 1;
     }
 
     if (priv->alpha_0 && !alpha_0)
-        DebugMsg("pixmap %p solid-fill canceled alpha_0\n", pPixmap);
+        DEBUG_MSG("pixmap %p solid-fill canceled alpha_0\n", pixmap);
 
     if (tegra->scratch.optimize &&
         px1 == 0 && py1 == 0 &&
-        pPixmap->drawable.width == px2 &&
-        pPixmap->drawable.height == py2 &&
+        pixmap->drawable.width == px2 &&
+        pixmap->drawable.height == py2 &&
         bytes >= TEGRA_EXA_CPU_FILL_MIN_SIZE)
     {
-        tegra_exa_cancel_deferred_operations(pPixmap);
+        tegra_exa_cancel_deferred_operations(pixmap);
 
-        DebugMsg("pixmap %p applying deferred solid-fill optimization\n",
-                 pPixmap);
+        DEBUG_MSG("pixmap %p applying deferred solid-fill optimization\n",
+                  pixmap);
 
-        tegra->scratch.cpu_access = FALSE;
+        tegra->scratch.cpu_access = false;
 
         priv->state.solid_color = tegra->scratch.color;
         priv->state.solid_fill = 1;
         priv->alpha_0 = alpha_0;
 
-        return TRUE;
+        return true;
     }
 
     if (tegra->scratch.optimize &&
         priv->state.solid_fill &&
         priv->state.solid_color == tegra->scratch.color)
     {
-        DebugMsg("pixmap %p partial solid-fill optimized out\n", pPixmap);
-        return TRUE;
+        DEBUG_MSG("pixmap %p partial solid-fill optimized out\n",
+              pixmap);
+        return true;
     }
 
     if (tegra->scratch.optimize && priv->state.solid_fill) {
-        tegra_exa_flush_deferred_operations(pPixmap, TRUE);
+        tegra_exa_flush_deferred_operations(pixmap, true);
 
-        if (tegra->scratch.cpu_access && TegraEXAPixmapBusy(priv))
-            tegra->scratch.cpu_access = FALSE;
+        if (tegra->scratch.cpu_access && tegra_exa_pixmap_is_busy(priv))
+            tegra->scratch.cpu_access = false;
     }
 
     /*
@@ -213,138 +211,141 @@ static Bool tegra_exa_optimize_solid_op(PixmapPtr pPixmap,
      * + this allows to perform operation in parallel with GPU.
      */
     if (tegra->scratch.cpu_access && bytes < TEGRA_EXA_CPU_FILL_MIN_SIZE &&
-        (tegra->scratch.cpu_ptr || TegraEXAPrepareCPUAccess(pPixmap, EXA_PREPARE_DEST,
-                                                            &tegra->scratch.cpu_ptr)))
+        (tegra->scratch.cpu_ptr || tegra_exa_prepare_cpu_access(pixmap, EXA_PREPARE_DEST,
+                                                                &tegra->scratch.cpu_ptr,
+                                                                false)))
     {
-        DebugMsg("pixmap %p partial solid-fill optimized to a CPU-fill\n",
-                 pPixmap);
+        DEBUG_MSG("pixmap %p partial solid-fill optimized to a CPU-fill\n",
+                  pixmap);
 
         pixman_fill(tegra->scratch.cpu_ptr,
-                    pPixmap->devKind / 4,
-                    pPixmap->drawable.bitsPerPixel,
+                    pixmap->devKind / 4,
+                    pixmap->drawable.bitsPerPixel,
                     px1, py1, px2 - px1, py2 - py1,
                     tegra->scratch.color);
 
         priv->alpha_0 = alpha_0;
 
-        return TRUE;
+        return true;
     }
 
     priv->alpha_0 = alpha_0;
 
-    return FALSE;
+    return false;
 }
 
-static void tegra_exa_complete_solid_fill_optimization(PixmapPtr pPixmap)
+static void tegra_exa_complete_solid_fill_optimization(PixmapPtr pixmap)
 {
-    TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pPixmap);
-    ScrnInfoPtr pScrn = xf86ScreenToScrn(pPixmap->drawable.pScreen);
-    TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
+    struct tegra_pixmap *priv = exaGetPixmapDriverPrivate(pixmap);
+    ScrnInfoPtr scrn = xf86ScreenToScrn(pixmap->drawable.pScreen);
+    struct tegra_exa *tegra = TegraPTR(scrn)->exa;
 
     if (tegra->scratch.ops)
-        tegra_exa_flush_deferred_operations(pPixmap, TRUE);
+        tegra_exa_flush_deferred_operations(pixmap, true);
 
     if (tegra->scratch.cpu_ptr) {
         tegra->scratch.cpu_ptr = NULL;
-        TegraEXAFinishCPUAccess(pPixmap, EXA_PREPARE_DEST);
+        tegra_exa_finish_cpu_access(pixmap, EXA_PREPARE_DEST);
     }
 
-    tegra->scratch.optimize = FALSE;
+    tegra->scratch.optimize = false;
 
     priv->freezer_lockcnt--;
 }
 
-static void tegra_exa_perform_deferred_solid_fill(PixmapPtr pPixmap, Bool accel)
+static void tegra_exa_perform_deferred_solid_fill(PixmapPtr pixmap, bool accel)
 {
-    TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pPixmap);
-    ScrnInfoPtr pScrn = xf86ScreenToScrn(pPixmap->drawable.pScreen);
-    TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
+    struct tegra_pixmap *priv = exaGetPixmapDriverPrivate(pixmap);
+    ScrnInfoPtr scrn = xf86ScreenToScrn(pixmap->drawable.pScreen);
+    struct tegra_exa *tegra = TegraPTR(scrn)->exa;
 
     if (priv->state.solid_fill) {
-        DebugMsg("pixmap %p %d:%d:%d performing deferred solid-fill (%08lx)\n",
-                 pPixmap,
-                 pPixmap->drawable.width,
-                 pPixmap->drawable.height,
-                 pPixmap->drawable.bitsPerPixel,
-                 priv->state.solid_color);
+        DEBUG_MSG("pixmap %p %d:%d:%d performing deferred solid-fill (%08lx)\n",
+                  pixmap,
+                  pixmap->drawable.width,
+                  pixmap->drawable.height,
+                  pixmap->drawable.bitsPerPixel,
+                  priv->state.solid_color);
         priv->state.solid_fill = 0;
 
         tegra_exa_wrap_state(tegra, &tegra->opt_state[TEGRA_OPT_SOLID]);
-        TegraEXAFillPixmapData(priv, accel, priv->state.solid_color);
+        tegra_exa_fill_pixmap_data(priv, accel, priv->state.solid_color);
         tegra_exa_unwrap_state(tegra, &tegra->opt_state[TEGRA_OPT_SOLID]);
     }
 }
 
-static void tegra_exa_flush_deferred_operations(PixmapPtr pPixmap, Bool accel)
+static void tegra_exa_flush_deferred_operations(PixmapPtr pixmap, bool accel)
 {
-    TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pPixmap);
-    ScrnInfoPtr pScrn = xf86ScreenToScrn(pPixmap->drawable.pScreen);
-    TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
+    struct tegra_pixmap *priv = exaGetPixmapDriverPrivate(pixmap);
+    ScrnInfoPtr scrn = xf86ScreenToScrn(pixmap->drawable.pScreen);
+    struct tegra_exa *tegra = TegraPTR(scrn)->exa;
 
     if (tegra->in_flush)
         return;
 
     if (priv->state.solid_fill)
-        DebugMsg("pixmap %p flushing deferred operations\n", pPixmap);
+        DEBUG_MSG("pixmap %p flushing deferred operations\n", pixmap);
 
-    tegra->in_flush = TRUE;
-    tegra_exa_perform_deferred_solid_fill(pPixmap, accel);
-    tegra->in_flush = FALSE;
+    tegra->in_flush = true;
+    tegra_exa_perform_deferred_solid_fill(pixmap, accel);
+    tegra->in_flush = false;
 }
 
-static void tegra_exa_cancel_deferred_operations(PixmapPtr pPixmap)
+static void tegra_exa_cancel_deferred_operations(PixmapPtr pixmap)
 {
-    TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pPixmap);
+    struct tegra_pixmap *priv = exaGetPixmapDriverPrivate(pixmap);
 
     if (priv->state.solid_fill)
-        DebugMsg("pixmap %p canceled deferred solid-fill\n", pPixmap);
+        DEBUG_MSG("pixmap %p canceled deferred solid-fill\n", pixmap);
 
     priv->state.solid_fill = 0;
 }
 
-static Bool tegra_exa_optimize_same_color_copy(TegraPixmapPtr src_priv,
-                                               TegraPixmapPtr dst_priv)
+static bool tegra_exa_optimize_same_color_copy(struct tegra_pixmap *src_priv,
+                                               struct tegra_pixmap *dst_priv)
 {
     if (src_priv->state.solid_fill && dst_priv->state.solid_fill &&
         src_priv->state.solid_color == dst_priv->state.solid_color)
-        return TRUE;
+        return true;
 
-    return FALSE;
+    return false;
 }
 
-static void tegra_exa_prepare_optimized_copy(PixmapPtr pSrcPixmap,
-                                             PixmapPtr pDstPixmap,
+static void tegra_exa_prepare_optimized_copy(PixmapPtr src_pixmap,
+                                             PixmapPtr dst_pixmap,
                                              int op, Pixel planemask)
 {
-    TegraPixmapPtr src_priv = exaGetPixmapDriverPrivate(pSrcPixmap);
-    TegraPixmapPtr dst_priv = exaGetPixmapDriverPrivate(pDstPixmap);
-    ScrnInfoPtr pScrn = xf86ScreenToScrn(pDstPixmap->drawable.pScreen);
-    TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
-    Bool optimize = TRUE;
+    struct tegra_pixmap *src_priv = exaGetPixmapDriverPrivate(src_pixmap);
+    struct tegra_pixmap *dst_priv = exaGetPixmapDriverPrivate(dst_pixmap);
+    ScrnInfoPtr scrn = xf86ScreenToScrn(dst_pixmap->drawable.pScreen);
+    struct tegra_exa *tegra = TegraPTR(scrn)->exa;
+    bool optimize = true;
 
     /*
      * This optimization pass turns copy operations into a solid color
-     * fill, it also cancels deferred solid fill operation of pDstPixmap
-     * if pSrcPixmap is copied over the whole pDstPixmap.
+     * fill, it also cancels deferred solid fill operation of dst_pixmap
+     * if src_pixmap is copied over the whole dst_pixmap.
      */
 
     if (!src_priv->state.solid_fill && !dst_priv->state.solid_fill)
-        optimize = FALSE;
+        optimize = false;
 
     if (DISABLE_2D_OPTIMIZATIONS)
-        optimize = FALSE;
+        optimize = false;
 
     if (optimize && src_priv->state.solid_fill) {
         if (tegra_exa_optimize_same_color_copy(src_priv, dst_priv)) {
-            DebugMsg("pixmap %p -> %p copy optimized out to a same-color solid-fill\n",
-                        pSrcPixmap, pDstPixmap);
+            DEBUG_MSG("pixmap %p -> %p copy optimized out to a same-color solid-fill\n",
+                      src_pixmap, dst_pixmap);
         } else {
-            DebugMsg("pixmap %p -> %p copy optimized to a partial solid-fill\n",
-                     pSrcPixmap, pDstPixmap);
+            DEBUG_MSG("pixmap %p -> %p copy optimized to a partial solid-fill\n",
+                      src_pixmap, dst_pixmap);
 
             tegra_exa_wrap_state(tegra, &tegra->opt_state[TEGRA_OPT_COPY]);
-            optimize = TegraEXAPrepareSolid(pDstPixmap, op, planemask,
-                                            src_priv->state.solid_color);
+
+            optimize = tegra_exa_prepare_solid_2d(dst_pixmap, op, planemask,
+                                                  src_priv->state.solid_color);
+
             tegra_exa_unwrap_state(tegra, &tegra->opt_state[TEGRA_OPT_COPY]);
         }
     }
@@ -355,81 +356,84 @@ static void tegra_exa_prepare_optimized_copy(PixmapPtr pSrcPixmap,
     dst_priv->freezer_lockcnt++;
 }
 
-static Bool tegra_exa_optimize_copy_op(PixmapPtr pDstPixmap,
-                                       int dstX, int dstY,
+static bool tegra_exa_optimize_copy_op(PixmapPtr dst_pixmap,
+                                       int dst_x, int dst_y,
                                        int width, int height)
 {
-    ScrnInfoPtr pScrn = xf86ScreenToScrn(pDstPixmap->drawable.pScreen);
-    TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
-    PixmapPtr pSrcPixmap = tegra->scratch.pSrc;
+    ScrnInfoPtr scrn = xf86ScreenToScrn(dst_pixmap->drawable.pScreen);
+    struct tegra_exa *tegra = TegraPTR(scrn)->exa;
+    PixmapPtr src_pixmap = tegra->scratch.src;
 
     if (tegra->scratch.optimize) {
-        TegraPixmapPtr src_priv = exaGetPixmapDriverPrivate(pSrcPixmap);
-        TegraPixmapPtr dst_priv = exaGetPixmapDriverPrivate(pDstPixmap);
+        struct tegra_pixmap *src_priv = exaGetPixmapDriverPrivate(src_pixmap);
+        struct tegra_pixmap *dst_priv = exaGetPixmapDriverPrivate(dst_pixmap);
 
         if (src_priv->state.solid_fill) {
             if (tegra_exa_optimize_same_color_copy(src_priv, dst_priv))
-                return TRUE;
+                return true;
 
             tegra_exa_wrap_state(tegra, &tegra->opt_state[TEGRA_OPT_COPY]);
-            TegraEXASolid(pDstPixmap, dstX, dstY, dstX + width, dstY + height);
+            tegra_exa_solid_2d(dst_pixmap, dst_x, dst_y, dst_x + width, dst_y + height);
             tegra_exa_unwrap_state(tegra, &tegra->opt_state[TEGRA_OPT_COPY]);
 
-            return TRUE;
-        } else if (dstX == 0 && dstY == 0 &&
-                   pDstPixmap->drawable.width == width &&
-                   pDstPixmap->drawable.height == height) {
-            tegra_exa_cancel_deferred_operations(pDstPixmap);
+            return true;
+        } else if (dst_x == 0 && dst_y == 0 &&
+                   dst_pixmap->drawable.width == width &&
+                   dst_pixmap->drawable.height == height) {
+            tegra_exa_cancel_deferred_operations(dst_pixmap);
 
             if (dst_priv->alpha_0 && !src_priv->alpha_0)
-                DebugMsg("pixmap %p copy canceled alpha_0\n", pDstPixmap);
+                DEBUG_MSG("pixmap %p copy canceled alpha_0\n", dst_pixmap);
 
             dst_priv->alpha_0 = src_priv->alpha_0;
         } else {
             if (!src_priv->alpha_0 && dst_priv->alpha_0) {
-                DebugMsg("pixmap %p copy canceled alpha_0\n", pDstPixmap);
+                DEBUG_MSG("pixmap %p copy canceled alpha_0\n", dst_pixmap);
+
                 dst_priv->alpha_0 = 0;
             }
         }
     }
 
-    return FALSE;
+    return false;
 }
 
-static void tegra_exa_complete_solid_fill_copy_optimization(PixmapPtr pDstPixmap)
+static void tegra_exa_complete_solid_fill_copy_optimization(PixmapPtr dst_pixmap)
 {
-    ScrnInfoPtr pScrn = xf86ScreenToScrn(pDstPixmap->drawable.pScreen);
-    TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
-    TegraPixmapPtr src_priv = exaGetPixmapDriverPrivate(tegra->scratch.pSrc);
-    TegraPixmapPtr dst_priv = exaGetPixmapDriverPrivate(pDstPixmap);
+    ScrnInfoPtr scrn = xf86ScreenToScrn(dst_pixmap->drawable.pScreen);
+    struct tegra_exa *tegra = TegraPTR(scrn)->exa;
+    struct tegra_pixmap *src_priv = exaGetPixmapDriverPrivate(tegra->scratch.src);
+    struct tegra_pixmap *dst_priv = exaGetPixmapDriverPrivate(dst_pixmap);
 
     if (tegra_exa_optimize_same_color_copy(src_priv, dst_priv))
         return;
 
     tegra_exa_wrap_state(tegra, &tegra->opt_state[TEGRA_OPT_COPY]);
-    TegraEXADoneSolid(pDstPixmap);
+    tegra_exa_done_solid_2d(dst_pixmap);
     tegra_exa_unwrap_state(tegra, &tegra->opt_state[TEGRA_OPT_COPY]);
 
     tegra->scratch.ops = 0;
 }
 
-static void tegra_exa_complete_copy_optimization(PixmapPtr pDstPixmap)
+static void tegra_exa_complete_copy_optimization(PixmapPtr dst_pixmap)
 {
-    ScrnInfoPtr pScrn = xf86ScreenToScrn(pDstPixmap->drawable.pScreen);
-    TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
-    PixmapPtr pSrcPixmap = tegra->scratch.pSrc;
-    TegraPixmapPtr src_priv = exaGetPixmapDriverPrivate(pSrcPixmap);
-    TegraPixmapPtr dst_priv = exaGetPixmapDriverPrivate(pDstPixmap);
+    ScrnInfoPtr scrn = xf86ScreenToScrn(dst_pixmap->drawable.pScreen);
+    struct tegra_exa *tegra = TegraPTR(scrn)->exa;
+    PixmapPtr src_pixmap = tegra->scratch.src;
+    struct tegra_pixmap *src_priv = exaGetPixmapDriverPrivate(src_pixmap);
+    struct tegra_pixmap *dst_priv = exaGetPixmapDriverPrivate(dst_pixmap);
 
     if (tegra->scratch.optimize && src_priv->state.solid_fill) {
-        tegra_exa_complete_solid_fill_copy_optimization(pDstPixmap);
+        tegra_exa_complete_solid_fill_copy_optimization(dst_pixmap);
     } else if (tegra->scratch.ops) {
-        tegra_exa_flush_deferred_operations(pSrcPixmap, TRUE);
-        tegra_exa_flush_deferred_operations(pDstPixmap, TRUE);
+        tegra_exa_flush_deferred_operations(src_pixmap, true);
+        tegra_exa_flush_deferred_operations(dst_pixmap, true);
     }
 
-    tegra->scratch.optimize = FALSE;
+    tegra->scratch.optimize = false;
 
     src_priv->freezer_lockcnt--;
     dst_priv->freezer_lockcnt--;
 }
+
+/* vim: set et sts=4 sw=4 ts=4: */

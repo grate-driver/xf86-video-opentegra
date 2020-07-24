@@ -21,9 +21,6 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#include "driver.h"
-#include "exa_mm.h"
-#include "exa_optimizations.h"
 #include "shaders.h"
 
 #define BLUE(c)     (((c) & 0xff)         / 255.0f)
@@ -31,16 +28,13 @@
 #define RED(c)      ((((c) >> 16) & 0xff) / 255.0f)
 #define ALPHA(c)    ((((c) >> 24) & 0xff) / 255.0f)
 
-#define TegraPushVtxAttr(x, y, push)                                        \
-    if (push) {                                                             \
-        tegra->scratch.attribs.map[tegra->scratch.attrib_itr++] = x;        \
-        tegra->scratch.attribs.map[tegra->scratch.attrib_itr++] = y;        \
+#define TEGRA_PUSH_VTX_ATTR(x, y, push)                                 \
+    if (push) {                                                         \
+        tegra->scratch.attribs.map[tegra->scratch.attrib_itr++] = x;    \
+        tegra->scratch.attribs.map[tegra->scratch.attrib_itr++] = y;    \
     }
 
-#define TegraSwapRedBlue(v)                                                 \
-    ((v & 0xff00ff00) | (v & 0x00ff0000) >> 16 | (v & 0x000000ff) << 16)
-
-#define TEGRA_ATTRIB_BUFFER_SIZE        0x4000
+#define TEGRA_ATTRIB_BUFFER_SIZE    0x4000
 
 #define TEX_EMPTY           0
 #define TEX_SOLID           1
@@ -203,63 +197,78 @@ static const struct tegra_composite_config composite_cfgs[] = {
     },
 };
 
-#include "exa_composite_3d_state_tracker.c"
+#include "composite_3d_state_tracker.c"
 
-static Bool TegraCompositeReducedTexture(PicturePtr pPicture,
-                                         PixmapPtr pPixmap)
+static bool
+tegra_exa_texture_optimized_out(PicturePtr picture, PixmapPtr pixmap)
 {
+    struct tegra_pixmap *priv;
+
     /*
      * GR3D performance is quite slow for a non-trivial shaders,
      * hence we want to reduce the number of 3D instructions as
      * much as possible.
      */
-    if (pPicture && pPicture->pDrawable && pPicture->repeat) {
-        if (pPicture->pDrawable->width == 1 &&
-            pPicture->pDrawable->height == 1)
-                return TRUE;
+    if (picture && picture->pDrawable && picture->repeat) {
+        if (picture->pDrawable->width == 1 &&
+            picture->pDrawable->height == 1)
+                return true;
 
-        if (pPixmap) {
-            TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pPixmap);
+        if (pixmap) {
+            priv = exaGetPixmapDriverPrivate(pixmap);
             if (priv->state.solid_fill)
-                return TRUE;
+                return true;
         }
     }
 
-    return FALSE;
+    return false;
 }
 
-static Bool TegraCompositePow2Texture(PixmapPtr pix)
+static bool tegra_exa_is_pow2_texture(PixmapPtr pix)
 {
     if (pix) {
         if (IS_POW2(pix->drawable.width) &&
             IS_POW2(pix->drawable.height))
-            return TRUE;
+            return true;
     }
 
-    return FALSE;
+    return false;
 }
 
-static Bool TegraCompositeTexturePerComponentAlpha(PicturePtr pic)
+static bool tegra_exa_picture_format_has_alpha(unsigned format)
+{
+    switch (format) {
+    case PICT_a8:
+    case PICT_a8r8g8b8:
+        return true;
+
+    default:
+        return false;
+    }
+}
+
+static bool tegra_exa_texture_has_per_component_alpha(PicturePtr pic)
 {
     return pic->componentAlpha;
 }
 
-static Bool TegraCompositeProgram3DPreCheck(TegraGR3DDrawStatePtr draw_state)
+static bool
+tegra_exa_pre_check_3d_program(struct tegra_3d_draw_state *draw_state)
 {
     const struct tegra_composite_config *cfg = &composite_cfgs[draw_state->op];
     const struct shader_program *prog;
 
     if (draw_state->op >= TEGRA_ARRAY_SIZE(composite_cfgs))
-        return FALSE;
+        return false;
 
     prog = cfg->prog[PROG_SEL(draw_state->src.tex_sel,
                               draw_state->mask.tex_sel)];
     if (!prog) {
-        FallbackMsg("no shader for operation %d src_sel %u mask_sel %u\n",
-                    draw_state->op,
-                    draw_state->src.tex_sel,
-                    draw_state->mask.tex_sel);
-        return FALSE;
+        FALLBACK_MSG("no shader for operation %d src_sel %u mask_sel %u\n",
+                     draw_state->op,
+                     draw_state->src.tex_sel,
+                     draw_state->mask.tex_sel);
+        return false;
     }
 
     /*
@@ -271,43 +280,43 @@ static Bool TegraCompositeProgram3DPreCheck(TegraGR3DDrawStatePtr draw_state)
     if (cfg->discards_clipped_area)
         draw_state->discards_clip = cfg->discards_clipped_area;
 
-    AccelMsg("got shader for operation %d src_sel %u mask_sel %u discards_clip %u %s\n",
-             draw_state->op, draw_state->src.tex_sel, draw_state->mask.tex_sel,
-             draw_state->discards_clip, prog->name);
+    ACCEL_MSG("got shader for operation %d src_sel %u mask_sel %u discards_clip %u %s\n",
+              draw_state->op, draw_state->src.tex_sel, draw_state->mask.tex_sel,
+              draw_state->discards_clip, prog->name);
 
     /* we have special shaders for this case */
     if (draw_state->op == PictOpOver &&
         draw_state->src.tex_sel == TEX_NORMAL && draw_state->src.alpha &&
-            (draw_state->mask.tex_sel == TEX_SOLID ||
-             draw_state->mask.tex_sel == TEX_EMPTY))
-        return TRUE;
+        (draw_state->mask.tex_sel == TEX_SOLID ||
+         draw_state->mask.tex_sel == TEX_EMPTY))
+        return true;
 
     /*
      * Only padding and clipping are currently supported by the
      * "generic" shaders for non-pow2 textures.
      */
-    if (draw_state->mask.pPix &&
+    if (draw_state->mask.pix &&
         draw_state->mask.tex_sel != TEX_PAD &&
         draw_state->mask.tex_sel != TEX_CLIPPED &&
-            !TegraCompositePow2Texture(draw_state->mask.pPix)) {
-        FallbackMsg("unsupported repeat type mask_sel %u\n",
-                    draw_state->mask.tex_sel);
-        return FALSE;
+        !tegra_exa_is_pow2_texture(draw_state->mask.pix)) {
+        FALLBACK_MSG("unsupported repeat type mask_sel %u\n",
+                     draw_state->mask.tex_sel);
+        return false;
     }
 
-    if (draw_state->src.pPix &&
+    if (draw_state->src.pix &&
         draw_state->src.tex_sel != TEX_PAD &&
         draw_state->src.tex_sel != TEX_CLIPPED &&
-            !TegraCompositePow2Texture(draw_state->src.pPix)) {
-        FallbackMsg("unsupported repeat type src_sel %u\n",
-                    draw_state->src.tex_sel);
-        return FALSE;
+        !tegra_exa_is_pow2_texture(draw_state->src.pix)) {
+        FALLBACK_MSG("unsupported repeat type src_sel %u\n",
+                     draw_state->src.tex_sel);
+        return false;
     }
 
-    return TRUE;
+    return true;
 }
 
-static unsigned TegraCompositeFormatToGR3D(unsigned format)
+static unsigned tegra_exa_picture_format_to_tgr3d(PictFormatShort format)
 {
     switch (format) {
     case PICT_a8:
@@ -322,118 +331,124 @@ static unsigned TegraCompositeFormatToGR3D(unsigned format)
     }
 }
 
-static Bool TegraCompositeCheckTexture(int op, PicturePtr pic)
+static bool tegra_exa_check_texture(int op, PicturePtr pic)
 {
     const struct tegra_composite_config *cfg = &composite_cfgs[op];
     unsigned width, height;
 
-    if (pic && pic->pDrawable && !TegraCompositeReducedTexture(pic, NULL)) {
+    if (pic && pic->pDrawable && !tegra_exa_texture_optimized_out(pic, NULL)) {
         width = pic->pDrawable->width;
         height = pic->pDrawable->height;
 
         if (width > 2048 || height > 2048) {
-            FallbackMsg("too large texture %ux%u\n", width, height);
-            return FALSE;
+            FALLBACK_MSG("too large texture %ux%u\n", width, height);
+            return false;
         }
 
         if ((cfg->discards_clipped_area &&
-                !exa_helper_is_simple_transform(pic->transform)) ||
-                !exa_helper_is_simple_transform_scale(pic->transform)) {
-            FallbackMsg("unsupported transform\n");
-            return FALSE;
+                                !tegra_exa_simple_transform(pic->transform)) ||
+            !tegra_exa_simple_transform_scale(pic->transform)) {
+                FALLBACK_MSG("unsupported transform\n");
+                return false;
         }
 
         if (pic->filter >= PictFilterConvolution) {
-            FallbackMsg("unsupported filtering %u\n", pic->filter);
-            return FALSE;
+            FALLBACK_MSG("unsupported filtering %u\n", pic->filter);
+            return false;
         }
 
         if (!IS_POW2(width) || !IS_POW2(height)) {
             if (pic->filter == PictFilterBilinear) {
-                FallbackMsg("bilinear filtering for non-pow2 texture\n");
-                return FALSE;
+                FALLBACK_MSG("bilinear filtering for non-pow2 texture\n");
+                return false;
             }
         }
     }
 
-    return TRUE;
+    return true;
 }
 
-static Bool TegraCompositeAttribBufferIsFull(TegraEXAScratchPtr scratch)
+static bool
+tegra_exa_attributes_buffer_is_full(struct tegra_exa_scratch * scratch)
 {
-    unsigned attrs_num = 1 + !!scratch->pSrc + !!scratch->pMask;
+    unsigned attrs_num = 1 + !!scratch->src + !!scratch->mask;
 
-    return (scratch->attrib_itr * 2 + attrs_num * 24 > TEGRA_ATTRIB_BUFFER_SIZE);
+    if (scratch->attrib_itr * 2 + attrs_num * 24 > TEGRA_ATTRIB_BUFFER_SIZE)
+        return true;
+
+    return false;
 }
 
-static Bool TegraEXACheckComposite3D(int op, PicturePtr pSrcPicture,
-                                     PicturePtr pMaskPicture,
-                                     PicturePtr pDstPicture)
+static bool tegra_exa_check_composite_3d(int op,
+                                         PicturePtr src_picture,
+                                         PicturePtr mask_picture,
+                                         PicturePtr dst_picture)
 {
-    ScrnInfoPtr pScrn = xf86ScreenToScrn(pDstPicture->pDrawable->pScreen);
+    ScrnInfoPtr pScrn = xf86ScreenToScrn(dst_picture->pDrawable->pScreen);
     TegraPtr tegra = TegraPTR(pScrn);
 
     if (!tegra->exa_compositing)
-        return FALSE;
+        return false;
 
     if (op > TEGRA_ARRAY_SIZE(composite_cfgs)) {
-        FallbackMsg("unsupported operation %d\n", op);
-        return FALSE;
+        FALLBACK_MSG("unsupported operation %d\n", op);
+        return false;
     }
 
-    if (pDstPicture->format != PICT_x8r8g8b8 &&
-        pDstPicture->format != PICT_a8r8g8b8 &&
-        pDstPicture->format != PICT_a8) {
-        FallbackMsg("unsupported format %u\n", pDstPicture->format);
-        return FALSE;
+    if (dst_picture->format != PICT_x8r8g8b8 &&
+        dst_picture->format != PICT_a8r8g8b8 &&
+        dst_picture->format != PICT_a8) {
+        FALLBACK_MSG("unsupported format %u\n", dst_picture->format);
+        return false;
     }
 
-    if (pSrcPicture) {
-        if (pSrcPicture->format != PICT_x8r8g8b8 &&
-            pSrcPicture->format != PICT_a8r8g8b8 &&
-            pSrcPicture->format != PICT_a8) {
-            FallbackMsg("unsupported format %u\n", pSrcPicture->format);
-            return FALSE;
+    if (src_picture) {
+        if (src_picture->format != PICT_x8r8g8b8 &&
+            src_picture->format != PICT_a8r8g8b8 &&
+            src_picture->format != PICT_a8) {
+            FALLBACK_MSG("unsupported format %u\n", src_picture->format);
+            return false;
         }
 
-        if (pSrcPicture->pDrawable) {
-            if (!TegraCompositeCheckTexture(op, pSrcPicture))
-                return FALSE;
+        if (src_picture->pDrawable) {
+            if (!tegra_exa_check_texture(op, src_picture))
+                return false;
         } else {
-            if (pSrcPicture->pSourcePict->type != SourcePictTypeSolidFill) {
-                FallbackMsg("unsupported fill type %u\n",
-                            pSrcPicture->pSourcePict->type);
-                return FALSE;
+            if (src_picture->pSourcePict->type != SourcePictTypeSolidFill) {
+                FALLBACK_MSG("unsupported fill type %u\n",
+                             src_picture->pSourcePict->type);
+                return false;
             }
         }
     }
 
-    if (pMaskPicture) {
-        if (pMaskPicture->format != PICT_x8r8g8b8 &&
-            pMaskPicture->format != PICT_a8r8g8b8 &&
-            pMaskPicture->format != PICT_a8) {
-            FallbackMsg("unsupported format %u\n", pMaskPicture->format);
-            return FALSE;
+    if (mask_picture) {
+        if (mask_picture->format != PICT_x8r8g8b8 &&
+            mask_picture->format != PICT_a8r8g8b8 &&
+            mask_picture->format != PICT_a8) {
+            FALLBACK_MSG("unsupported format %u\n",
+                     mask_picture->format);
+            return false;
         }
 
-        if (pMaskPicture->pDrawable) {
-            if (!TegraCompositeCheckTexture(op, pMaskPicture))
-                return FALSE;
+        if (mask_picture->pDrawable) {
+            if (!tegra_exa_check_texture(op, mask_picture))
+                return false;
         } else {
-            if (pMaskPicture->pSourcePict->type != SourcePictTypeSolidFill) {
-                FallbackMsg("unsupported fill type %u\n",
-                            pMaskPicture->pSourcePict->type);
-                return FALSE;
+            if (mask_picture->pSourcePict->type != SourcePictTypeSolidFill) {
+                FALLBACK_MSG("unsupported fill type %u\n",
+                             mask_picture->pSourcePict->type);
+                return false;
             }
         }
     }
 
-    return TRUE;
+    return true;
 }
 
-static Pixel TegraCompositeGetReducedTextureColor(PixmapPtr pix)
+static Pixel tegra_exa_optimized_texture_color(PixmapPtr pix)
 {
-    TegraPixmapPtr priv = exaGetPixmapDriverPrivate(pix);
+    struct tegra_pixmap *priv = exaGetPixmapDriverPrivate(pix);
     Pixel color = 0x00000000;
     void *ptr;
 
@@ -452,7 +467,7 @@ static Pixel TegraCompositeGetReducedTextureColor(PixmapPtr pix)
         goto done;
     }
 
-    if (TegraEXAPrepareCPUAccess(pix, EXA_PREPARE_SRC, &ptr)) {
+    if (tegra_exa_prepare_cpu_access(pix, EXA_PREPARE_SRC, &ptr, false)) {
         switch (pix->drawable.bitsPerPixel) {
         case 8:
             color = *((CARD8*) ptr) << 24;
@@ -465,67 +480,67 @@ static Pixel TegraCompositeGetReducedTextureColor(PixmapPtr pix)
             break;
         }
 
-        TegraEXAFinishCPUAccess(pix, EXA_PREPARE_SRC);
+        tegra_exa_finish_cpu_access(pix, EXA_PREPARE_SRC);
     }
 
 done:
-    AccelMsg("color 0x%08lx\n", color);
+    ACCEL_MSG("color 0x%08lx\n", color);
 
     return color;
 }
 
-static Bool TegraEXAPrepareComposite3D(int op,
-                                       PicturePtr pSrcPicture,
-                                       PicturePtr pMaskPicture,
-                                       PicturePtr pDstPicture,
-                                       PixmapPtr pSrc,
-                                       PixmapPtr pMask,
-                                       PixmapPtr pDst)
+static bool tegra_exa_prepare_composite_3d(int op,
+                                           PicturePtr src_picture,
+                                           PicturePtr mask_picture,
+                                           PicturePtr dst_picture,
+                                           PixmapPtr psrc,
+                                           PixmapPtr pmask,
+                                           PixmapPtr pdst)
 {
-    ScrnInfoPtr pScrn = xf86ScreenToScrn(pDst->drawable.pScreen);
-    Bool mask_tex = (pMaskPicture && pMaskPicture->pDrawable);
-    Bool src_tex = (pSrcPicture && pSrcPicture->pDrawable);
-    TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
-    TegraGR3DDrawState draw_state;
-    Bool mask_tex_reduced = TRUE;
-    Bool src_tex_reduced = TRUE;
-    TegraPixmapPtr priv;
+    ScrnInfoPtr pScrn = xf86ScreenToScrn(pdst->drawable.pScreen);
+    bool mask_tex = (mask_picture && mask_picture->pDrawable);
+    bool src_tex = (src_picture && src_picture->pDrawable);
+    struct tegra_exa *tegra = TegraPTR(pScrn)->exa;
+    struct tegra_3d_draw_state draw_state;
+    bool mask_tex_reduced = true;
+    bool src_tex_reduced = true;
+    struct tegra_pixmap *priv;
     unsigned mask_sel;
     unsigned src_sel;
     Pixel solid;
-    Bool alpha;
+    bool alpha;
 
-    if (!TegraCompositeCheckTexture(op, pMaskPicture))
-            return FALSE;
+    if (!tegra_exa_check_texture(op, mask_picture))
+        return false;
 
-    if (!TegraCompositeCheckTexture(op, pSrcPicture))
-            return FALSE;
+    if (!tegra_exa_check_texture(op, src_picture))
+        return false;
 
     memset(&draw_state, 0, sizeof(draw_state));
 
-    if (src_tex && TegraCompositeReducedTexture(pSrcPicture, pSrc))
-        src_tex = FALSE;
+    if (src_tex && tegra_exa_texture_optimized_out(src_picture, psrc))
+        src_tex = false;
     else
-        src_tex_reduced = FALSE;
+        src_tex_reduced = false;
 
     if (src_tex_reduced)
-        AccelMsg("src texture reduced\n");
+        ACCEL_MSG("src texture reduced\n");
 
-    if (mask_tex && TegraCompositeReducedTexture(pMaskPicture, pMask))
-        mask_tex = FALSE;
+    if (mask_tex && tegra_exa_texture_optimized_out(mask_picture, pmask))
+        mask_tex = false;
     else
-        mask_tex_reduced = FALSE;
+        mask_tex_reduced = false;
 
     if (mask_tex_reduced)
-        AccelMsg("mask texture reduced\n");
+        ACCEL_MSG("mask texture reduced\n");
 
-    tegra->scratch.pMask = (op != PictOpClear && mask_tex) ? pMask : NULL;
-    tegra->scratch.pSrc = (op != PictOpClear && src_tex) ? pSrc : NULL;
+    tegra->scratch.mask = (op != PictOpClear && mask_tex) ? pmask : NULL;
+    tegra->scratch.src = (op != PictOpClear && src_tex) ? psrc : NULL;
     tegra->scratch.ops = 0;
 
-    if (pSrcPicture) {
-        if (tegra->scratch.pSrc) {
-            switch (pSrcPicture->repeatType) {
+    if (src_picture) {
+        if (tegra->scratch.src) {
+            switch (src_picture->repeatType) {
             case RepeatNone:
                 src_sel = TEX_CLIPPED;
                 break;
@@ -539,48 +554,48 @@ static Bool TegraEXAPrepareComposite3D(int op,
                 src_sel = TEX_MIRROR;
                 break;
             default:
-                FallbackMsg("unsupported repeat type %u\n",
-                            pSrcPicture->repeatType);
-                return FALSE;
+                FALLBACK_MSG("unsupported repeat type %u\n",
+                         src_picture->repeatType);
+                return false;
             }
 
-            draw_state.src.pow2             = TegraCompositePow2Texture(pSrc);
-            draw_state.src.format           = TegraCompositeFormatToGR3D(pSrcPicture->format);
-            draw_state.src.alpha            = TegraCompositeFormatHasAlpha(pSrcPicture->format);
-            draw_state.src.bilinear         = (pSrcPicture->filter == PictFilterBilinear);
-            draw_state.src.tex_sel          = src_sel;
-            draw_state.src.pPix             = pSrc;
+            draw_state.src.pow2     = tegra_exa_is_pow2_texture(psrc);
+            draw_state.src.format   = tegra_exa_picture_format_to_tgr3d(src_picture->format);
+            draw_state.src.alpha    = tegra_exa_picture_format_has_alpha(src_picture->format);
+            draw_state.src.bilinear = (src_picture->filter == PictFilterBilinear);
+            draw_state.src.tex_sel  = src_sel;
+            draw_state.src.pix      = psrc;
 
-            if (pSrcPicture->transform) {
-                tegra->scratch.transform_src = *pSrcPicture->transform;
+            if (src_picture->transform) {
+                tegra->scratch.transform_src = *src_picture->transform;
 
                 if (src_sel == TEX_CLIPPED)
                     pixman_transform_invert(&tegra->scratch.transform_src_inv,
                                             &tegra->scratch.transform_src);
 
-                draw_state.src.transform_coords = TRUE;
+                draw_state.src.transform_coords = true;
             }
 
             if (draw_state.src.alpha &&
                 draw_state.src.format == TGR3D_PIXEL_FORMAT_RGBA8888)
             {
-                priv = exaGetPixmapDriverPrivate(pSrc);
+                priv = exaGetPixmapDriverPrivate(psrc);
                 draw_state.src.alpha = !priv->alpha_0;
             }
         } else {
-            if (op != PictOpClear && pSrcPicture) {
+            if (op != PictOpClear && src_picture) {
                 if (src_tex_reduced)
-                    solid = TegraCompositeGetReducedTextureColor(pSrc);
+                    solid = tegra_exa_optimized_texture_color(psrc);
                 else
-                    solid = pSrcPicture->pSourcePict->solidFill.color;
+                    solid = src_picture->pSourcePict->solidFill.color;
 
-                alpha = TegraCompositeFormatHasAlpha(pSrcPicture->format);
+                alpha = tegra_exa_picture_format_has_alpha(src_picture->format);
                 if (!alpha)
                     solid |= 0xff000000;
 
                 if (op == PictOpAdd  &&
-                    !TegraCompositeFormatHasAlpha(pDstPicture->format))
-                        solid &= 0x00ffffff;
+                    !tegra_exa_picture_format_has_alpha(dst_picture->format))
+                    solid &= 0x00ffffff;
 
                 src_sel = TEX_SOLID;
             } else {
@@ -590,7 +605,7 @@ static Bool TegraEXAPrepareComposite3D(int op,
             if (solid == 0x00000000)
                 src_sel = TEX_EMPTY;
 
-            AccelMsg("src solid 0x%08lx\n", solid);
+            ACCEL_MSG("src solid 0x%08lx\n", solid);
 
             draw_state.src.tex_sel = src_sel;
             draw_state.src.solid = solid;
@@ -600,9 +615,9 @@ static Bool TegraEXAPrepareComposite3D(int op,
         draw_state.src.solid = 0x00000000;
     }
 
-    if (pMaskPicture) {
-        if (tegra->scratch.pMask) {
-            switch (pMaskPicture->repeatType) {
+    if (mask_picture) {
+        if (tegra->scratch.mask) {
+            switch (mask_picture->repeatType) {
             case RepeatNone:
                 mask_sel = TEX_CLIPPED;
                 break;
@@ -616,45 +631,45 @@ static Bool TegraEXAPrepareComposite3D(int op,
                 mask_sel = TEX_MIRROR;
                 break;
             default:
-                FallbackMsg("unsupported repeat type %u\n",
-                            pMaskPicture->repeatType);
-                return FALSE;
+                FALLBACK_MSG("unsupported repeat type %u\n",
+                         mask_picture->repeatType);
+                return false;
             }
 
-            draw_state.mask.pow2            = TegraCompositePow2Texture(pMask);
-            draw_state.mask.format          = TegraCompositeFormatToGR3D(pMaskPicture->format);
-            draw_state.mask.alpha           = TegraCompositeFormatHasAlpha(pMaskPicture->format);
-            draw_state.mask.component_alpha = TegraCompositeTexturePerComponentAlpha(pMaskPicture);
-            draw_state.mask.bilinear        = (pMaskPicture->filter == PictFilterBilinear);
+            draw_state.mask.pow2            = tegra_exa_is_pow2_texture(pmask);
+            draw_state.mask.format          = tegra_exa_picture_format_to_tgr3d(mask_picture->format);
+            draw_state.mask.alpha           = tegra_exa_picture_format_has_alpha(mask_picture->format);
+            draw_state.mask.component_alpha = tegra_exa_texture_has_per_component_alpha(mask_picture);
+            draw_state.mask.bilinear        = (mask_picture->filter == PictFilterBilinear);
             draw_state.mask.tex_sel         = mask_sel;
-            draw_state.mask.pPix            = pMask;
+            draw_state.mask.pix             = pmask;
 
-            if (pMaskPicture->transform) {
-                tegra->scratch.transform_mask = *pMaskPicture->transform;
+            if (mask_picture->transform) {
+                tegra->scratch.transform_mask = *mask_picture->transform;
 
                 if (mask_sel == TEX_CLIPPED)
                     pixman_transform_invert(&tegra->scratch.transform_mask_inv,
                                             &tegra->scratch.transform_mask);
 
-                draw_state.mask.transform_coords = TRUE;
+                draw_state.mask.transform_coords = true;
             }
         } else {
-            if (op != PictOpClear && pMaskPicture) {
+            if (op != PictOpClear && mask_picture) {
                 if (mask_tex_reduced)
-                    solid = TegraCompositeGetReducedTextureColor(pMask);
+                    solid = tegra_exa_optimized_texture_color(pmask);
                 else
-                    solid = pMaskPicture->pSourcePict->solidFill.color;
+                    solid = mask_picture->pSourcePict->solidFill.color;
 
-                if (!pMaskPicture->componentAlpha)
+                if (!mask_picture->componentAlpha)
                     solid |= solid >> 24 | solid >> 16 | solid >> 8;
 
-                alpha = TegraCompositeFormatHasAlpha(pMaskPicture->format);
+                alpha = tegra_exa_picture_format_has_alpha(mask_picture->format);
                 if (!alpha)
                     solid |= 0xff000000;
 
                 if (op == PictOpAdd &&
-                    !TegraCompositeFormatHasAlpha(pDstPicture->format))
-                        solid &= 0x00ffffff;
+                    !tegra_exa_picture_format_has_alpha(dst_picture->format))
+                    solid &= 0x00ffffff;
 
                 mask_sel = TEX_SOLID;
             } else {
@@ -664,7 +679,7 @@ static Bool TegraEXAPrepareComposite3D(int op,
             if (solid == 0xffffffff)
                 mask_sel = TEX_EMPTY;
 
-            AccelMsg("mask solid 0x%08lx\n", solid);
+            ACCEL_MSG("mask solid 0x%08lx\n", solid);
 
             draw_state.mask.tex_sel = mask_sel;
             draw_state.mask.solid = solid;
@@ -674,62 +689,62 @@ static Bool TegraEXAPrepareComposite3D(int op,
         draw_state.mask.solid = 0xffffffff;
     }
 
-    draw_state.dst.format = TegraCompositeFormatToGR3D(pDstPicture->format);
-    draw_state.dst.alpha  = TegraCompositeFormatHasAlpha(pDstPicture->format);
-    draw_state.dst.pPix   = pDst;
+    draw_state.dst.format = tegra_exa_picture_format_to_tgr3d(dst_picture->format);
+    draw_state.dst.alpha  = tegra_exa_picture_format_has_alpha(dst_picture->format);
+    draw_state.dst.pix    = pdst;
 
     draw_state.op = op;
 
-    if (!TegraCompositeProgram3DPreCheck(&draw_state))
-        return FALSE;
+    if (!tegra_exa_pre_check_3d_program(&draw_state))
+        return false;
 
-    return TegraGR3DStateAppend(&tegra->gr3d_state, tegra, &draw_state);
+    return tegra_exa_3d_state_append(&tegra->gr3d_state, tegra, &draw_state);
 }
 
-static void TegraEXAComposite3D(PixmapPtr pDst,
-                                int srcX, int srcY,
-                                int maskX, int maskY,
-                                int dstX, int dstY,
-                                int width, int height)
+static void tegra_exa_composite_3d(PixmapPtr pdst,
+                                   int src_x, int src_y,
+                                   int mask_x, int mask_y,
+                                   int dst_x, int dst_y,
+                                   int width, int height)
 {
-    ScrnInfoPtr pScrn = xf86ScreenToScrn(pDst->drawable.pScreen);
-    TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
-    TegraGR3DStatePtr state = &tegra->gr3d_state;
-    TegraGR3DDrawStatePtr draw_state = &state->new;
-    float dst_left, dst_right, dst_top, dst_bottom;
-    float src_left = 0, src_right = 0, src_top = 0, src_bottom = 0;
-    float mask_left = 0, mask_right = 0, mask_top = 0, mask_bottom = 0;
-    bool push_mask = !!tegra->scratch.pMask;
-    bool push_src = !!tegra->scratch.pSrc;
-    int swidth = 0, sheight = 0;
-    int mwidth = 0, mheight = 0;
+    ScrnInfoPtr pScrn = xf86ScreenToScrn(pdst->drawable.pScreen);
+    struct tegra_exa *tegra = TegraPTR(pScrn)->exa;
+    struct tegra_3d_state *state = &tegra->gr3d_state;
     PictTransformPtr mask_t = NULL, mask_t_inv = NULL;
     PictTransformPtr src_t = NULL, src_t_inv = NULL;
+    struct tegra_3d_draw_state *draw_state = &state->new;
+    float dst_left, dst_right, dst_top, dst_bottom;
+    float src_left  = 0, src_right  = 0, src_top  = 0, src_bottom = 0;
+    float mask_left = 0, mask_right = 0, mask_top = 0, mask_bottom = 0;
+    bool push_mask = !!tegra->scratch.mask;
+    bool push_src = !!tegra->scratch.src;
+    int swidth = 0, sheight = 0;
+    int mwidth = 0, mheight = 0;
     struct tegra_box src_untransformed = {0}, mask_untransformed = {0};
     struct tegra_box src_transformed = {0}, mask_transformed = {0};
     struct tegra_box src = {0}, mask = {0};
     struct tegra_box dst;
-    Bool clip_mask;
-    Bool clip_src;
+    bool clip_mask;
+    bool clip_src;
 
     if (draw_state->optimized_out)
         return;
 
     /* if attributes buffer is full, do nothing for now (TODO better job) */
-    if (TegraCompositeAttribBufferIsFull(&tegra->scratch)) {
-        ErrorMsg("FIXME: attributes buffer is full\n");
+    if (tegra_exa_attributes_buffer_is_full(&tegra->scratch)) {
+        ERROR_MSG("FIXME: attributes buffer is full\n");
         return;
     }
 
-    if (dstX == 0 && dstY == 0 &&
-            pDst->drawable.width == width &&
-            pDst->drawable.height == height)
+    if (dst_x == 0 && dst_y == 0 &&
+        pdst->drawable.width == width &&
+        pdst->drawable.height == height)
         draw_state->dst_full_cover = 1;
 
-    dst.x0 = dstX;
-    dst.y0 = dstY;
-    dst.x1 = dstX + width;
-    dst.y1 = dstY + height;
+    dst.x0 = dst_x;
+    dst.y0 = dst_y;
+    dst.x1 = dst_x + width;
+    dst.y1 = dst_y + height;
 
     clip_src = (draw_state->src.tex_sel == TEX_CLIPPED);
     clip_mask = (draw_state->mask.tex_sel == TEX_CLIPPED);
@@ -745,27 +760,27 @@ static void TegraEXAComposite3D(PixmapPtr pDst,
     }
 
     if (push_src) {
-        swidth = tegra->scratch.pSrc->drawable.width;
-        sheight = tegra->scratch.pSrc->drawable.height;
+        swidth = tegra->scratch.src->drawable.width;
+        sheight = tegra->scratch.src->drawable.height;
 
-        src.x0 = srcX;
-        src.y0 = srcY;
-        src.x1 = srcX + width;
-        src.y1 = srcY + height;
+        src.x0 = src_x;
+        src.y0 = src_y;
+        src.x1 = src_x + width;
+        src.y1 = src_y + height;
     }
 
     if (push_mask) {
-        mwidth = tegra->scratch.pMask->drawable.width;
-        mheight = tegra->scratch.pMask->drawable.height;
+        mwidth = tegra->scratch.mask->drawable.width;
+        mheight = tegra->scratch.mask->drawable.height;
 
-        mask.x0 = maskX;
-        mask.y0 = maskY;
-        mask.x1 = maskX + width;
-        mask.y1 = maskY + height;
+        mask.x0 = mask_x;
+        mask.y0 = mask_y;
+        mask.x1 = mask_x + width;
+        mask.y1 = mask_y + height;
     }
 
     if (push_src) {
-        exa_helper_apply_transform(src_t, &src, &src_transformed);
+        tegra_exa_apply_transform(src_t, &src, &src_transformed);
 
         /*
          * EXA doesn't clip transparent areas for us, hence we're doing
@@ -773,72 +788,57 @@ static void TegraEXAComposite3D(PixmapPtr pDst,
          * optimized shaders and to reduce memory bandwidth usage.
          */
         if (draw_state->discards_clip && clip_src) {
-            exa_helper_clip_to_pixmap_area(tegra->scratch.pSrc,
-                                           &src_transformed,
-                                           &src_transformed);
+            tegra_exa_clip_to_pixmap_area(tegra->scratch.src,
+                                          &src_transformed, &src_transformed);
 
-            if (exa_helper_degenerate(&src_transformed))
+            if (tegra_exa_is_degenerate(&src_transformed))
                 goto degenerate;
 
-            exa_helper_get_untransformed(src_t_inv,
-                                         &src_transformed,
-                                         &src_untransformed);
+            tegra_exa_get_untransformed(src_t_inv, &src_transformed, &src_untransformed);
+            tegra_exa_apply_clip(&dst, &src_untransformed, dst_x - src_x, dst_y - src_y);
+            tegra_exa_apply_clip(&mask, &dst, mask_x - dst_x, mask_y - dst_y);
+            tegra_exa_apply_clip(&src, &dst, src_x - dst_x, src_y - dst_y);
 
-            exa_helper_clip(&dst, &src_untransformed,
-                            dstX - srcX, dstY - srcY);
-            exa_helper_clip(&mask, &dst,
-                            maskX - dstX, maskY - dstY);
-            exa_helper_clip(&src, &dst,
-                            srcX - dstX, srcY - dstY);
+            dst_x = dst.x0;
+            dst_y = dst.y0;
 
-            dstX = dst.x0;
-            dstY = dst.y0;
+            src_x = src.x0;
+            src_y = src.y0;
 
-            srcX = src.x0;
-            srcY = src.y0;
-
-            maskX = mask.x0;
-            maskY = mask.y0;
+            mask_x = mask.x0;
+            mask_y = mask.y0;
         }
     }
 
     if (push_mask) {
-        exa_helper_apply_transform(mask_t, &mask, &mask_transformed);
+        tegra_exa_apply_transform(mask_t, &mask, &mask_transformed);
 
         if (draw_state->discards_clip && clip_mask) {
-            exa_helper_clip_to_pixmap_area(tegra->scratch.pMask,
-                                           &mask_transformed,
-                                           &mask_transformed);
+            tegra_exa_clip_to_pixmap_area(tegra->scratch.mask,
+                                          &mask_transformed, &mask_transformed);
 
-            if (exa_helper_degenerate(&mask_transformed))
+            if (tegra_exa_is_degenerate(&mask_transformed))
                 goto degenerate;
 
-            exa_helper_get_untransformed(mask_t_inv,
-                                         &mask_transformed,
-                                         &mask_untransformed);
-
-            exa_helper_clip(&dst, &mask_untransformed,
-                            dstX - maskX, dstY - maskY);
-
-            exa_helper_clip(&src, &dst,
-                            srcX - dstX, srcY - dstY);
-
-            exa_helper_apply_transform(src_t, &src, &src_transformed);
+            tegra_exa_get_untransformed(mask_t_inv, &mask_transformed, &mask_untransformed);
+            tegra_exa_apply_clip(&dst, &mask_untransformed, dst_x - mask_x, dst_y - mask_y);
+            tegra_exa_apply_clip(&src, &dst, src_x - dst_x, src_y - dst_y);
+            tegra_exa_apply_transform(src_t, &src, &src_transformed);
         }
     }
 
     if (push_src) {
         if (swidth > 1 && (src_transformed.x0 < 0 || src_transformed.x0 > swidth))
-            draw_state->src.coords_wrap = TRUE;
+            draw_state->src.coords_wrap = true;
 
         if (swidth > 1 && (src_transformed.x1 < 0 || src_transformed.x1 > swidth))
-            draw_state->src.coords_wrap = TRUE;
+            draw_state->src.coords_wrap = true;
 
         if (sheight > 1 && (src_transformed.y0 < 0 || src_transformed.y0 > sheight))
-            draw_state->src.coords_wrap = TRUE;
+            draw_state->src.coords_wrap = true;
 
         if (sheight > 1 && (src_transformed.y1 < 0 || src_transformed.y1 > sheight))
-            draw_state->src.coords_wrap = TRUE;
+            draw_state->src.coords_wrap = true;
 
         src_left   = src.x0;
         src_right  = src.x1;
@@ -848,16 +848,16 @@ static void TegraEXAComposite3D(PixmapPtr pDst,
 
     if (push_mask) {
         if (mwidth > 1 && (mask_transformed.x0 < 0 || mask_transformed.x0 > mwidth))
-            draw_state->mask.coords_wrap = TRUE;
+            draw_state->mask.coords_wrap = true;
 
         if (mwidth > 1 && (mask_transformed.x1 < 0 || mask_transformed.x1 > mwidth))
-            draw_state->mask.coords_wrap = TRUE;
+            draw_state->mask.coords_wrap = true;
 
         if (mheight > 1 && (mask_transformed.y0 < 0 || mask_transformed.y0 > mheight))
-            draw_state->mask.coords_wrap = TRUE;
+            draw_state->mask.coords_wrap = true;
 
         if (mheight > 1 && (mask_transformed.y1 < 0 || mask_transformed.y1 > mheight))
-            draw_state->mask.coords_wrap = TRUE;
+            draw_state->mask.coords_wrap = true;
 
         mask_left   = mask.x0;
         mask_right  = mask.x1;
@@ -865,36 +865,36 @@ static void TegraEXAComposite3D(PixmapPtr pDst,
         mask_top    = mask.y1;
     }
 
-    dst_left   = (float) (dst.x0 * 2) / pDst->drawable.width  - 1.0f;
-    dst_right  = (float) (dst.x1 * 2) / pDst->drawable.width  - 1.0f;
-    dst_bottom = (float) (dst.y0 * 2) / pDst->drawable.height - 1.0f;
-    dst_top    = (float) (dst.y1 * 2) / pDst->drawable.height - 1.0f;
+    dst_left   = (float) (dst.x0 * 2) / pdst->drawable.width  - 1.0f;
+    dst_right  = (float) (dst.x1 * 2) / pdst->drawable.width  - 1.0f;
+    dst_bottom = (float) (dst.y0 * 2) / pdst->drawable.height - 1.0f;
+    dst_top    = (float) (dst.y1 * 2) / pdst->drawable.height - 1.0f;
 
     /* push first triangle of the quad to attributes buffer */
-    TegraPushVtxAttr(dst_left,  dst_bottom,  true);
-    TegraPushVtxAttr(src_left,  src_bottom,  push_src);
-    TegraPushVtxAttr(mask_left, mask_bottom, push_mask);
+    TEGRA_PUSH_VTX_ATTR(dst_left,  dst_bottom,  true);
+    TEGRA_PUSH_VTX_ATTR(src_left,  src_bottom,  push_src);
+    TEGRA_PUSH_VTX_ATTR(mask_left, mask_bottom, push_mask);
 
-    TegraPushVtxAttr(dst_left,  dst_top,  true);
-    TegraPushVtxAttr(src_left,  src_top,  push_src);
-    TegraPushVtxAttr(mask_left, mask_top, push_mask);
+    TEGRA_PUSH_VTX_ATTR(dst_left,  dst_top,  true);
+    TEGRA_PUSH_VTX_ATTR(src_left,  src_top,  push_src);
+    TEGRA_PUSH_VTX_ATTR(mask_left, mask_top, push_mask);
 
-    TegraPushVtxAttr(dst_right,  dst_top,  true);
-    TegraPushVtxAttr(src_right,  src_top,  push_src);
-    TegraPushVtxAttr(mask_right, mask_top, push_mask);
+    TEGRA_PUSH_VTX_ATTR(dst_right,  dst_top,  true);
+    TEGRA_PUSH_VTX_ATTR(src_right,  src_top,  push_src);
+    TEGRA_PUSH_VTX_ATTR(mask_right, mask_top, push_mask);
 
     /* push second */
-    TegraPushVtxAttr(dst_right,  dst_top,  true);
-    TegraPushVtxAttr(src_right,  src_top,  push_src);
-    TegraPushVtxAttr(mask_right, mask_top, push_mask);
+    TEGRA_PUSH_VTX_ATTR(dst_right,  dst_top,  true);
+    TEGRA_PUSH_VTX_ATTR(src_right,  src_top,  push_src);
+    TEGRA_PUSH_VTX_ATTR(mask_right, mask_top, push_mask);
 
-    TegraPushVtxAttr(dst_right,  dst_bottom,  true);
-    TegraPushVtxAttr(src_right,  src_bottom,  push_src);
-    TegraPushVtxAttr(mask_right, mask_bottom, push_mask);
+    TEGRA_PUSH_VTX_ATTR(dst_right,  dst_bottom,  true);
+    TEGRA_PUSH_VTX_ATTR(src_right,  src_bottom,  push_src);
+    TEGRA_PUSH_VTX_ATTR(mask_right, mask_bottom, push_mask);
 
-    TegraPushVtxAttr(dst_left,  dst_bottom,  true);
-    TegraPushVtxAttr(src_left,  src_bottom,  push_src);
-    TegraPushVtxAttr(mask_left, mask_bottom, push_mask);
+    TEGRA_PUSH_VTX_ATTR(dst_left,  dst_bottom,  true);
+    TEGRA_PUSH_VTX_ATTR(src_left,  src_bottom,  push_src);
+    TEGRA_PUSH_VTX_ATTR(mask_left, mask_bottom, push_mask);
 
     tegra->scratch.vtx_cnt += 6;
     tegra->scratch.ops++;
@@ -902,22 +902,21 @@ static void TegraEXAComposite3D(PixmapPtr pDst,
     return;
 
 degenerate:
-    AccelMsg("src %dx%d mask %dx%d w:h %d:%d area degenerated\n",
-             srcX, srcY, maskX, maskY, width, height);
+    ACCEL_MSG("src %dx%d mask %dx%d w:h %d:%d area degenerated\n",
+              src_x, src_y, mask_x, mask_y, width, height);
 }
 
-static void TegraEXADoneComposite3D(PixmapPtr pDst)
+static void tegra_exa_done_composite_3d(PixmapPtr pdst)
 {
-    ScrnInfoPtr pScrn = xf86ScreenToScrn(pDst->drawable.pScreen);
-    TegraEXAPtr tegra = TegraPTR(pScrn)->exa;
+    ScrnInfoPtr pScrn = xf86ScreenToScrn(pdst->drawable.pScreen);
+    struct tegra_exa *tegra = TegraPTR(pScrn)->exa;
     struct tegra_fence *fence = NULL;
 
     if (tegra->scratch.ops && tegra->cmds->status == TEGRADRM_STREAM_CONSTRUCT) {
-        exa_helper_wait_pixmaps(TEGRA_2D, pDst, 2,
-                                tegra->scratch.pSrc,
-                                tegra->scratch.pMask);
+        tegra_exa_wait_pixmaps(TEGRA_2D, pdst, 2, tegra->scratch.src,
+                               tegra->scratch.mask);
 
-        fence = TegraGR3DStateSubmit(&tegra->gr3d_state);
+        fence = tegra_exa_submit_3d_state(&tegra->gr3d_state);
 
         /*
          * XXX: Glitches may occur due to lack of support for waitchecks
@@ -930,19 +929,17 @@ static void TegraEXADoneComposite3D(PixmapPtr pDst)
          *
          *      See TegraGR3D_DrawPrimitives() in gr3d.c
          */
-        exa_helper_replace_pixmaps_fence(TEGRA_3D, fence, &tegra->scratch,
-                                         pDst, 2,
-                                         tegra->scratch.pSrc,
-                                         tegra->scratch.pMask);
+        tegra_exa_replace_pixmaps_fence(TEGRA_3D, fence, &tegra->scratch, pdst,
+                                        2, tegra->scratch.src, tegra->scratch.mask);
     } else {
-        TegraGR3DStateReset(&tegra->gr3d_state);
+        tegra_exa_3d_state_reset(&tegra->gr3d_state);
     }
 
-    TegraEXACoolPixmap(tegra->scratch.pSrc, FALSE);
-    TegraEXACoolPixmap(tegra->scratch.pMask, FALSE);
-    TegraEXACoolPixmap(pDst, TRUE);
+    tegra_exa_cool_pixmap(tegra->scratch.src,  false);
+    tegra_exa_cool_pixmap(tegra->scratch.mask, false);
+    tegra_exa_cool_pixmap(pdst, true);
 
-    AccelMsg("\n");
+    ACCEL_MSG("\n");
 }
 
 /* vim: set et sts=4 sw=4 ts=4: */
