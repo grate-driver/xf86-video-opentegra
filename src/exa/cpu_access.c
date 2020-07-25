@@ -30,6 +30,7 @@ static bool tegra_exa_prepare_cpu_access(PixmapPtr pixmap, int idx, void **ptr,
     TegraPtr tegra = TegraPTR(pScrn);
     struct tegra_exa *exa = tegra->exa;
     bool write = false;
+    bool accel = false;
     int err;
 
     FALLBACK_MSG("pixmap %p idx %d type %u %d:%d:%d %p\n",
@@ -44,9 +45,10 @@ static bool tegra_exa_prepare_cpu_access(PixmapPtr pixmap, int idx, void **ptr,
     case EXA_PREPARE_DEST:
     case EXA_PREPARE_AUX_DEST:
         write = true;
+        accel = true;
     }
 
-    tegra_exa_thaw_pixmap(pixmap, false);
+    tegra_exa_thaw_pixmap(pixmap, accel);
 
     if (priv->type == TEGRA_EXA_PIXMAP_TYPE_FALLBACK) {
         PROFILE_START(cpu_access);
