@@ -73,7 +73,7 @@ tegra_exa_select_optimized_gr3d_program(struct tegra_3d_state *state)
          src_sel = TEX_EMPTY;
       }
 
-      if ((!state->new.src.pix && !(state->new.src.solid & 0xff000000)) ||
+      if ((mask_sel == TEX_EMPTY && !state->new.src.pix && (state->new.src.solid & 0xff000000) == 0xff000000) ||
           (dst_priv->state.solid_fill && dst_priv->state.solid_color == 0x0)) {
          ACCEL_MSG("PictOpOver optimized to PictOpSrc\n");
          state->new.op = PictOpSrc;
