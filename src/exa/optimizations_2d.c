@@ -160,13 +160,13 @@ static bool tegra_exa_optimize_solid_op(PixmapPtr pixmap,
     if ((cpp == 4 && !(tegra->scratch.color & 0xff000000)) ||
         (cpp == 1 && !(tegra->scratch.color & 0x00)))
     {
-        if (priv->alpha_0 || (px1 == 0 && py1 == 0 &&
+        if (priv->state.alpha_0 || (px1 == 0 && py1 == 0 &&
             pixmap->drawable.width == px2 &&
             pixmap->drawable.height == py2))
             alpha_0 = 1;
     }
 
-    if (priv->alpha_0 && !alpha_0)
+    if (priv->state.alpha_0 && !alpha_0)
         DEBUG_MSG("pixmap %p solid-fill canceled alpha_0\n", pixmap);
 
     if (tegra->scratch.optimize &&
@@ -184,7 +184,7 @@ static bool tegra_exa_optimize_solid_op(PixmapPtr pixmap,
 
         priv->state.solid_color = tegra->scratch.color;
         priv->state.solid_fill = 1;
-        priv->alpha_0 = alpha_0;
+        priv->state.alpha_0 = alpha_0;
 
         return true;
     }
@@ -224,12 +224,12 @@ static bool tegra_exa_optimize_solid_op(PixmapPtr pixmap,
                     px1, py1, px2 - px1, py2 - py1,
                     tegra->scratch.color);
 
-        priv->alpha_0 = alpha_0;
+        priv->state.alpha_0 = alpha_0;
 
         return true;
     }
 
-    priv->alpha_0 = alpha_0;
+    priv->state.alpha_0 = alpha_0;
 
     return false;
 }
@@ -382,15 +382,15 @@ static bool tegra_exa_optimize_copy_op(PixmapPtr dst_pixmap,
                    dst_pixmap->drawable.height == height) {
             tegra_exa_cancel_deferred_operations(dst_pixmap);
 
-            if (dst_priv->alpha_0 && !src_priv->alpha_0)
+            if (dst_priv->state.alpha_0 && !src_priv->state.alpha_0)
                 DEBUG_MSG("pixmap %p copy canceled alpha_0\n", dst_pixmap);
 
-            dst_priv->alpha_0 = src_priv->alpha_0;
+            dst_priv->state.alpha_0 = src_priv->state.alpha_0;
         } else {
-            if (!src_priv->alpha_0 && dst_priv->alpha_0) {
+            if (!src_priv->state.alpha_0 && dst_priv->state.alpha_0) {
                 DEBUG_MSG("pixmap %p copy canceled alpha_0\n", dst_pixmap);
 
-                dst_priv->alpha_0 = 0;
+                dst_priv->state.alpha_0 = 0;
             }
         }
     }

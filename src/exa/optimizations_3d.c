@@ -58,7 +58,7 @@ tegra_exa_select_optimized_gr3d_program(struct tegra_3d_state *state)
     * couple of most popular texture-operation combinations.
     */
    if (state->new.op == PictOpOver) {
-      if (state->new.dst.alpha || dst_priv->alpha_0) {
+      if (state->new.dst.alpha || dst_priv->state.alpha_0) {
          if (src_sel == TEX_EMPTY ||
              (mask_sel == TEX_SOLID && state->new.mask.solid == 0x0)) {
             state->new.optimized_out = 1;
@@ -236,7 +236,7 @@ static void tegra_exa_optimize_alpha_component(struct tegra_3d_draw_state *state
    struct tegra_pixmap *src_priv, *mask_priv;
 
    if (state->dst_full_cover && !state->dst.alpha) {
-      dst_priv->alpha_0 = !DISABLE_2D_OPTIMIZATIONS;
+      dst_priv->state.alpha_0 = !DISABLE_2D_OPTIMIZATIONS;
    } else if (state->dst.alpha) {
       bool mask_alpha_0 = false;
       bool dst_alpha_0 = false;
@@ -245,7 +245,7 @@ static void tegra_exa_optimize_alpha_component(struct tegra_3d_draw_state *state
       if (state->mask.pix) {
          mask_priv = exaGetPixmapDriverPrivate(state->mask.pix);
 
-         if (state->mask.alpha && mask_priv->alpha_0)
+         if (state->mask.alpha && mask_priv->state.alpha_0)
             mask_alpha_0 = true;
       } else {
          if ((state->mask.solid & 0xff000000) == 0x00000000)
@@ -255,7 +255,7 @@ static void tegra_exa_optimize_alpha_component(struct tegra_3d_draw_state *state
       if (state->src.pix) {
          src_priv = exaGetPixmapDriverPrivate(state->src.pix);
 
-         if (state->src.alpha && src_priv->alpha_0)
+         if (state->src.alpha && src_priv->state.alpha_0)
             src_alpha_0 = true;
       } else {
          if ((state->src.solid & 0xff000000) == 0x00000000)
@@ -275,9 +275,9 @@ static void tegra_exa_optimize_alpha_component(struct tegra_3d_draw_state *state
       }
 
       if (!dst_alpha_0)
-         dst_priv->alpha_0 = 0;
+         dst_priv->state.alpha_0 = 0;
       else if (state->dst_full_cover)
-         dst_priv->alpha_0 = !DISABLE_2D_OPTIMIZATIONS;
+         dst_priv->state.alpha_0 = !DISABLE_2D_OPTIMIZATIONS;
    }
 }
 

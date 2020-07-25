@@ -56,14 +56,14 @@ static bool tegra_exa_prepare_cpu_access(PixmapPtr pixmap, int idx, void **ptr,
         TEGRA_PIXMAP_WAIT_READ_FENCES(priv);
 
         if (cancel_optimizations) {
-            if (priv->alpha_0)
+            if (priv->state.alpha_0)
                 DEBUG_MSG("pixmap %p %s canceled alpha_0\n", pixmap, __func__);
 
             /*
              * We don't know what fallback will do with pixmap,
              * so assume the worst.
              */
-            priv->alpha_0 = 0;
+            priv->state.alpha_0 = 0;
         }
 
         /* fall through */

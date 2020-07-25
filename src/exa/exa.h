@@ -311,7 +311,6 @@ struct tegra_pixmap {
     bool accelerated : 1;       /* pixmap was accelerated at least once */
     bool offscreen : 1;         /* pixmap's data resides in Tegra's GEM */
     bool destroyed : 1;         /* pixmap was destroyed by EXA core */
-    bool alpha_0 : 1;           /* pixmap's alpha component is 0x00 (RGBX texture) */
     bool scanout : 1;           /* pixmap backs frontbuffer BO */
     bool frozen : 1;            /* pixmap's data compressed */
     bool accel : 1;             /* pixmap acceleratable */
@@ -325,6 +324,7 @@ struct tegra_pixmap {
     unsigned freezer_lockcnt;   /* pixmap's data won't be touched by fridge while > 0 */
 
     struct pixmap_state {
+        bool alpha_0 : 1;       /* pixmap's alpha component is 0x00 (RGBX texture) */
         bool solid_fill : 1;    /* whole pixmap is filled with a solid color */
 
         Pixel solid_color;

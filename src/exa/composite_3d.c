@@ -580,7 +580,7 @@ static bool tegra_exa_prepare_composite_3d(int op,
                 draw_state.src.format == TGR3D_PIXEL_FORMAT_RGBA8888)
             {
                 priv = exaGetPixmapDriverPrivate(psrc);
-                draw_state.src.alpha = !priv->alpha_0;
+                draw_state.src.alpha = !priv->state.alpha_0;
             }
         } else {
             if (op != PictOpClear && src_picture) {
