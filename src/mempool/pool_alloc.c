@@ -677,6 +677,7 @@ int mem_pool_transfer_entries(struct mem_pool * restrict pool_to,
     struct __mem_pool_entry *busy_to;
     int b_from = -1, b_to, e_to;
     int transferred_entries = 0;
+    int transferred_bytes = 0;
     unsigned long size;
     char *new_base;
 
@@ -735,6 +736,7 @@ next_from:
             pool_from->remain += size;
             pool_to->remain -= size;
             new_base += size;
+            transferred_bytes += size;
             transferred_entries++;
 
             b_to = e_to;
@@ -752,8 +754,8 @@ next_from:
     }
 
 #ifdef POOL_DEBUG
-    PRINTF("%s: pool to=%p from=%p transferred_entries=%d\n",
-           __func__, pool_to, pool_from, transferred_entries);
+    PRINTF("%s: pool to=%p from=%p transferred_entries=%d transferred_bytes=%d\n",
+           __func__, pool_to, pool_from, transferred_entries, transferred_bytes);
 #endif
 
     if (transferred_entries) {
@@ -761,7 +763,7 @@ next_from:
         validate_pool(pool_from);
     }
 
-    return transferred_entries;
+    return transferred_bytes;
 }
 
 /*
@@ -775,6 +777,7 @@ int mem_pool_transfer_entries_fast(struct mem_pool * restrict pool_to,
     struct __mem_pool_entry *busy_from;
     struct mem_pool_entry empty_to;
     int transferred_entries = 0;
+    int transferred_bytes = 0;
     unsigned long fail_size = ~0ul;
     unsigned long size;
     int b_from = -1, e_to;
@@ -827,6 +830,7 @@ int mem_pool_transfer_entries_fast(struct mem_pool * restrict pool_to,
                           pool_to->entries[e_to].base);
 
             pool_from->remain += size;
+            transferred_bytes += size;
             transferred_entries++;
 
             if (mem_pool_full(pool_to))
@@ -842,8 +846,8 @@ int mem_pool_transfer_entries_fast(struct mem_pool * restrict pool_to,
     }
 
 #ifdef POOL_DEBUG
-    PRINTF("%s: pool to=%p from=%p transferred_entries=%d\n",
-           __func__, pool_to, pool_from, transferred_entries);
+    PRINTF("%s: pool to=%p from=%p transferred_entries=%d transferred_bytes=%d\n",
+           __func__, pool_to, pool_from, transferred_entries, transferred_bytes);
 #endif
 
     if (transferred_entries) {
@@ -851,7 +855,7 @@ int mem_pool_transfer_entries_fast(struct mem_pool * restrict pool_to,
         validate_pool(pool_from);
     }
 
-    return transferred_entries;
+    return transferred_bytes;
 }
 
 void mem_pool_defrag(struct mem_pool *pool)
