@@ -89,4 +89,6 @@ static const struct shader_program *
 tegra_exa_select_optimized_gr3d_program(struct tegra_3d_state *state);
 static void tegra_exa_optimize_alpha_component(struct tegra_3d_draw_state *state);
 
+static void tegra_exa_perform_deferred_solid_fill(PixmapPtr pixmap, bool accel);
+
 #endif

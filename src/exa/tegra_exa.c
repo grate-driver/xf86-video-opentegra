@@ -35,6 +35,7 @@
 #include "load_screen.c"
 #include "mm.c"
 #include "mm_fridge.c"
+#include "optimizations.c"
 #include "optimizations_2d.c"
 #include "optimizations_3d.c"
 #include "pixmap.c"

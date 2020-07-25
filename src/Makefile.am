@@ -79,6 +79,7 @@ opentegra_drv_la_DEPENDENCIES = \
 	exa/mm.c \
 	exa/mm_fridge.c \
 	exa/mm_pool.c \
+	exa/optimizations.c \
 	exa/optimizations_2d.c \
 	exa/optimizations_3d.c \
 	exa/pixmap.c \
