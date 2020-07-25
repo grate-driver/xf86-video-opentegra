@@ -394,6 +394,7 @@ static void tegra_exa_copy_2d(PixmapPtr dst_pixmap, int src_x, int src_y,
 static void tegra_exa_done_copy_2d(PixmapPtr dst_pixmap)
 {
     ScrnInfoPtr pScrn = xf86ScreenToScrn(dst_pixmap->drawable.pScreen);
+    struct tegra_pixmap *dst_priv = exaGetPixmapDriverPrivate(dst_pixmap);
     struct tegra_exa *tegra = TegraPTR(pScrn)->exa;
     struct tegra_fence *explicit_fence;
     struct tegra_fence *fence;
@@ -403,6 +404,7 @@ static void tegra_exa_done_copy_2d(PixmapPtr dst_pixmap)
     tegra_exa_complete_copy_optimization(dst_pixmap);
 
     if (tegra->scratch.ops && tegra->cmds->status == TEGRADRM_STREAM_CONSTRUCT) {
+        tegra->stats.num_2d_copy_jobs_bytes += tegra_stream_pushbuf_size(tegra->cmds);
         tegra_stream_end(tegra->cmds);
 
         tegra_exa_wait_pixmaps(TEGRA_3D, dst_pixmap, 1, tegra->scratch.src);
@@ -418,6 +420,11 @@ static void tegra_exa_done_copy_2d(PixmapPtr dst_pixmap)
 
         tegra_exa_replace_pixmaps_fence(TEGRA_2D, fence, &tegra->scratch,
                                         dst_pixmap, 1, tegra->scratch.src);
+
+        if (dst_priv->scanout)
+            tegra->stats.num_2d_copy_jobs_to_scanout++;
+
+        tegra->stats.num_2d_copy_jobs++;
     } else {
         tegra_stream_cleanup(tegra->cmds);
     }

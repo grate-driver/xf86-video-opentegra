@@ -459,6 +459,11 @@ tegra_exa_submit_3d_state(struct tegra_3d_state *state)
     if (state->new.optimized_out)
         goto reset_state;
 
+    pScrn = xf86ScreenToScrn(state->new.dst.pix->drawable.pScreen);
+    tegra = TegraPTR(pScrn)->exa;
+
+    tegra->stats.num_3d_jobs_bytes += tegra_stream_pushbuf_size(state->cmds);
+
     /*
      * TODO: We can't batch up draw calls until host1x driver will
      * expose controls for explicit CDMA synchronization.
@@ -470,9 +475,6 @@ tegra_exa_submit_3d_state(struct tegra_3d_state *state)
                                                   state->new.src.pix,
                                                   state->new.mask.pix);
 
-    pScrn = xf86ScreenToScrn(state->new.dst.pix->drawable.pScreen);
-    tegra = TegraPTR(pScrn)->exa;
-
     PROFILE_START(gr3d);
     fence = tegra_exa_stream_submit(tegra, TEGRA_3D, explicit_fence);
     PROFILE_STOP(gr3d);
@@ -480,6 +482,8 @@ tegra_exa_submit_3d_state(struct tegra_3d_state *state)
     TEGRA_FENCE_PUT(explicit_fence);
 
     tegra_exa_optimize_alpha_component(&state->new);
+
+    tegra->stats.num_3d_jobs++;
 
 reset_state:
     tegra_exa_3d_state_reset(state);

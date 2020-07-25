@@ -49,7 +49,8 @@ static bool tegra_exa_pixmap_allocate_from_bo(TegraPtr tegra,
                                               struct tegra_pixmap *pixmap,
                                               unsigned int size);
 
-static bool tegra_exa_pixmap_allocate_from_sysmem(struct tegra_pixmap *pixmap,
+static bool tegra_exa_pixmap_allocate_from_sysmem(TegraPtr tegra,
+                                                  struct tegra_pixmap *pixmap,
                                                   unsigned int size);
 
 static int tegra_exa_init_mm(TegraPtr tegra, struct tegra_exa *exa);

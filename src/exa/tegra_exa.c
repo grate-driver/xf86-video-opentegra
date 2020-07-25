@@ -265,12 +265,70 @@ static void tegra_exa_finalize_init(ScreenPtr screen)
     tegra_exa_wrap_proc(screen);
 }
 
+static void tegra_exa_stats(ScreenPtr screen)
+{
+    ScrnInfoPtr scrn = xf86ScreenToScrn(screen);
+    TegraPtr tegra = TegraPTR(scrn);
+    struct tegra_exa *exa = tegra->exa;
+
+#define PRINT_STATS_1(S)  INFO_MSG(scrn, "\t" #S ": %llu\n", exa->stats.S);
+#define PRINT_STATS_2(S)                                                \
+({                                                                      \
+    unsigned bytes  = exa->stats.S % 1000;                              \
+    unsigned kbytes = (exa->stats.S / 1000) % 1000;                     \
+    unsigned mbytes = exa->stats.S / 1000 / 1000;                       \
+    if (mbytes)                                                         \
+        INFO_MSG(scrn, "\t" #S ": %u.%03u.%03u\n", mbytes, kbytes, bytes);\
+    else if (kbytes)                                                    \
+        INFO_MSG(scrn, "\t" #S ": %u.%03u\n", kbytes, bytes);           \
+    else                                                                \
+        INFO_MSG(scrn, "\t" #S ": %u\n", bytes);                        \
+})
+    INFO_MSG(scrn, "EXA statistics:\n");
+    PRINT_STATS_1(num_pixmaps_created);
+    PRINT_STATS_1(num_pixmaps_destroyed);
+    PRINT_STATS_1(num_pixmaps_allocations);
+    PRINT_STATS_1(num_pixmaps_allocations_bo);
+    PRINT_STATS_2(num_pixmaps_allocations_bo_bytes);
+    PRINT_STATS_1(num_pixmaps_allocations_bo_reused);
+    PRINT_STATS_2(num_pixmaps_allocations_bo_reused_bytes);
+    PRINT_STATS_1(num_pixmaps_allocations_pool);
+    PRINT_STATS_2(num_pixmaps_allocations_pool_bytes);
+    PRINT_STATS_1(num_pixmaps_allocations_fallback);
+    PRINT_STATS_2(num_pixmaps_allocations_fallback_bytes);
+    PRINT_STATS_1(num_pixmaps_resurrected);
+    PRINT_STATS_2(num_pixmaps_resurrected_bytes);
+    PRINT_STATS_1(num_pixmaps_compressed);
+    PRINT_STATS_2(num_pixmaps_compression_in_bytes);
+    PRINT_STATS_2(num_pixmaps_compression_out_bytes);
+    PRINT_STATS_1(num_pixmaps_decompressed);
+    PRINT_STATS_2(num_pixmaps_decompression_bytes);
+    PRINT_STATS_1(num_pool_fast_compactions);
+    PRINT_STATS_2(num_pool_fast_compaction_tx_bytes);
+    PRINT_STATS_1(num_pool_slow_compactions);
+    PRINT_STATS_2(num_pool_slow_compaction_tx_bytes);
+    PRINT_STATS_1(num_screen_uploads);
+    PRINT_STATS_2(num_screen_uploaded_bytes);
+    PRINT_STATS_1(num_screen_downloads);
+    PRINT_STATS_2(num_screen_downloaded_bytes);
+    PRINT_STATS_1(num_2d_copy_jobs);
+    PRINT_STATS_2(num_2d_copy_jobs_bytes);
+    PRINT_STATS_2(num_2d_copy_jobs_to_scanout);
+    PRINT_STATS_1(num_2d_solid_jobs);
+    PRINT_STATS_2(num_2d_solid_jobs_bytes);
+    PRINT_STATS_1(num_3d_jobs);
+    PRINT_STATS_2(num_3d_jobs_bytes);
+    PRINT_STATS_1(num_cpu_read_accesses);
+    PRINT_STATS_1(num_cpu_write_accesses);
+}
+
 static void tegra_exa_deinit(ScreenPtr screen)
 {
     ScrnInfoPtr scrn = xf86ScreenToScrn(screen);
     TegraPtr tegra = TegraPTR(scrn);
     struct tegra_exa *exa = tegra->exa;
 
+    tegra_exa_stats(screen);
     tegra_exa_unwrap_proc(screen);
     tegra_exa_release_mm(tegra, exa);
     tegra_exa_deinit_optimizations(exa);

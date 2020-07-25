@@ -253,6 +253,44 @@ struct tegra_optimization_state {
     struct tegra_exa_scratch scratch;
 };
 
+struct tegra_exa_stats {
+    uint64_t num_pixmaps_created;
+    uint64_t num_pixmaps_destroyed;
+    uint64_t num_pixmaps_allocations;
+    uint64_t num_pixmaps_allocations_bo;
+    uint64_t num_pixmaps_allocations_bo_bytes;
+    uint64_t num_pixmaps_allocations_bo_reused;
+    uint64_t num_pixmaps_allocations_bo_reused_bytes;
+    uint64_t num_pixmaps_allocations_pool;
+    uint64_t num_pixmaps_allocations_pool_bytes;
+    uint64_t num_pixmaps_allocations_fallback;
+    uint64_t num_pixmaps_allocations_fallback_bytes;
+    uint64_t num_pixmaps_resurrected;
+    uint64_t num_pixmaps_resurrected_bytes;
+    uint64_t num_pixmaps_compressed;
+    uint64_t num_pixmaps_compression_in_bytes;
+    uint64_t num_pixmaps_compression_out_bytes;
+    uint64_t num_pixmaps_decompressed;
+    uint64_t num_pixmaps_decompression_bytes;
+    uint64_t num_pool_fast_compactions;
+    uint64_t num_pool_fast_compaction_tx_bytes;
+    uint64_t num_pool_slow_compactions;
+    uint64_t num_pool_slow_compaction_tx_bytes;
+    uint64_t num_screen_uploads;
+    uint64_t num_screen_uploaded_bytes;
+    uint64_t num_screen_downloads;
+    uint64_t num_screen_downloaded_bytes;
+    uint64_t num_2d_copy_jobs;
+    uint64_t num_2d_copy_jobs_bytes;
+    uint64_t num_2d_copy_jobs_to_scanout;
+    uint64_t num_2d_solid_jobs;
+    uint64_t num_2d_solid_jobs_bytes;
+    uint64_t num_3d_jobs;
+    uint64_t num_3d_jobs_bytes;
+    uint64_t num_cpu_read_accesses;
+    uint64_t num_cpu_write_accesses;
+};
+
 struct tegra_exa {
     struct drm_tegra_channel *gr2d;
     struct drm_tegra_channel *gr3d;
@@ -287,6 +325,8 @@ struct tegra_exa {
 
     struct tegra_optimization_state opt_state[TEGRA_OPT_NUM];
     bool in_flush;
+
+    struct tegra_exa_stats stats;
 };
 
 #define TEGRA_EXA_PIXMAP_TYPE_NONE              0

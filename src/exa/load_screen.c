@@ -104,7 +104,10 @@ tegra_exa_copy_screen(const char *src, int src_pitch, int height,
 static bool tegra_exa_load_screen(PixmapPtr pix, int x, int y, int w, int h,
                                   char *usr, int usr_pitch, bool download)
 {
+    ScrnInfoPtr pScrn = xf86ScreenToScrn(pix->drawable.pScreen);
     struct tegra_pixmap *priv = exaGetPixmapDriverPrivate(pix);
+    TegraPtr tegra = TegraPTR(pScrn);
+    struct tegra_exa *exa = tegra->exa;
     int offset, pitch, line_len, cpp;
     bool src_cached, dst_cached;
     int access_hint;
@@ -135,6 +138,9 @@ static bool tegra_exa_load_screen(PixmapPtr pix, int x, int y, int w, int h,
             src_cached = false;
 
         dst_cached = true;
+
+        exa->stats.num_screen_uploads++;
+        exa->stats.num_screen_uploaded_bytes += line_len * h;
     } else {
         if (priv->type == TEGRA_EXA_PIXMAP_TYPE_FALLBACK)
             dst_cached = true;
@@ -147,6 +153,9 @@ static bool tegra_exa_load_screen(PixmapPtr pix, int x, int y, int w, int h,
             DEBUG_MSG("pixmap %p upload canceled alpha_0\n", pix);
 
         priv->state.alpha_0 = 0;
+
+        exa->stats.num_screen_downloads++;
+        exa->stats.num_screen_downloaded_bytes += line_len * h;
     }
 
     ACCEL_MSG("%s pixmap %p %d:%d, %dx%d %d:%d\n",

@@ -156,6 +156,7 @@ static void tegra_exa_done_solid_2d(PixmapPtr pixmap)
     tegra_exa_complete_solid_fill_optimization(pixmap);
 
     if (tegra->scratch.ops && tegra->cmds->status == TEGRADRM_STREAM_CONSTRUCT) {
+        tegra->stats.num_2d_solid_jobs_bytes += tegra_stream_pushbuf_size(tegra->cmds);
         tegra_stream_end(tegra->cmds);
 
         tegra_exa_wait_pixmaps(TEGRA_3D, pixmap, 0);
@@ -170,6 +171,8 @@ static void tegra_exa_done_solid_2d(PixmapPtr pixmap)
 
         tegra_exa_replace_pixmaps_fence(TEGRA_2D, fence, &tegra->scratch,
                                         pixmap, 0);
+
+        tegra->stats.num_2d_solid_jobs++;
     } else {
         tegra_stream_cleanup(tegra->cmds);
     }

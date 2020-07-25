@@ -227,6 +227,7 @@ again:
 
             transferred = mem_pool_transfer_entries_fast(&pool_to->pool,
                                                          &pool_from->pool);
+            exa->stats.num_pool_fast_compaction_tx_bytes += transferred;
 
             tegra_exa_pixmap_pool_unmap(pool_from);
             tegra_exa_pixmap_pool_unmap(pool_to);
@@ -246,6 +247,8 @@ again:
 
     PROFILE_STOP(fast_compaction);
 
+    exa->stats.num_pool_fast_compactions++;
+
     return NULL;
 }
 
@@ -253,6 +256,7 @@ static int tegra_exa_shrink_pool(TegraPtr tegra,
                                  struct tegra_pixmap_pool *shrink_pool,
                                  struct xorg_list *new_pools)
 {
+    struct tegra_exa *exa = tegra->exa;
     struct tegra_pixmap_pool *new_pool;
     unsigned long size;
     int err;
@@ -273,7 +277,8 @@ static int tegra_exa_shrink_pool(TegraPtr tegra,
 
     tegra_exa_fence_pool_entries(shrink_pool);
 
-    mem_pool_transfer_entries_fast(&new_pool->pool, &shrink_pool->pool);
+    size = mem_pool_transfer_entries_fast(&new_pool->pool, &shrink_pool->pool);
+    exa->stats.num_pool_slow_compaction_tx_bytes += size;
 
     tegra_exa_pixmap_pool_unmap(shrink_pool);
     tegra_exa_pixmap_pool_unmap(new_pool);
@@ -331,7 +336,8 @@ static int tegra_exa_merge_pools(TegraPtr tegra)
 
             tegra_exa_fence_pool_entries(pool);
 
-            mem_pool_transfer_entries_fast(&new_pool->pool, &pool->pool);
+            size = mem_pool_transfer_entries_fast(&new_pool->pool, &pool->pool);
+            exa->stats.num_pool_slow_compaction_tx_bytes += size;
 
             tegra_exa_pixmap_pool_unmap(pool);
             tegra_exa_pixmap_pool_unmap(new_pool);
@@ -511,6 +517,7 @@ heavy_again:
 
             transferred += mem_pool_transfer_entries(&pool_to->pool,
                                                      &pool_from->pool);
+            exa->stats.num_pool_slow_compaction_tx_bytes += transferred;
 
             tegra_exa_pixmap_pool_unmap(pool_from);
             tegra_exa_pixmap_pool_unmap(pool_to);
@@ -560,6 +567,8 @@ heavy_again:
     xorg_list_for_each_entry(pool, &exa->mem_pools, entry)
     mem_pool_debug_dump(&pool->pool);
 #endif
+
+    exa->stats.num_pool_slow_compactions++;
 }
 
 static unsigned long
@@ -744,6 +753,7 @@ tegra_exa_pixmap_allocate_from_pool(TegraPtr tegra,
                                     struct tegra_pixmap *pixmap,
                                     unsigned int size)
 {
+    struct tegra_exa *exa = tegra->exa;
     int err;
 
     if (!pixmap->accel || pixmap->dri)
@@ -760,6 +770,10 @@ tegra_exa_pixmap_allocate_from_pool(TegraPtr tegra,
 
 success:
     pixmap->type = TEGRA_EXA_PIXMAP_TYPE_POOL;
+
+    exa->stats.num_pixmaps_allocations++;
+    exa->stats.num_pixmaps_allocations_pool++;
+    exa->stats.num_pixmaps_allocations_pool_bytes += size;
 
     return true;
 }

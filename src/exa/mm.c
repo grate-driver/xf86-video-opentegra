@@ -45,12 +45,23 @@ static bool tegra_exa_pixmap_allocate_from_bo(TegraPtr tegra,
 
     pixmap->type = TEGRA_EXA_PIXMAP_TYPE_BO;
 
+    exa->stats.num_pixmaps_allocations++;
+    exa->stats.num_pixmaps_allocations_bo++;
+    exa->stats.num_pixmaps_allocations_bo_bytes += size;
+
+    if (drm_tegra_bo_reused_from_cache(pixmap->bo)) {
+        exa->stats.num_pixmaps_allocations_bo_reused++;
+        exa->stats.num_pixmaps_allocations_bo_reused_bytes += size;
+    }
+
     return true;
 }
 
-static bool tegra_exa_pixmap_allocate_from_sysmem(struct tegra_pixmap * pixmap,
+static bool tegra_exa_pixmap_allocate_from_sysmem(TegraPtr tegra,
+                                                  struct tegra_pixmap * pixmap,
                                                   unsigned int size)
 {
+    struct tegra_exa *exa = tegra->exa;
     int err;
 
     if (pixmap->dri)
@@ -61,6 +72,10 @@ static bool tegra_exa_pixmap_allocate_from_sysmem(struct tegra_pixmap * pixmap,
         return false;
 
     pixmap->type = TEGRA_EXA_PIXMAP_TYPE_FALLBACK;
+
+    exa->stats.num_pixmaps_allocations++;
+    exa->stats.num_pixmaps_allocations_fallback++;
+    exa->stats.num_pixmaps_allocations_fallback_bytes += size;
 
     return true;
 }

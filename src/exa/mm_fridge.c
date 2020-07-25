@@ -259,6 +259,8 @@ static void tegra_exa_mm_resurrect_accel_pixmap(TegraPtr tegra,
         tegra_exa_mm_fridge_unmap_pixmap(pixmap);
         free(pixmap_data_orig);
         exa->release_count++;
+        exa->stats.num_pixmaps_resurrected++;
+        exa->stats.num_pixmaps_resurrected_bytes += data_size;
     } else {
         pixmap->fallback = pixmap_data_orig;
     }
@@ -547,6 +549,7 @@ tegra_exa_thaw_pixmap_data(TegraPtr tegra,
                            struct tegra_pixmap *pixmap,
                            bool accel)
 {
+    struct tegra_exa *exa = tegra->exa;
     struct compression_arg carg;
     unsigned int retries = 0;
     unsigned int data_size;
@@ -578,7 +581,7 @@ retry:
             return;
         }
 
-        ret = tegra_exa_pixmap_allocate_from_sysmem(pixmap, data_size);
+        ret = tegra_exa_pixmap_allocate_from_sysmem(tegra, pixmap, data_size);
     }
 
     if (ret == false) {
@@ -638,6 +641,9 @@ retry:
     }
 
     tegra_exa_mm_fridge_unmap_pixmap(pixmap);
+
+    exa->stats.num_pixmaps_decompressed++;
+    exa->stats.num_pixmaps_decompression_bytes += data_size;
 }
 
 static int tegra_exa_freeze_pixmap(TegraPtr tegra, struct tegra_pixmap *pixmap)
@@ -690,6 +696,10 @@ static int tegra_exa_freeze_pixmap(TegraPtr tegra, struct tegra_pixmap *pixmap)
     pixmap->compression_fmt     = carg.format;
     pixmap->type                = TEGRA_EXA_PIXMAP_TYPE_NONE;
     pixmap->frozen              = true;
+
+    exa->stats.num_pixmaps_compressed++;
+    exa->stats.num_pixmaps_compression_in_bytes  += data_size;
+    exa->stats.num_pixmaps_compression_out_bytes += carg.out_size;
 
     return 0;
 
@@ -961,12 +971,12 @@ tegra_exa_allocate_pixmap_data_no_fail(TegraPtr tegra,
 
     while (1) {
         if (!accel) {
-            if (tegra_exa_pixmap_allocate_from_sysmem(pixmap, size))
+            if (tegra_exa_pixmap_allocate_from_sysmem(tegra, pixmap, size))
                 break;
         } else {
             if (tegra_exa_pixmap_allocate_from_pool(tegra, pixmap, size) ||
                 tegra_exa_pixmap_allocate_from_bo(tegra, pixmap, size) ||
-                tegra_exa_pixmap_allocate_from_sysmem(pixmap, size))
+                tegra_exa_pixmap_allocate_from_sysmem(tegra, pixmap, size))
                 break;
         }
 

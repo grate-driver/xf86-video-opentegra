@@ -25,7 +25,11 @@ static PROFILE_DEF(cpu_access);
 static bool tegra_exa_prepare_cpu_access(PixmapPtr pixmap, int idx, void **ptr,
                                          bool cancel_optimizations)
 {
+    ScrnInfoPtr pScrn = xf86ScreenToScrn(pixmap->drawable.pScreen);
     struct tegra_pixmap *priv = exaGetPixmapDriverPrivate(pixmap);
+    TegraPtr tegra = TegraPTR(pScrn);
+    struct tegra_exa *exa = tegra->exa;
+    bool write = false;
     int err;
 
     FALLBACK_MSG("pixmap %p idx %d type %u %d:%d:%d %p\n",
@@ -34,6 +38,13 @@ static bool tegra_exa_prepare_cpu_access(PixmapPtr pixmap, int idx, void **ptr,
                  pixmap->drawable.height,
                  pixmap->drawable.bitsPerPixel,
                  pixmap->devPrivate.ptr);
+
+    switch (idx) {
+    default:
+    case EXA_PREPARE_DEST:
+    case EXA_PREPARE_AUX_DEST:
+        write = true;
+    }
 
     tegra_exa_thaw_pixmap(pixmap, false);
 
@@ -64,6 +75,8 @@ static bool tegra_exa_prepare_cpu_access(PixmapPtr pixmap, int idx, void **ptr,
              * so assume the worst.
              */
             priv->state.alpha_0 = 0;
+
+            exa->stats.num_cpu_write_accesses++;
         }
 
         /* fall through */
@@ -73,6 +86,9 @@ static bool tegra_exa_prepare_cpu_access(PixmapPtr pixmap, int idx, void **ptr,
     case EXA_PREPARE_AUX_MASK:
     case EXA_NUM_PREPARE_INDICES:
         TEGRA_PIXMAP_WAIT_WRITE_FENCES(priv);
+
+        if (!cancel_optimizations && !write)
+            exa->stats.num_cpu_read_accesses++;
     }
 
     if (priv->type == TEGRA_EXA_PIXMAP_TYPE_POOL) {

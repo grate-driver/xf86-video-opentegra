@@ -245,7 +245,7 @@ static bool tegra_exa_pixmap_allocate_data(TegraPtr tegra,
      * avoid sampling from a such textures.
      */
     if ((!pixmap->dri && width == 1 && height == 1) || !pixmap->accel)
-        return tegra_exa_pixmap_allocate_from_sysmem(pixmap, size);
+        return tegra_exa_pixmap_allocate_from_sysmem(tegra, pixmap, size);
 
     if (pixmap->accel) {
         pixmap->offscreen = 1;
@@ -266,7 +266,7 @@ static bool tegra_exa_pixmap_allocate_data(TegraPtr tegra,
 
     return (tegra_exa_pixmap_allocate_from_pool(tegra, pixmap, size) ||
             tegra_exa_pixmap_allocate_from_bo(tegra, pixmap, size) ||
-            tegra_exa_pixmap_allocate_from_sysmem(pixmap, size));
+            tegra_exa_pixmap_allocate_from_sysmem(tegra, pixmap, size));
 }
 
 static bool tegra_exa_pixmap_is_busy(struct tegra_pixmap *pixmap)
@@ -288,6 +288,7 @@ static void *tegra_exa_create_pixmap(ScreenPtr screen, int width, int height,
 {
     ScrnInfoPtr scrn = xf86ScreenToScrn(screen);
     TegraPtr tegra = TegraPTR(scrn);
+    struct tegra_exa *exa = tegra->exa;
     struct tegra_pixmap *pixmap;
 
     pixmap = calloc(1, sizeof(*pixmap));
@@ -319,6 +320,8 @@ static void *tegra_exa_create_pixmap(ScreenPtr screen, int width, int height,
               pixmap, pixmap->type, width, height, bitsPerPixel, *new_fb_pitch,
               usage_hint, usage_hint >> 24, usage_hint >> 16, usage_hint >> 8, usage_hint);
 
+    exa->stats.num_pixmaps_created++;
+
     return pixmap;
 }
 
@@ -327,6 +330,7 @@ static void tegra_exa_destroy_pixmap(void *driverPriv)
     struct tegra_pixmap *pixmap = driverPriv;
     ScrnInfoPtr scrn = xf86ScreenToScrn(pixmap->base->drawable.pScreen);
     TegraPtr tegra = TegraPTR(scrn);
+    struct tegra_exa *exa = tegra->exa;
     bool released_data;
 
     released_data = tegra_exa_pixmap_release_data(tegra, pixmap);
@@ -343,6 +347,8 @@ static void tegra_exa_destroy_pixmap(void *driverPriv)
 
     if (released_data)
         free(pixmap);
+
+    exa->stats.num_pixmaps_destroyed++;
 }
 
 static bool tegra_exa_modify_pixmap_header(PixmapPtr pixmap, int width,
