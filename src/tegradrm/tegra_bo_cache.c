@@ -282,6 +282,7 @@ drm_tegra_bo_cache_alloc(struct drm_tegra *drm,
 			if (drm->debug_bo)
 				drm->debug_bos_cached--;
 #endif
+			bo->reused = true;
 		}
 	}
 

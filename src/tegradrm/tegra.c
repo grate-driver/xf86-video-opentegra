@@ -686,6 +686,14 @@ int drm_tegra_bo_mapped(struct drm_tegra_bo *bo)
 	return atomic_read(&bo->mmap_ref);
 }
 
+int drm_tegra_bo_reused_from_cache(struct drm_tegra_bo *bo)
+{
+	if (!bo)
+		return -EINVAL;
+
+	return bo->reused;
+}
+
 int drm_tegra_bo_get_flags(struct drm_tegra_bo *bo, uint32_t *flags)
 {
 	struct drm_tegra_gem_get_flags args;

@@ -173,6 +173,7 @@ struct drm_tegra_bo {
 	void *map_vg;
 #endif
 
+	bool reused;
 	bool reuse;
 	/*
 	 * Cache-accessible fields must be at the end of structure
