@@ -67,6 +67,7 @@ struct tegra_stream {
     uint64_t fence_seqno;
     uint32_t **buf_ptr;
     uint32_t class_id;
+    uint32_t num_pushed_words;
 
     void (*destroy)(struct tegra_stream *stream);
     int (*begin)(struct tegra_stream *stream,
@@ -139,6 +140,7 @@ static inline int tegra_stream_end(struct tegra_stream *stream)
     }
 
     ret = stream->end(stream);
+    stream->num_pushed_words = 0;
     stream->buf_ptr = NULL;
 
     return ret;
@@ -152,6 +154,7 @@ static inline int tegra_stream_cleanup(struct tegra_stream *stream)
         return -1;
 
     ret = stream->cleanup(stream);
+    stream->num_pushed_words = 0;
     stream->buf_ptr = NULL;
 
     return ret;
@@ -218,6 +221,8 @@ tegra_stream_push_reloc(struct tegra_stream *stream,
         return -1;
     }
 
+    stream->num_pushed_words++;
+
     return stream->push_reloc(stream, bo, offset, write, explicit_fencing);
 }
 
@@ -238,6 +243,8 @@ static inline int tegra_stream_push_words(struct tegra_stream *stream,
     va_start(args, num_relocs);
     ret = stream->push_words(stream, addr, words, num_relocs, args);
     va_end(args);
+
+    stream->num_pushed_words += words;
 
     return ret;
 }
@@ -273,6 +280,7 @@ tegra_stream_push(struct tegra_stream *stream, uint32_t word)
 
     *(*stream->buf_ptr)++ = word;
     stream->op_done_synced = false;
+    stream->num_pushed_words++;
 
     return 0;
 }
@@ -312,6 +320,12 @@ tegra_reloc(const void *var_ptr, struct drm_tegra_bo *bo,
 {
     struct tegra_reloc reloc = {var_ptr, bo, offset, var_offset};
     return reloc;
+}
+
+static inline unsigned int
+tegra_stream_pushbuf_size(struct tegra_stream *stream)
+{
+    return stream->num_pushed_words * 4;
 }
 
 #endif
