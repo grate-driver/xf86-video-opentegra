@@ -46,6 +46,15 @@ static bool tegra_exa_prepare_cpu_access(PixmapPtr pixmap, int idx, void **ptr,
     case EXA_PREPARE_AUX_DEST:
         write = true;
         accel = true;
+        break;
+
+        /* fall through */
+    case EXA_PREPARE_SRC:
+    case EXA_PREPARE_MASK:
+    case EXA_PREPARE_AUX_SRC:
+    case EXA_PREPARE_AUX_MASK:
+    case EXA_NUM_PREPARE_INDICES:
+        break;
     }
 
     tegra_exa_thaw_pixmap(pixmap, accel);
