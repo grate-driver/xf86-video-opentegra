@@ -111,7 +111,7 @@ static int tegra_exa_init_mm(TegraPtr tegra, struct tegra_exa *exa)
      * large, the accidental pinned memory pages may ruin the day (or Xorg
      * session at least).
      */
-    if (tegra->exa_pool_alloc && !has_iommu) {
+    if (tegra->exa_pool_alloc) {
         unsigned int size;
         int err = -ENOMEM;
 
