@@ -39,6 +39,9 @@ int drm_tegra_job_new_v2(struct drm_tegra_job_v2 **jobp,
 	if (num_bos_expected < 8)
 		num_bos_expected = 8;
 
+	if (num_bos_expected > DRM_TEGRA_BO_TABLE_MAX_ENTRIES_NUM)
+		goto err_free_words;
+
 	err = posix_memalign(&bo_table, 64,
 			     sizeof(*job->bo_table) * num_bos_expected);
 	if (err)
@@ -103,6 +106,9 @@ int drm_tegra_job_resize_v2(struct drm_tegra_job_v2 *job,
 	}
 
 	if (num_bos != job->num_bos_max) {
+		if (num_bos > DRM_TEGRA_BO_TABLE_MAX_ENTRIES_NUM)
+			return -EINVAL;
+
 		err = posix_memalign(&new_bo_table, 64,
 				     sizeof(*job->bo_table) * num_bos);
 		if (err)
