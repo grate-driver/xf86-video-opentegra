@@ -267,6 +267,10 @@ static bool tegra_stream_free_fence_v1(struct tegra_fence *base_fence)
         err = drm_tegra_fence_is_busy(f->fence);
 
     if (!err) {
+#ifdef FENCE_DEBUG
+        DRMLISTDEL(&f->base.dbg_entry);
+        tegra_fences_destroyed++;
+#endif
         drm_tegra_fence_free(f->fence);
         drm_tegra_job_free(f->job);
         xorg_list_del(&f->entry);
@@ -298,6 +302,9 @@ tegra_stream_create_fence_v1(struct tegra_stream_v1 *stream,
     f->base.bug0 = false;
     f->base.bug1 = true;
     f->base.released = false;
+
+    DRMLISTADD(&f->base.dbg_entry, &tegra_live_fences);
+    tegra_fences_created++;
 #endif
 
     xorg_list_append(&f->entry, &stream->held_fences);

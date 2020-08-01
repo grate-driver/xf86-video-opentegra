@@ -285,6 +285,11 @@ static bool tegra_stream_free_fence_v2(struct tegra_fence *base_fence)
 #ifdef HAVE_LIBDRM_SYNCOBJ_SUPPORT
     struct tegra_fence_v2 *f = to_fence_v2(base_fence);
 
+#ifdef FENCE_DEBUG
+    DRMLISTDEL(&f->base.dbg_entry);
+    tegra_fences_destroyed++;
+#endif
+
     if (f->syncobj_handle)
         drmSyncobjDestroy(f->drm_fd, f->syncobj_handle);
     free(f);
@@ -316,6 +321,9 @@ tegra_stream_create_fence_v2(struct tegra_stream_v2 *stream, bool gr2d)
     f->base.bug0 = false;
     f->base.bug1 = true;
     f->base.released = false;
+
+    DRMLISTADD(&f->base.dbg_entry, &tegra_live_fences);
+    tegra_fences_created++;
 #endif
 
     return &f->base;

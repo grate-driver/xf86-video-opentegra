@@ -96,6 +96,7 @@ opentegra_drv_la_SOURCES += \
 	gpu/gr3d.h \
 	gpu/host1x.h \
 	gpu/tegra_fence.h \
+	gpu/tegra_fence.c \
 	gpu/tegra_stream_v1.c \
 	gpu/tegra_stream_v2.c \
 	gpu/tegra_stream.h \

@@ -30,7 +30,16 @@
 #include <stdio.h>
 
 #ifdef DEBUG
+#include "tegradrm/lists.h"
+
 #define FENCE_DEBUG
+extern unsigned tegra_fences_created;
+extern unsigned tegra_fences_destroyed;
+extern drmMMListHead tegra_live_fences;
+void tegra_fences_debug_dump(unsigned int max);
+extern struct tegra_fence *poisoned_fence;
+#else
+#define poisoned_fence  NULL
 #endif
 
 #define FENCE_DEBUG_VERBOSE     0
@@ -42,8 +51,12 @@
                __func__, __LINE__, FDSC, F, (F)->gr2d, (F)->refcnt);    \
 })
 
-#define TEGRA_FENCE_ERR_MSG(fmt, args...) \
-    fprintf(stderr, "%s:%d/%s(): " fmt, __FILE__, __LINE__, __func__, ##args)
+#define TEGRA_FENCE_ERR_MSG(fmt, args...)                               \
+({                                                                      \
+    fprintf(stderr, "%s:%d/%s(): " fmt,                                 \
+            __FILE__, __LINE__, __func__, ##args);                      \
+    assert(0);                                                          \
+})
 
 struct tegra_fence {
     uint64_t seqno;
@@ -56,9 +69,10 @@ struct tegra_fence {
     bool (*free_fence)(struct tegra_fence *f);
 
 #ifdef FENCE_DEBUG
-    bool bug0;
-    bool bug1;
+    uint32_t bug0;
+    uint32_t bug1;
     bool released;
+    drmMMListHead dbg_entry;
 #endif
 };
 
@@ -70,8 +84,8 @@ static inline void tegra_fence_validate(struct tegra_fence *f)
             assert(f->refcnt == -1);
         else
             assert(f->refcnt >= 0);
-        assert(!f->bug0);
-        assert(f->bug1);
+        assert(f->bug0 == 0);
+        assert(f->bug1 == 1);
     }
 #endif
 }
@@ -124,6 +138,8 @@ static inline void tegra_fence_free(struct tegra_fence *f)
 #endif
         if (!f->free_fence(f)) {
 #ifdef FENCE_DEBUG
+            f->bug0 = 0xffffffff;
+            f->bug1 = 0xfffffffe;
             f->refcnt = -1;
 #endif
         }
@@ -155,15 +171,17 @@ static inline void tegra_fence_put(struct tegra_fence *f)
 
 #ifdef FENCE_DEBUG
         if (f->refcnt < 0) {
-            TEGRA_FENCE_ERR_MSG("BUG: fence refcount underflow\n");
+            TEGRA_FENCE_ERR_MSG("BUG: fence refcount underflow %d\n",
+                                f->refcnt);
             assert(0);
             return;
         }
 #endif
 
 #ifdef FENCE_DEBUG
-        if (f->refcnt > 10) {
-            TEGRA_FENCE_ERR_MSG("BUG: fence refcount overflow\n");
+        if (f->refcnt > 100) {
+            TEGRA_FENCE_ERR_MSG("BUG: fence refcount overflow %d\n",
+                                f->refcnt);
             assert(0);
             return;
         }
