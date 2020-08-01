@@ -47,8 +47,11 @@ extern struct tegra_fence *poisoned_fence;
 #define TEGRA_FENCE_DEBUG_MSG(F, FDSC)                                  \
 ({                                                                      \
     if (FENCE_DEBUG_VERBOSE && F)                                       \
-        printf("%s:%d: fdbg: %s: f=%p 2d=%d cnt=%d\n",                  \
-               __func__, __LINE__, FDSC, F, (F)->gr2d, (F)->refcnt);    \
+        printf("%s:%d: fdbg: %s: f=%p 2d=%d cnt=%d seqno=%llu active=%d\n",\
+               __func__, __LINE__, FDSC, F, (F)->gr2d, (F)->refcnt,     \
+               (F)->seqno, (F)->active);                                \
+    if (FENCE_DEBUG_VERBOSE && !F)                                      \
+        printf("%s:%d: fdbg: %s: f=NULL\n",  __func__, __LINE__, FDSC); \
 })
 
 #define TEGRA_FENCE_ERR_MSG(fmt, args...)                               \
@@ -61,12 +64,14 @@ extern struct tegra_fence *poisoned_fence;
 struct tegra_fence {
     uint64_t seqno;
     void *opaque;
+    bool active;
     int refcnt;
     bool gr2d;
 
     bool (*check_fence)(struct tegra_fence *f);
     bool (*wait_fence)(struct tegra_fence *f);
     bool (*free_fence)(struct tegra_fence *f);
+    bool (*mark_completed)(struct tegra_fence *f);
 
 #ifdef FENCE_DEBUG
     uint32_t bug0;
@@ -109,7 +114,9 @@ static inline bool tegra_fence_check_completion(struct tegra_fence *f)
 {
     if (f) {
         tegra_fence_validate(f);
-        return f->check_fence(f);
+
+        if (f->active)
+            return f->check_fence(f);
     }
 
     return true;
@@ -121,7 +128,9 @@ static inline bool tegra_fence_wait(struct tegra_fence *f)
 {
     if (f) {
         tegra_fence_validate(f);
-        return f->wait_fence(f);
+
+        if (f->active)
+            return f->wait_fence(f);
     }
 
     return true;
@@ -193,5 +202,39 @@ static inline void tegra_fence_put(struct tegra_fence *f)
 }
 #define TEGRA_FENCE_PUT(F) \
     ({ TEGRA_FENCE_DEBUG_MSG(F, "put"); tegra_fence_put(F); })
+
+/*
+ * A newly created fence is inactive. It becomes active once job is submitted.
+ * This function marks fence as active, so it can be waited without tripping
+ * debug checks, for example if job was canceled before it was submitted,
+ */
+static inline bool tegra_fence_set_active(struct tegra_fence *f)
+{
+    if (f) {
+        tegra_fence_validate(f);
+        f->active = true;
+        return true;
+    }
+
+    return false;
+}
+#define TEGRA_FENCE_SET_ACTIVE(F) \
+    ({ TEGRA_FENCE_DEBUG_MSG(F, "set_active"); tegra_fence_set_active(F); })
+
+/*
+ * The completed fence won't be waited, like it was already successfully
+ * waited before.
+ */
+static inline bool tegra_fence_mark_completed(struct tegra_fence *f)
+{
+    if (f) {
+        tegra_fence_validate(f);
+        return f->mark_completed(f);
+    }
+
+    return false;
+}
+#define TEGRA_FENCE_MARK_COMPLETED(F) \
+    ({ TEGRA_FENCE_DEBUG_MSG(F, "mark_completed"); tegra_fence_mark_completed(F); })
 
 #endif

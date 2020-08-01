@@ -43,6 +43,13 @@ struct tegra_stream_v2 {
     int drm_fd;
     struct drm_tegra *drm;
     struct drm_tegra_job_v2 *job;
+
+    /*
+     * job_fence is created by tegra_stream_get_current_fence_v2() that
+     * can be invoked during of cmdstream construction in order to get
+     * an intermediate job fence, it becomes the job's.
+     */
+    struct tegra_fence *job_fence;
 };
 
 static uint64_t gettime_ns(void)
@@ -85,6 +92,8 @@ static int tegra_stream_cleanup_v2(struct tegra_stream *base_stream)
 
     drm_tegra_job_reset_v2(stream->job);
     stream->base.status = TEGRADRM_STREAM_FREE;
+    TEGRA_FENCE_PUT(stream->job_fence);
+    stream->job_fence = NULL;
 
     return 0;
 }
@@ -115,16 +124,26 @@ static int tegra_stream_flush_v2(struct tegra_stream *base_stream,
         goto cleanup;
     }
 
-    f = tegra_stream_create_fence_v2(stream, false);
-    if (!f) {
-        ret = -1;
-        goto cleanup;
+    if (stream->job_fence) {
+        f = stream->job_fence;
+        stream->job_fence = NULL;
+    } else {
+        f = tegra_stream_create_fence_v2(stream, false);
+        if (!f) {
+            ret = -1;
+            goto cleanup;
+        }
     }
+
+    assert(!f->active);
 
     if (explicit_fence)
         syncobj_handle_in = to_fence_v2(explicit_fence)->syncobj_handle;
     else
         syncobj_handle_in = 0;
+
+    if (explicit_fence)
+        assert(explicit_fence->active);
 
     ret = drm_tegra_job_submit_v2(stream->job,
                                   syncobj_handle_in,
@@ -135,6 +154,7 @@ static int tegra_stream_flush_v2(struct tegra_stream *base_stream,
                  ret, strerror(ret));
         ret = -1;
     } else {
+        TEGRA_FENCE_SET_ACTIVE(f);
         TEGRA_FENCE_WAIT(f);
     }
 
@@ -167,14 +187,26 @@ tegra_stream_submit_v2(enum host1x_engine engine,
     if (stream->base.status != TEGRADRM_STREAM_READY)
         goto cleanup;
 
-    f = tegra_stream_create_fence_v2(stream, engine == TEGRA_2D);
-    if (!f)
-        goto cleanup;
+    if (stream->job_fence) {
+        f = stream->job_fence;
+        stream->job_fence = NULL;
+    } else {
+        f = tegra_stream_create_fence_v2(stream, engine == TEGRA_2D);
+        if (!f)
+            goto cleanup;
+
+        f->seqno = base_stream->fence_seqno++;
+    }
+
+    assert(!f->active);
 
     if (explicit_fence)
         syncobj_handle_in = to_fence_v2(explicit_fence)->syncobj_handle;
     else
         syncobj_handle_in = 0;
+
+    if (explicit_fence)
+        assert(explicit_fence->active);
 
     drm_ver = drm_tegra_version(stream->drm);
 
@@ -199,6 +231,7 @@ tegra_stream_submit_v2(enum host1x_engine engine,
                                   ~0ull);
     if (ret) {
         ErrorMsg("drm_tegra_job_submit_v2() failed %d\n", ret);
+        TEGRA_FENCE_MARK_COMPLETED(f);
         TEGRA_FENCE_PUT(f);
         TEGRA_FENCE_WAIT(stream->base.last_fence[engine]);
         TEGRA_FENCE_PUT(stream->base.last_fence[engine]);
@@ -206,6 +239,7 @@ tegra_stream_submit_v2(enum host1x_engine engine,
     } else {
         TEGRA_FENCE_PUT(stream->base.last_fence[engine]);
         stream->base.last_fence[engine] = f;
+        TEGRA_FENCE_SET_ACTIVE(f);
     }
 
 cleanup:
@@ -297,6 +331,23 @@ static bool tegra_stream_free_fence_v2(struct tegra_fence *base_fence)
     return true;
 }
 
+static bool
+tegra_stream_mark_fence_completed_v2(struct tegra_fence *base_fence)
+{
+#ifdef HAVE_LIBDRM_SYNCOBJ_SUPPORT
+    struct tegra_fence_v2 *f = to_fence_v2(base_fence);
+
+    if (f->syncobj_handle) {
+        drmSyncobjDestroy(f->drm_fd, f->syncobj_handle);
+        f->syncobj_handle = 0;
+    }
+
+    TEGRA_FENCE_SET_ACTIVE(base_fence);
+
+    return true;
+#endif
+}
+
 static struct tegra_fence *
 tegra_stream_create_fence_v2(struct tegra_stream_v2 *stream, bool gr2d)
 {
@@ -315,6 +366,7 @@ tegra_stream_create_fence_v2(struct tegra_stream_v2 *stream, bool gr2d)
     f->base.check_fence = tegra_stream_check_fence_v2;
     f->base.wait_fence = tegra_stream_wait_fence_v2;
     f->base.free_fence = tegra_stream_free_fence_v2;
+    f->base.mark_completed = tegra_stream_mark_fence_completed_v2;
     f->base.gr2d = gr2d;
 
 #ifdef FENCE_DEBUG
@@ -509,6 +561,40 @@ static int tegra_stream_sync_v2(struct tegra_stream *base_stream,
     return 0;
 }
 
+static struct tegra_fence *
+tegra_stream_get_current_fence_v2(struct tegra_stream *base_stream)
+{
+    struct tegra_stream_v2 *stream = to_stream_v2(base_stream);
+    bool gr2d;
+
+    /*
+     * WARNING:
+     *
+     * Stream v2 returns the final job fence, emitting intermediate fence
+     * unsupported.
+     */
+    if (!stream->job_fence) {
+        switch (stream->base.class_id) {
+        case HOST1X_CLASS_GR2D:
+            gr2d = true;
+            break;
+
+        case HOST1X_CLASS_GR3D:
+            gr2d = false;
+            break;
+
+        default:
+            assert(0);
+            break;
+        }
+
+        stream->job_fence = tegra_stream_create_fence_v2(stream, gr2d);
+        stream->job_fence->seqno = base_stream->fence_seqno++;
+    }
+
+    return stream->job_fence;
+}
+
 int grate_stream_create_v2(struct tegra_stream **pstream,
                            struct _TegraRec *tegra)
 {
@@ -550,6 +636,7 @@ int grate_stream_create_v2(struct tegra_stream **pstream,
     stream->push_words = tegra_stream_push_words_v2;
     stream->prep = tegra_stream_prep_v2;
     stream->sync = tegra_stream_sync_v2;
+    stream->current_fence = tegra_stream_get_current_fence_v2;
 
     stream_v2->drm_fd = tegra->fd;
     stream_v2->drm = tegra->drm;

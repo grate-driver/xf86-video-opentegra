@@ -94,6 +94,7 @@ struct tegra_stream {
     int (*sync)(struct tegra_stream *stream,
                 enum drm_tegra_syncpt_cond cond,
                 bool keep_class);
+    struct tegra_fence * (*current_fence)(struct tegra_stream *stream);
 };
 
 /* Stream operations */
@@ -192,6 +193,26 @@ tegra_stream_get_last_fence(struct tegra_stream *stream,
 })
 
 static inline struct tegra_fence *
+tegra_stream_get_current_fence(struct tegra_stream *stream)
+{
+    struct tegra_fence *current_fence;
+
+    if (!(stream && stream->status == TEGRADRM_STREAM_CONSTRUCT)) {
+        TEGRA_STREAM_ERR_MSG("Stream status isn't CONSTRUCT\n");
+        return NULL;
+    }
+
+    current_fence = stream->current_fence(stream);
+    TEGRA_FENCE_DEBUG_MSG(current_fence, "get_current");
+
+    return current_fence;
+}
+#define TEGRA_STREAM_GET_CURRENT_FENCE(STREAM)              \
+({                                                          \
+    tegra_stream_get_current_fence(STREAM);                 \
+})
+
+static inline struct tegra_fence *
 tegra_stream_submit(enum host1x_engine engine,
                     struct tegra_stream *stream,
                     struct tegra_fence *explicit_fence)
@@ -206,7 +227,6 @@ tegra_stream_submit(enum host1x_engine engine,
     f = stream->submit(engine, stream, explicit_fence);
     if (f) {
         TEGRA_FENCE_DEBUG_MSG(f, "submit");
-        f->seqno = stream->fence_seqno++;
         tegra_fence_validate(f);
     }
 

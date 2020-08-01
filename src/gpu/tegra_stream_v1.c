@@ -181,7 +181,10 @@ tegra_stream_submit_v1(enum host1x_engine engine,
         f = tegra_stream_create_fence_v1(stream, fence, engine == TEGRA_2D);
         if (f) {
             TEGRA_FENCE_PUT(stream->base.last_fence[engine]);
+            TEGRA_FENCE_SET_ACTIVE(f);
+
             stream->base.last_fence[engine] = f;
+            f->seqno = base_stream->fence_seqno++;
             goto done;
         } else {
             ret = drm_tegra_fence_wait_timeout(fence, 1000);
@@ -282,6 +285,23 @@ static bool tegra_stream_free_fence_v1(struct tegra_fence *base_fence)
     return false;
 }
 
+static bool
+tegra_stream_mark_fence_completed_v1(struct tegra_fence *base_fence)
+{
+    struct tegra_fence_v1 *f = to_fence_v1(base_fence);
+
+    if (f->fence) {
+        drm_tegra_fence_free(f->fence);
+        drm_tegra_job_free(f->job);
+        f->fence = NULL;
+        f->job = NULL;
+    }
+
+    TEGRA_FENCE_SET_ACTIVE(base_fence);
+
+    return true;
+}
+
 static struct tegra_fence *
 tegra_stream_create_fence_v1(struct tegra_stream_v1 *stream,
                              struct drm_tegra_fence *fence, bool gr2d)
@@ -296,6 +316,7 @@ tegra_stream_create_fence_v1(struct tegra_stream_v1 *stream,
     f->base.check_fence = tegra_stream_check_fence_v1;
     f->base.wait_fence = tegra_stream_wait_fence_v1;
     f->base.free_fence = tegra_stream_free_fence_v1;
+    f->base.mark_completed = tegra_stream_mark_fence_completed_v1;
     f->base.gr2d = gr2d;
 
 #ifdef FENCE_DEBUG
@@ -477,6 +498,13 @@ static int tegra_stream_sync_v1(struct tegra_stream *base_stream,
     return 0;
 }
 
+static struct tegra_fence *
+tegra_stream_get_current_fence_v1(struct tegra_stream *base_stream)
+{
+    /* upstream kernel driver doesn't support advanced synchronization */
+    return NULL;
+}
+
 int tegra_stream_create_v1(struct tegra_stream **pstream,
                            struct _TegraRec *tegra)
 {
@@ -506,6 +534,7 @@ int tegra_stream_create_v1(struct tegra_stream **pstream,
     stream->push_words = tegra_stream_push_words_v1;
     stream->prep = tegra_stream_prep_v1;
     stream->sync = tegra_stream_sync_v1;
+    stream->current_fence = tegra_stream_get_current_fence_v1;
 
     xorg_list_init(&stream_v1->held_fences);
 
