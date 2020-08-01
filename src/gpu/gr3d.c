@@ -435,7 +435,9 @@ void tgr3d_set_texture_desc(struct tegra_stream *cmds,
 void tgr3d_set_draw_params(struct tegra_stream *cmds,
                            unsigned primitive_type,
                            unsigned index_mode,
-                           unsigned first_vtx)
+                           unsigned first_vtx,
+                           bool vtx_mem_cache_invalidate,
+                           bool vtx_gpu_cache_invalidate)
 {
     uint32_t value = 0;
 
@@ -445,7 +447,8 @@ void tgr3d_set_draw_params(struct tegra_stream *cmds,
     value |= TGR3D_VAL(DRAW_PARAMS, PROVOKING_VERTEX, 0);
     value |= TGR3D_VAL(DRAW_PARAMS, PRIMITIVE_TYPE, primitive_type);
     value |= TGR3D_VAL(DRAW_PARAMS, FIRST, first_vtx);
-    value |= 0xC0000000;
+    value |= TGR3D_BOOL(DRAW_PARAMS, VTX_MEM_CACHE_INVALIDATE, vtx_mem_cache_invalidate);
+    value |= TGR3D_BOOL(DRAW_PARAMS, VTX_GPU_CACHE_INVALIDATE, vtx_gpu_cache_invalidate);
 
     tegra_stream_push(cmds, HOST1X_OPCODE_INCR(TGR3D_DRAW_PARAMS, 1));
     tegra_stream_push(cmds, value);

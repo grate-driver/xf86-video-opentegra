@@ -126,7 +126,9 @@ void tgr3d_set_texture_desc(struct tegra_stream *cmds,
 void tgr3d_set_draw_params(struct tegra_stream *cmds,
                            unsigned primitive_type,
                            unsigned index_mode,
-                           unsigned first_vtx);
+                           unsigned first_vtx,
+                           bool vtx_mem_cache_invalidate,
+                           bool vtx_gpu_cache_invalidate);
 
 void tgr3d_draw_primitives(struct tegra_stream *cmds,
                            unsigned first_index, unsigned count);

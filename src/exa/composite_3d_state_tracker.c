@@ -125,7 +125,7 @@ static void tegra_exa_finalize_3d_state(struct tegra_3d_state *state)
         tgr3d_initialize(cmds);
         tgr3d_upload_const_vp(cmds, const_id++, 0.0f, 0.0f, 0.0f, 1.0f);
         tgr3d_set_draw_params(cmds, TGR3D_PRIMITIVE_TYPE_TRIANGLES,
-                              TGR3D_INDEX_MODE_NONE, 0);
+                              TGR3D_INDEX_MODE_NONE, 0, true, true);
         state->inited = true;
     }
 
