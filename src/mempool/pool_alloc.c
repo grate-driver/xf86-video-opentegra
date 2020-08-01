@@ -327,16 +327,18 @@ static void migrate_entry(struct mem_pool *pool_from,
     char *from_vbase = pool_from->vbase + (unsigned long)pool_from->entries[from].base;
     char *new_vbase  = pool_to->vbase   + (unsigned long)new_base;
 
-    from_vbase -= pool_from->base_offset;
-    new_vbase  -= pool_to->base_offset;
-
-    assert(pool_from->access_refcount > 0);
-    assert(pool_to->access_refcount > 0);
 #ifdef POOL_DEBUG_VERBOSE
     char *base = pool_from->entries[from].base;
     PRINTF("%s: from %u (%p) to %u (%p)\n",
            __func__, from, pool_from, to, pool_to);
 #endif
+
+    from_vbase -= pool_from->base_offset;
+    new_vbase  -= pool_to->base_offset;
+
+    assert(pool_from->access_refcount > 0);
+    assert(pool_to->access_refcount > 0);
+
     /* pool_from data is copied into pool_to by move_entry()! */
     move_entry(pool_from, pool_to, from, to);
     if (new_vbase != from_vbase) {
