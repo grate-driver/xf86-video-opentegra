@@ -161,7 +161,10 @@ static void *tegra_exa_pixmap_pool_alloc(struct tegra_exa *exa,
 
     if (!data && !fast && mem_pool_has_space(&pool->pool, size)) {
         tegra_exa_pixmap_pool_map(pool);
+        tegra_exa_fence_pool_entries(pool);
+
         data = mem_pool_alloc(&pool->pool, size, pool_entry, true);
+
         tegra_exa_pixmap_pool_unmap(pool);
     }
 
