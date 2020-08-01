@@ -25,12 +25,18 @@ static bool tegra_exa_allocate_attributes_buffer(struct tegra_3d_state *state,
 {
     struct tegra_exa_scratch *scratch = state->scratch;
     unsigned long flags;
+    int drm_ver;
     int err;
 
     if (scratch->attribs.bo)
         return true;
 
-    flags = exa->default_drm_bo_flags | DRM_TEGRA_GEM_CREATE_SPARSE;
+    drm_ver = drm_tegra_version(scratch->drm);
+    flags = exa->default_drm_bo_flags;
+
+    if (drm_ver >= GRATE_KERNEL_DRM_VERSION && exa->has_iommu)
+        flags |= DRM_TEGRA_GEM_CREATE_SPARSE;
+
     err = drm_tegra_bo_new(&scratch->attribs.bo, scratch->drm, flags,
                            TEGRA_ATTRIB_BUFFER_SIZE);
     if (err) {
