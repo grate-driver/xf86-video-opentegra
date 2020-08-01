@@ -39,8 +39,12 @@
 #include "host1x.h"
 #include "tegra_fence.h"
 
-#define TEGRA_STREAM_ERR_MSG(fmt, args...) \
-    fprintf(stderr, "%s:%d/%s(): " fmt, __FILE__, __LINE__, __func__, ##args)
+#define TEGRA_STREAM_ERR_MSG(fmt, args...)                              \
+({                                                                      \
+    fprintf(stderr, "%s:%d/%s(): " fmt,                                 \
+            __FILE__, __LINE__, __func__, ##args);                      \
+    assert(0);                                                          \
+})
 
 struct _TegraRec;
 
