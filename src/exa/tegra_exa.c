@@ -285,6 +285,7 @@ static void tegra_exa_stats(ScreenPtr screen)
     else                                                                \
         INFO_MSG(scrn, "\t" #S ": %u\n", bytes);                        \
 })
+#define PRINT_STATS_3(S)  INFO_MSG(scrn, "\t" #S ": %u\n", S);
     INFO_MSG(scrn, "EXA statistics:\n");
     PRINT_STATS_1(num_pixmaps_created);
     PRINT_STATS_1(num_pixmaps_destroyed);
@@ -321,6 +322,12 @@ static void tegra_exa_stats(ScreenPtr screen)
     PRINT_STATS_2(num_3d_jobs_bytes);
     PRINT_STATS_1(num_cpu_read_accesses);
     PRINT_STATS_1(num_cpu_write_accesses);
+
+#ifdef FENCE_DEBUG
+    PRINT_STATS_3(tegra_fences_created);
+    PRINT_STATS_3(tegra_fences_destroyed);
+    tegra_fences_debug_dump(100);
+#endif
 }
 
 static void tegra_exa_deinit(ScreenPtr screen)
