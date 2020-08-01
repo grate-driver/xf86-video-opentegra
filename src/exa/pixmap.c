@@ -75,20 +75,18 @@ static void tegra_exa_trim_heap(struct tegra_exa *exa)
 #endif
 }
 
-static void tegra_exa_destroy_freelist_pixmap(TegraPtr tegra,
-                                              struct tegra_pixmap *priv,
-                                              bool wait_fences)
+static void
+tegra_exa_destroy_freelist_pixmap(TegraPtr tegra, struct tegra_pixmap *priv)
 {
     bool released_data;
 
-    if (wait_fences)
-        TEGRA_PIXMAP_WAIT_ALL_FENCES(priv);
+    TEGRA_PIXMAP_WAIT_ALL_FENCES(priv);
 
     released_data = tegra_exa_pixmap_release_data(tegra, priv);
     assert(released_data);
 
-    DEBUG_MSG("priv %p type %u released %d\n",
-              priv, priv->type, released_data);
+    DEBUG_MSG("priv %p type %u released %d refcnt %u\n",
+              priv, priv->type, released_data, priv->refcnt);
 
     xorg_list_del(&priv->freelist_entry);
     free(priv);
@@ -101,21 +99,23 @@ static void tegra_exa_clean_up_pixmaps_freelist(TegraPtr tegra, bool force)
 
     xorg_list_for_each_entry_safe(pix, tmp, &exa->pixmaps_freelist,
                                   freelist_entry) {
-        if (force || !tegra_exa_pixmap_is_busy(pix))
-            tegra_exa_destroy_freelist_pixmap(tegra, pix, force);
+        if (force || !tegra_exa_pixmap_is_busy(exa, pix))
+            tegra_exa_destroy_freelist_pixmap(tegra, pix);
     }
 }
 
 static bool
 tegra_exa_pixmap_release_data(TegraPtr tegra, struct tegra_pixmap *priv)
 {
-    bool destroy = !priv->destroyed;
     struct tegra_exa *exa = tegra->exa;
 
-    priv->destroyed = 1;
+    DEBUG_MSG("priv %p type %u refcnt %u destroyed %d cold %d\n",
+              priv, priv->type, priv->refcnt, priv->destroyed, priv->cold);
 
-    if (destroy)
-        tegra_exa_cancel_deferred_operations(priv->base);
+    assert(!tegra_exa_pixmap_is_in_deferred_3d_state(&exa->gr3d_state, priv));
+    assert(!priv->freezer_lockcnt);
+    assert(!priv->refcnt);
+    assert(priv->destroyed);
 
     if (priv->type == TEGRA_EXA_PIXMAP_TYPE_NONE) {
         if (priv->frozen) {
@@ -131,9 +131,6 @@ tegra_exa_pixmap_release_data(TegraPtr tegra, struct tegra_pixmap *priv)
         }
 
         goto out_final;
-    } else if (tegra->exa_erase_pixmaps && destroy) {
-        /* clear released data for privacy protection */
-        tegra_exa_clear_pixmap_data(priv, true);
     }
 
     if (priv->cold) {
@@ -169,8 +166,12 @@ tegra_exa_pixmap_release_data(TegraPtr tegra, struct tegra_pixmap *priv)
      * but move it to a freelist where it will sit until hardware is done
      * working with the pixmap, then pixmap will be released.
      */
-    if (tegra_exa_pixmap_is_busy(priv)) {
+    if (tegra_exa_pixmap_is_busy(exa, priv)) {
         xorg_list_append(&priv->freelist_entry, &exa->pixmaps_freelist);
+
+        /* note that tegra_pixmap isn't released, but the base is gone now */
+        priv->base = NULL;
+
         return false;
     }
 
@@ -189,6 +190,8 @@ tegra_exa_pixmap_release_data(TegraPtr tegra, struct tegra_pixmap *priv)
 out_final:
     priv->type = TEGRA_EXA_PIXMAP_TYPE_NONE;
     tegra_exa_trim_heap(exa);
+
+    exa->stats.num_pixmaps_destroyed++;
 
     return true;
 }
@@ -269,15 +272,22 @@ static bool tegra_exa_pixmap_allocate_data(TegraPtr tegra,
             tegra_exa_pixmap_allocate_from_sysmem(tegra, pixmap, size));
 }
 
-static bool tegra_exa_pixmap_is_busy(struct tegra_pixmap *pixmap)
+static bool tegra_exa_pixmap_is_busy(struct tegra_exa *exa,
+                                     struct tegra_pixmap *pixmap)
 {
     unsigned int i;
+
+    if (pixmap->type < TEGRA_EXA_PIXMAP_TYPE_BO)
+        return false;
 
     for (i = 0; i < TEGRA_ENGINES_NUM; i++) {
         if (!TEGRA_FENCE_COMPLETED(pixmap->fence_write[i]) ||
             !TEGRA_FENCE_COMPLETED(pixmap->fence_read[i]))
             return true;
     }
+
+    if (tegra_exa_pixmap_is_in_deferred_3d_state(&exa->gr3d_state, pixmap))
+        return true;
 
     return false;
 }
@@ -316,6 +326,8 @@ static void *tegra_exa_create_pixmap(ScreenPtr screen, int width, int height,
         *new_fb_pitch = 0;
     }
 
+    pixmap->refcnt = 1;
+
     DEBUG_MSG("priv %p type %u %d:%d:%d stride %d usage_hint 0x%x (%c%c%c%c)\n",
               pixmap, pixmap->type, width, height, bitsPerPixel, *new_fb_pitch,
               usage_hint, usage_hint >> 24, usage_hint >> 16, usage_hint >> 8, usage_hint);
@@ -330,25 +342,26 @@ static void tegra_exa_destroy_pixmap(void *driverPriv)
     struct tegra_pixmap *pixmap = driverPriv;
     ScrnInfoPtr scrn = xf86ScreenToScrn(pixmap->base->drawable.pScreen);
     TegraPtr tegra = TegraPTR(scrn);
-    struct tegra_exa *exa = tegra->exa;
     bool released_data;
 
-    released_data = tegra_exa_pixmap_release_data(tegra, pixmap);
+    pixmap->refcnt--;
+    assert(!pixmap->refcnt);
 
-    DEBUG_MSG("pixmap %p priv %p type %u %d:%d:%d stride %d released %d\n",
+    DEBUG_MSG("pixmap %p priv %p type %u %d:%d:%d stride %d refcnt %u\n",
               pixmap->base, pixmap, pixmap->type,
               pixmap->base->drawable.width,
               pixmap->base->drawable.height,
               pixmap->base->drawable.bitsPerPixel,
               pixmap->base->devKind,
-              released_data);
+              pixmap->refcnt);
 
-    pixmap->base = NULL;
+    released_data = tegra_exa_pixmap_release_data(tegra, pixmap);
+
+    DEBUG_MSG("pixmap %p priv %p released %d\n",
+              pixmap->base, pixmap, released_data);
 
     if (released_data)
         free(pixmap);
-
-    exa->stats.num_pixmaps_destroyed++;
 }
 
 static bool tegra_exa_modify_pixmap_header(PixmapPtr pixmap, int width,
@@ -366,9 +379,9 @@ static bool tegra_exa_modify_pixmap_header(PixmapPtr pixmap, int width,
     if (!ret)
         return false;
 
-    if (pix_data) {
-        tegra_exa_pixmap_release_data(tegra, priv);
+    priv->base = pixmap;
 
+    if (pix_data) {
         if (pix_data == drmmode_map_front_bo(&tegra->drmmode)) {
             scanout = drmmode_get_front_bo(&tegra->drmmode);
             priv->type = TEGRA_EXA_PIXMAP_TYPE_BO;
@@ -410,7 +423,6 @@ static bool tegra_exa_modify_pixmap_header(PixmapPtr pixmap, int width,
         pixmap->devPrivate.ptr = priv->fallback;
     }
 
-    priv->base = pixmap;
     tegra_exa_cool_tegra_pixmap(tegra, priv);
 
 success:
@@ -423,6 +435,75 @@ success:
               width, height, bpp, pix_data);
 
     return true;
+}
+
+static Bool tegra_exa_destroy_pixmap_wrapper(PixmapPtr pixmap)
+{
+    ScreenPtr screen = pixmap->drawable.pScreen;
+    ScrnInfoPtr scrn = xf86ScreenToScrn(screen);
+    struct tegra_pixmap *priv = exaGetPixmapDriverPrivate(pixmap);
+    TegraPtr tegra = TegraPTR(scrn);
+    struct tegra_exa *exa = tegra->exa;
+
+    DEBUG_MSG("pixmap %p refcnt %u priv %p priv.refcnt %u destroyed %d\n",
+              pixmap, pixmap->refcnt, priv, priv->refcnt, priv->destroyed);
+
+    /* pixmap is done when refcnt is 1 on destroy */
+    if (pixmap->refcnt == 1) {
+        /*
+         * This doesn't work with deferred pixmaps since either base pixmap is
+         * gone on a late destroy() or deferred operation is flushed, both
+         * are unacceptable.
+         *
+         * For now pixmaps are erased only when it's safe to do.
+         */
+        if (tegra->exa_erase_pixmaps && !tegra_exa_pixmap_is_busy(exa, priv)) {
+            /* clear released data for privacy protection */
+            tegra_exa_clear_pixmap_data(priv, true);
+        }
+
+        assert(!priv->destroyed);
+        priv->destroyed = 1;
+
+        /* block pixmap's freeing if we're using this pixmap */
+        if (priv->refcnt > 1)
+            return TRUE;
+    }
+
+    /* invoke Xorg's exaDestroyPixmap_driver() */
+    return exa->destroy_pixmap(pixmap);
+}
+
+static struct tegra_pixmap *tegra_exa_ref_pixmap(struct tegra_pixmap *pixmap)
+{
+    assert(pixmap->refcnt > 0 && pixmap->refcnt < 32768);
+
+    pixmap->refcnt++;
+
+    DEBUG_MSG("pixmap %p priv %p refcnt %u\n",
+              pixmap->base, pixmap, pixmap->refcnt);
+
+    return pixmap;
+}
+
+static void tegra_exa_unref_pixmap(struct tegra_pixmap *pixmap)
+{
+    ScreenPtr screen = pixmap->base->drawable.pScreen;
+    ScrnInfoPtr scrn = xf86ScreenToScrn(screen);
+    TegraPtr tegra = TegraPTR(scrn);
+    struct tegra_exa *exa = tegra->exa;
+
+    pixmap->refcnt--;
+
+    DEBUG_MSG("pixmap %p priv %p refcnt %u destroyed %d\n",
+              pixmap->base, pixmap, pixmap->refcnt, pixmap->destroyed);
+
+    assert(pixmap->refcnt > 0 && pixmap->refcnt < 32768);
+
+    if (pixmap->refcnt == 1 && pixmap->destroyed) {
+        assert(pixmap->base->refcnt == 1);
+        exa->destroy_pixmap(pixmap->base);
+    }
 }
 
 /* vim: set et sts=4 sw=4 ts=4: */

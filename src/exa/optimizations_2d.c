@@ -31,10 +31,10 @@ tegra_exa_prepare_optimized_solid_fill(PixmapPtr pixmap, Pixel color)
     bool cpu_access = true;
     bool optimize = true;
 
-    if (tegra->in_flush || priv->scanout)
+    if (tegra->in_2d_flush || priv->scanout)
         optimize = false;
 
-    if (tegra_exa_pixmap_is_busy(priv))
+    if (tegra_exa_pixmap_is_busy(tegra, priv))
         cpu_access = false;
 
     /*
@@ -108,9 +108,9 @@ static bool tegra_exa_optimize_solid_op(PixmapPtr pixmap,
     }
 
     if (tegra->scratch.optimize && priv->state.solid_fill) {
-        tegra_exa_flush_deferred_operations(pixmap, true);
+        tegra_exa_flush_deferred_operations(pixmap, true, true, true);
 
-        if (tegra->scratch.cpu_access && tegra_exa_pixmap_is_busy(priv))
+        if (tegra->scratch.cpu_access && tegra_exa_pixmap_is_busy(tegra, priv))
             tegra->scratch.cpu_access = false;
     }
 
@@ -150,7 +150,7 @@ static void tegra_exa_complete_solid_fill_optimization(PixmapPtr pixmap)
     struct tegra_exa *tegra = TegraPTR(scrn)->exa;
 
     if (tegra->scratch.ops)
-        tegra_exa_flush_deferred_operations(pixmap, true);
+        tegra_exa_flush_deferred_operations(pixmap, true, true, true);
 
     if (tegra->scratch.cpu_ptr) {
         tegra->scratch.cpu_ptr = NULL;
@@ -209,7 +209,8 @@ static void tegra_exa_prepare_optimized_copy(PixmapPtr src_pixmap,
      * if src_pixmap is copied over the whole dst_pixmap.
      */
 
-    if (!src_priv->state.solid_fill && !dst_priv->state.solid_fill)
+    if (!src_priv->state.solid_fill && !dst_priv->state.solid_fill &&
+        !src_priv->state.alpha_0    && !dst_priv->state.alpha_0)
         optimize = false;
 
     if (DISABLE_2D_OPTIMIZATIONS)
@@ -314,8 +315,8 @@ static void tegra_exa_complete_copy_optimization(PixmapPtr dst_pixmap)
     if (tegra->scratch.optimize && src_priv->state.solid_fill) {
         tegra_exa_complete_solid_fill_copy_optimization(dst_pixmap);
     } else if (tegra->scratch.ops) {
-        tegra_exa_flush_deferred_operations(src_pixmap, true);
-        tegra_exa_flush_deferred_operations(dst_pixmap, true);
+        tegra_exa_flush_deferred_operations(src_pixmap, true, false, true);
+        tegra_exa_flush_deferred_operations(dst_pixmap, true, true, true);
     }
 
     tegra->scratch.optimize = false;
@@ -324,6 +325,31 @@ static void tegra_exa_complete_copy_optimization(PixmapPtr dst_pixmap)
     dst_priv->freezer_lockcnt--;
 
     ACCEL_MSG("\n");
+}
+
+static void tegra_exa_flush_deferred_2d_operations(PixmapPtr pixmap,
+                                                   bool accel,
+                                                   bool flush_reads,
+                                                   bool flush_writes)
+{
+    struct tegra_pixmap *priv = exaGetPixmapDriverPrivate(pixmap);
+    ScrnInfoPtr scrn = xf86ScreenToScrn(pixmap->drawable.pScreen);
+    struct tegra_exa *tegra = TegraPTR(scrn)->exa;
+
+    if (tegra->in_2d_flush)
+        return;
+
+    if (DISABLE_2D_OPTIMIZATIONS) {
+        assert(!priv->state.solid_fill);
+        return;
+    }
+
+    if (priv->state.solid_fill)
+        DEBUG_MSG("pixmap %p flushing deferred operations\n", pixmap);
+
+    tegra->in_2d_flush = true;
+    tegra_exa_perform_deferred_solid_fill(pixmap, accel);
+    tegra->in_2d_flush = false;
 }
 
 /* vim: set et sts=4 sw=4 ts=4: */

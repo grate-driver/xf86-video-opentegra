@@ -22,7 +22,7 @@
 
 static int tegra_exa_init_optimizations(TegraPtr tegra, struct tegra_exa *exa)
 {
-    unsigned int i;
+    unsigned int i, k;
     int err;
 
     /*
@@ -39,6 +39,10 @@ static int tegra_exa_init_optimizations(TegraPtr tegra, struct tegra_exa *exa)
         }
 
         exa->opt_state[i].scratch.drm = tegra->drm;
+        exa->opt_state[i].id = i;
+
+        for (k = 0; k < TEGRA_ENGINES_NUM; k++)
+            exa->opt_state[i].cmds->last_fence[k] = poisoned_fence;
     }
 
     return 0;
@@ -52,9 +56,14 @@ fail:
 
 static void tegra_exa_deinit_optimizations(struct tegra_exa *tegra)
 {
-    unsigned int i = TEGRA_OPT_NUM;
+    unsigned int i = TEGRA_OPT_NUM, k;
 
     while (i--) {
+        for (k = 0; k < TEGRA_ENGINES_NUM; k++) {
+            if (tegra->opt_state[i].cmds->last_fence[k] == poisoned_fence)
+                tegra->opt_state[i].cmds->last_fence[k] = NULL;
+        }
+
         tegra_stream_destroy(tegra->opt_state[i].cmds);
         tegra->opt_state[i].cmds = NULL;
     }
@@ -63,20 +72,16 @@ static void tegra_exa_deinit_optimizations(struct tegra_exa *tegra)
 static void tegra_exa_transfer_stream_fences(struct tegra_stream *stream_dst,
                                              struct tegra_stream *stream_src)
 {
-    struct tegra_fence *fence;
     unsigned int i;
+
+    stream_dst->fence_seqno = stream_src->fence_seqno;
 
     /* transfer fences from stream A (src) to stream B (dst) */
     for (i = 0; i < TEGRA_ENGINES_NUM; i++) {
-        fence = stream_src->last_fence[i];
+        assert(stream_dst->last_fence[i] == poisoned_fence);
 
-        if (fence) {
-            TEGRA_FENCE_PUT(stream_dst->last_fence[i]);
-            stream_src->last_fence[i] = NULL;
-
-            fence->seqno = stream_dst->fence_seqno++;
-            stream_dst->last_fence[i] = fence;
-        }
+        stream_dst->last_fence[i] = stream_src->last_fence[i];
+        stream_src->last_fence[i] = poisoned_fence;
     }
 }
 
@@ -87,6 +92,13 @@ static void tegra_exa_wrap_state(struct tegra_exa *tegra,
      * This function replaces current drawing context with the optimization
      * context, the current context is stashed.
      */
+
+    DEBUG_MSG("state %p id %u wrapcnt %u\n", state, state->id, state->wrapcnt);
+
+    if (state->wrapcnt++)
+        return;
+
+    tegra_exa_transfer_stream_fences(state->cmds, tegra->cmds);
 
     state->cmds_tmp = tegra->cmds;
     tegra->cmds = state->cmds;
@@ -103,6 +115,11 @@ static void tegra_exa_unwrap_state(struct tegra_exa *tegra,
      * the previous context, i.e. the previous context is restored.
      */
 
+    DEBUG_MSG("state %p id %u wrapcnt %u\n", state, state->id, state->wrapcnt);
+
+    if (--state->wrapcnt)
+        return;
+
     state->scratch = tegra->scratch;
     tegra->scratch = state->scratch_tmp;
     tegra->cmds = state->cmds_tmp;
@@ -110,21 +127,19 @@ static void tegra_exa_unwrap_state(struct tegra_exa *tegra,
     tegra_exa_transfer_stream_fences(tegra->cmds, state->cmds);
 }
 
-static void tegra_exa_flush_deferred_operations(PixmapPtr pixmap, bool accel)
+static void tegra_exa_flush_deferred_operations(PixmapPtr pixmap,
+                                                bool accel,
+                                                bool flush_reads,
+                                                bool flush_writes)
 {
     struct tegra_pixmap *priv = exaGetPixmapDriverPrivate(pixmap);
-    ScrnInfoPtr scrn = xf86ScreenToScrn(pixmap->drawable.pScreen);
-    struct tegra_exa *tegra = TegraPTR(scrn)->exa;
 
-    if (tegra->in_flush)
+    assert(priv->type > TEGRA_EXA_PIXMAP_TYPE_FALLBACK);
+    if (priv->type <= TEGRA_EXA_PIXMAP_TYPE_FALLBACK)
         return;
 
-    if (priv->state.solid_fill)
-        DEBUG_MSG("pixmap %p flushing deferred operations\n", pixmap);
-
-    tegra->in_flush = true;
-    tegra_exa_perform_deferred_solid_fill(pixmap, accel);
-    tegra->in_flush = false;
+    tegra_exa_flush_deferred_2d_operations(pixmap, accel, flush_reads, flush_writes);
+    tegra_exa_flush_deferred_3d_operations(pixmap, accel, flush_reads, flush_writes);
 }
 
 static void tegra_exa_cancel_deferred_operations(PixmapPtr pixmap)

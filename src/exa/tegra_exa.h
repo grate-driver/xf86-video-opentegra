@@ -33,8 +33,11 @@ static unsigned tegra_exa_pixmap_size(struct tegra_pixmap *pixmap);
 static unsigned long tegra_exa_pixmap_offset(PixmapPtr pix);
 static struct drm_tegra_bo *tegra_exa_pixmap_bo(PixmapPtr pix);
 static bool tegra_exa_pixmap_is_from_pool(PixmapPtr pix);
-static bool tegra_exa_pixmap_is_busy(struct tegra_pixmap *pixmap);
+static bool tegra_exa_pixmap_is_busy(struct tegra_exa *exa,
+                                     struct tegra_pixmap *pixmap);
 static void tegra_exa_clean_up_pixmaps_freelist(TegraPtr tegra, bool force);
+static struct tegra_pixmap *tegra_exa_ref_pixmap(struct tegra_pixmap *pixmap);
+static void tegra_exa_unref_pixmap(struct tegra_pixmap *pixmap);
 
 static bool tegra_exa_prepare_cpu_access(PixmapPtr pix, int idx, void **ptr,
                                          bool cancel_optimizations);
@@ -65,8 +68,20 @@ static void tegra_exa_freeze_pixmaps(TegraPtr tegra, time_t time_sec);
 static void tegra_exa_fill_pixmap_data(struct tegra_pixmap *pixmap,
                                        bool accel, Pixel color);
 
-static void tegra_exa_flush_deferred_operations(PixmapPtr pixmap, bool accel);
+static void tegra_exa_flush_deferred_operations(PixmapPtr pixmap,
+                                                bool accel,
+                                                bool flush_reads,
+                                                bool flush_writes);
 static void tegra_exa_cancel_deferred_operations(PixmapPtr pixmap);
+
+static void tegra_exa_flush_deferred_2d_operations(PixmapPtr pixmap,
+                                                   bool accel,
+                                                   bool flush_reads,
+                                                   bool flush_writes);
+static void tegra_exa_flush_deferred_3d_operations(PixmapPtr pixmap,
+                                                   bool accel,
+                                                   bool flush_reads,
+                                                   bool flush_writes);
 
 static void
 tegra_exa_prepare_optimized_solid_fill(PixmapPtr pixmap, Pixel color);
@@ -86,9 +101,27 @@ static void tegra_exa_complete_copy_optimization(PixmapPtr pDstPixmap);
 static void
 tegra_exa_optimize_texture_sampler(struct tegra_texture_state *tex);
 static const struct shader_program *
-tegra_exa_select_optimized_gr3d_program(struct tegra_3d_state *state);
+tegra_exa_select_optimized_gr3d_program(struct tegra_3d_state *state,
+                                        bool update_state);
 static void tegra_exa_optimize_alpha_component(struct tegra_3d_draw_state *state);
 
-static void tegra_exa_perform_deferred_solid_fill(PixmapPtr pixmap, bool accel);
+static void tegra_exa_release_optimized_3d_state(struct tegra_3d_state *state);
+static void tegra_exa_flush_deferred_3d_state(struct tegra_3d_state *state);
+static struct tegra_fence *
+tegra_exa_optimize_3d_submission(struct tegra_3d_state *state);
+static void
+tegra_exa_enter_optimization_3d_state(struct tegra_exa *exa);
+static void
+tegra_exa_exit_optimization_3d_state(struct tegra_exa *exa);
+static bool
+tegra_exa_3d_state_deferred(struct tegra_3d_state *state);
+static bool
+tegra_exa_3d_state_tex_cache_needs_flush(struct tegra_3d_state *state,
+                                         PixmapPtr pixmap);
+static void
+tegra_exa_pixmap_3d_state_tex_cache_flushed(struct tegra_3d_state *state);
+static bool
+tegra_exa_pixmap_is_in_deferred_3d_state(struct tegra_3d_state *state,
+                                         struct tegra_pixmap *pixmap);
 
 #endif

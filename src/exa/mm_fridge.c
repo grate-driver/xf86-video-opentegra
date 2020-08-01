@@ -148,6 +148,8 @@ static void * tegra_exa_mm_fridge_map_pixmap(struct tegra_pixmap *pixmap)
     if (pixmap->type == TEGRA_EXA_PIXMAP_TYPE_FALLBACK)
         return pixmap->fallback;
 
+    tegra_exa_flush_deferred_operations(pixmap->base, false, true, true);
+
     TEGRA_PIXMAP_WAIT_ALL_FENCES(pixmap);
 
     if (pixmap->type == TEGRA_EXA_PIXMAP_TYPE_POOL)
@@ -837,6 +839,8 @@ static void tegra_exa_cool_pixmap(PixmapPtr pixmap, bool write)
         priv  = exaGetPixmapDriverPrivate(pixmap);
         tegra = TegraPTR(pScrn);
 
+        assert(!priv->destroyed);
+
         if (tegra->exa_refrigerator) {
             tegra_exa_cool_tegra_pixmap(tegra, priv);
 
@@ -913,6 +917,9 @@ static bool tegra_exa_clear_pixmap_data_hw(struct tegra_pixmap *pixmap)
 
 static bool tegra_exa_prefer_hw_fill(struct tegra_pixmap *pixmap, bool accel)
 {
+    ScrnInfoPtr scrn = xf86ScreenToScrn(pixmap->base->drawable.pScreen);
+    TegraPtr tegra = TegraPTR(scrn);
+    struct tegra_exa *exa = tegra->exa;
     struct drm_tegra_bo *bo = NULL;
     struct tegra_pixmap_pool *pool;
 
@@ -927,7 +934,7 @@ static bool tegra_exa_prefer_hw_fill(struct tegra_pixmap *pixmap, bool accel)
         bo = pool->bo;
     }
 
-    if (tegra_exa_pixmap_is_busy(pixmap))
+    if (tegra_exa_pixmap_is_busy(exa, pixmap))
         return true;
 
     /*
@@ -946,8 +953,6 @@ static void tegra_exa_clear_pixmap_data(struct tegra_pixmap *pixmap, bool accel)
     if (!tegra_exa_prefer_hw_fill(pixmap, accel) ||
         !tegra_exa_clear_pixmap_data_hw(pixmap))
             tegra_exa_clear_pixmap_data_sw(pixmap);
-
-    tegra_exa_flush_deferred_operations(pixmap->base, accel);
 }
 
 static void
@@ -974,6 +979,9 @@ tegra_exa_allocate_pixmap_data_no_fail(TegraPtr tegra,
             if (tegra_exa_pixmap_allocate_from_sysmem(tegra, pixmap, size))
                 break;
         } else {
+            /* take opportunity to re-use allocation from a free-list */
+            tegra_exa_clean_up_pixmaps_freelist(tegra, false);
+
             if (tegra_exa_pixmap_allocate_from_pool(tegra, pixmap, size) ||
                 tegra_exa_pixmap_allocate_from_bo(tegra, pixmap, size) ||
                 tegra_exa_pixmap_allocate_from_sysmem(tegra, pixmap, size))
@@ -1006,6 +1014,8 @@ static void tegra_exa_thaw_pixmap2(PixmapPtr pixmap,
         priv  = exaGetPixmapDriverPrivate(pixmap);
         tegra = TegraPTR(pScrn);
         exa   = tegra->exa;
+
+        assert(!priv->destroyed);
 
         priv->accelerated |= accel;
 
@@ -1041,11 +1051,9 @@ static void tegra_exa_thaw_pixmap(PixmapPtr pixmap, bool accel)
 {
     struct tegra_pixmap *priv = exaGetPixmapDriverPrivate(pixmap);
 
-    if (!priv->freezer_lockcnt) {
+    if (!priv->freezer_lockcnt)
         tegra_exa_thaw_pixmap2(pixmap, accel ? THAW_ACCEL : THAW_NOACCEL,
                                THAW_ALLOC);
-        tegra_exa_flush_deferred_operations(pixmap, accel);
-    }
 }
 
 /* vim: set et sts=4 sw=4 ts=4: */

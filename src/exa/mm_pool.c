@@ -99,8 +99,10 @@ static int tegra_exa_pixmap_pool_create(TegraPtr tegra,
 
     if (drm_ver >= GRATE_KERNEL_DRM_VERSION &&
             size <= TEGRA_EXA_POOL_SIZE_MERGED_MAX &&
-                exa->has_iommu)
+                exa->has_iommu) {
         flags |= DRM_TEGRA_GEM_CREATE_SPARSE;
+        pool->sparse = true;
+    }
 
     err = drm_tegra_bo_new(&pool->bo, tegra->drm, flags, size);
     if (err) {
@@ -619,6 +621,9 @@ tegra_exa_slow_compaction_allowed(struct tegra_exa *exa, size_t size_limit)
     struct timespec time;
     bool expired = true;
 
+    if (exa->pool_compaction_blockcnt)
+        return false;
+
     clock_gettime(CLOCK_MONOTONIC, &time);
 
     if (time.tv_sec - exa->pool_slow_compact_time < 15)
@@ -640,6 +645,9 @@ tegra_exa_fast_compaction_allowed(struct tegra_exa *exa, size_t size_limit)
 {
     struct timespec time;
     bool expired = true;
+
+    if (exa->pool_compaction_blockcnt)
+        return false;
 
     clock_gettime(CLOCK_MONOTONIC, &time);
 
@@ -836,6 +844,7 @@ tegra_exa_pixmap_allocate_from_pool(TegraPtr tegra,
 
 success:
     pixmap->type = TEGRA_EXA_PIXMAP_TYPE_POOL;
+    pixmap->sparse = to_tegra_pool(pixmap->pool_entry.pool)->sparse;
 
     exa->stats.num_pixmaps_allocations++;
     exa->stats.num_pixmaps_allocations_pool++;

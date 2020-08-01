@@ -65,6 +65,9 @@ static bool tegra_exa_prepare_cpu_access(PixmapPtr pixmap, int idx, void **ptr,
         return true;
     }
 
+    if (cancel_optimizations)
+        tegra_exa_flush_deferred_operations(pixmap, false, write, true);
+
     /*
      * EXA doesn't sync for Upload/DownloadFromScreen, assuming that HW
      * will take care of the fencing.

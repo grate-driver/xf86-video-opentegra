@@ -315,4 +315,33 @@ tegra_exa_get_explicit_fence(enum host1x_engine engine,
     return explicit_fence;
 }
 
+/*
+ * Returns fence with the biggest seqno, puts older fences.
+ */
+static struct tegra_fence *tegra_exa_select_latest_fence(int num_fences, ...)
+{
+    struct tegra_fence *latest_fence = NULL;
+    struct tegra_fence *fence_arg;
+    uint64_t last_seqno = 0;
+    va_list ap;
+
+    va_start(ap, num_fences);
+    for (; num_fences; num_fences--) {
+        fence_arg = va_arg(ap, struct tegra_fence *);
+
+        if (fence_arg && fence_arg->seqno >= last_seqno) {
+            if (latest_fence != fence_arg)
+                TEGRA_FENCE_PUT(latest_fence);
+
+            latest_fence = fence_arg;
+            last_seqno = latest_fence->seqno;
+        } else {
+             TEGRA_FENCE_PUT(fence_arg);
+        }
+    }
+    va_end(ap);
+
+    return latest_fence;
+}
+
 /* vim: set et sts=4 sw=4 ts=4: */

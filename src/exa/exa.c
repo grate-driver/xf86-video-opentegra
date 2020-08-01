@@ -210,7 +210,7 @@ Bool TegraEXAScreenInit(ScreenPtr pScreen)
     tegra->exa_driver->DownloadFromScreen   = TegraEXADownloadFromScreen;
     tegra->exa_driver->UploadToScreen       = TegraEXAUploadToScreen;
 
-    err = tegra_exa_preinit(pScreen);
+    err = tegra_exa_init(pScreen);
     if (err)
         goto err_free;
 
@@ -219,7 +219,7 @@ Bool TegraEXAScreenInit(ScreenPtr pScreen)
         goto err_deinit;
     }
 
-    tegra_exa_finalize_init(pScreen);
+    tegra_exa_post_init(pScreen);
 
     INFO_MSG(pScrn, "EXA initialized\n");
 
@@ -241,6 +241,7 @@ void TegraEXAScreenExit(ScreenPtr pScreen)
     TegraPtr tegra = TegraPTR(scrn);
 
     if (tegra->exa_driver) {
+        tegra_exa_pre_deinit(pScreen);
         exaDriverFini(pScreen);
         tegra_exa_deinit(pScreen);
 

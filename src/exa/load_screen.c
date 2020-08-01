@@ -149,11 +149,6 @@ static bool tegra_exa_load_screen(PixmapPtr pix, int x, int y, int w, int h,
 
         src_cached = true;
 
-        if (priv->state.alpha_0)
-            DEBUG_MSG("pixmap %p upload canceled alpha_0\n", pix);
-
-        priv->state.alpha_0 = 0;
-
         exa->stats.num_screen_downloads++;
         exa->stats.num_screen_downloaded_bytes += line_len * h;
     }

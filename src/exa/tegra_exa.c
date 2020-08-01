@@ -98,6 +98,9 @@ static void tegra_exa_wrap_proc(ScreenPtr pScreen)
 
     exa->block_handler = pScreen->BlockHandler;
     pScreen->BlockHandler = tegra_exa_block_handler;
+
+    exa->destroy_pixmap = pScreen->DestroyPixmap;
+    pScreen->DestroyPixmap = tegra_exa_destroy_pixmap_wrapper;
 }
 
 static void tegra_exa_unwrap_proc(ScreenPtr pScreen)
@@ -110,6 +113,7 @@ static void tegra_exa_unwrap_proc(ScreenPtr pScreen)
         ps->CreatePicture = exa->create_picture;
 
     pScreen->BlockHandler = exa->block_handler;
+    pScreen->DestroyPixmap = exa->destroy_pixmap;
 }
 
 static bool host1x_firewall_is_present(struct tegra_exa *tegra)
@@ -203,7 +207,23 @@ static void tegra_exa_init_features(ScrnInfoPtr scrn, struct tegra_exa *exa,
     }
 }
 
-static int tegra_exa_preinit(ScreenPtr screen)
+static void tegra_exa_post_init(ScreenPtr screen)
+{
+    tegra_exa_wrap_proc(screen);
+}
+
+static void tegra_exa_pre_deinit(ScreenPtr screen)
+{
+    ScrnInfoPtr scrn = xf86ScreenToScrn(screen);
+    TegraPtr tegra = TegraPTR(scrn);
+    struct tegra_exa *exa = tegra->exa;
+
+    tegra_exa_flush_deferred_3d_state(&exa->gr3d_state);
+    tegra_exa_3d_state_reset(&exa->gr3d_state);
+    tegra_exa_unwrap_proc(screen);
+}
+
+static int tegra_exa_init(ScreenPtr screen)
 {
     ScrnInfoPtr scrn = xf86ScreenToScrn(screen);
     TegraPtr tegra = TegraPTR(scrn);
@@ -234,36 +254,32 @@ static int tegra_exa_preinit(ScreenPtr screen)
         goto free_priv;
     }
 
-    err = tegra_exa_init_optimizations(tegra, exa);
+    err = tegra_exa_init_mm(tegra, exa);
     if (err) {
         ERROR_MSG("failed to initialize memory management: %d\n", err);
         goto deinit_gpu;
     }
 
-    err = tegra_exa_init_mm(tegra, exa);
+    err = tegra_exa_init_optimizations(tegra, exa);
     if (err) {
         ERROR_MSG("failed to initialize drawing optimizations: %d\n", err);
-        goto deinit_optimization;
+        goto deinit_mm;
     }
 
     tegra_exa_init_features(scrn, exa, drm_ver);
 
     return 0;
 
-deinit_optimization:
-    tegra_exa_deinit_optimizations(exa);
+deinit_mm:
+    tegra_exa_release_mm(tegra, exa);
 deinit_gpu:
     tegra_exa_deinit_gpu(exa);
 free_priv:
     free(exa);
 
     tegra->exa = NULL;
-    return err;
-}
 
-static void tegra_exa_finalize_init(ScreenPtr screen)
-{
-    tegra_exa_wrap_proc(screen);
+    return err;
 }
 
 static void tegra_exa_stats(ScreenPtr screen)
@@ -336,11 +352,10 @@ static void tegra_exa_deinit(ScreenPtr screen)
     TegraPtr tegra = TegraPTR(scrn);
     struct tegra_exa *exa = tegra->exa;
 
-    tegra_exa_stats(screen);
-    tegra_exa_unwrap_proc(screen);
-    tegra_exa_release_mm(tegra, exa);
     tegra_exa_deinit_optimizations(exa);
+    tegra_exa_release_mm(tegra, exa);
     tegra_exa_deinit_gpu(exa);
+    tegra_exa_stats(screen);
     free(exa);
 
     tegra->exa = NULL;

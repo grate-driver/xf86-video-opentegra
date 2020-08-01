@@ -153,6 +153,9 @@ static void tegra_exa_done_solid_2d(PixmapPtr pixmap)
 
     PROFILE_DEF(solid);
 
+    if (pixmap->drawable.width == 1 && pixmap->drawable.height == 1)
+        return;
+
     tegra_exa_complete_solid_fill_optimization(pixmap);
 
     if (tegra->scratch.ops && tegra->cmds->status == TEGRADRM_STREAM_CONSTRUCT) {

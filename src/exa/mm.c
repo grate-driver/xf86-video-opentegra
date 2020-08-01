@@ -21,29 +21,48 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
+static unsigned int tegra_exa_max_sparse_size(void)
+{
+    unsigned int max_gart_size = 32 * 1024 * 1024;
+    unsigned int max_bos_per_3d_job = 3;
+    unsigned int max_sparse_size;
+
+    /* large BOs won't fit into GART on Tegra20 */
+    max_sparse_size  = max_gart_size / max_bos_per_3d_job;
+    max_sparse_size -= TEGRA_ATTRIB_BUFFER_SIZE;
+
+    return max_sparse_size;
+}
+
 static bool tegra_exa_pixmap_allocate_from_bo(TegraPtr tegra,
                                               struct tegra_pixmap * pixmap,
                                               unsigned int size)
 {
     struct tegra_exa *exa = tegra->exa;
     unsigned long flags;
+    bool sparse = false;
     int drm_ver;
     int err;
 
     if (!pixmap->accel && !pixmap->dri)
         return false;
 
+    drm_ver = drm_tegra_version(tegra->drm);
     flags = exa->default_drm_bo_flags;
 
-    drm_ver = drm_tegra_version(tegra->drm);
-    if (drm_ver >= GRATE_KERNEL_DRM_VERSION)
+    if (drm_ver >= GRATE_KERNEL_DRM_VERSION &&
+            size < tegra_exa_max_sparse_size() &&
+                exa->has_iommu) {
         flags |= DRM_TEGRA_GEM_CREATE_SPARSE;
+        sparse = true;
+    }
 
     err = drm_tegra_bo_new(&pixmap->bo, tegra->drm, flags, size);
     if (err)
         return false;
 
     pixmap->type = TEGRA_EXA_PIXMAP_TYPE_BO;
+    pixmap->sparse = sparse;
 
     exa->stats.num_pixmaps_allocations++;
     exa->stats.num_pixmaps_allocations_bo++;
@@ -72,6 +91,7 @@ static bool tegra_exa_pixmap_allocate_from_sysmem(TegraPtr tegra,
         return false;
 
     pixmap->type = TEGRA_EXA_PIXMAP_TYPE_FALLBACK;
+    pixmap->sparse = true;
 
     exa->stats.num_pixmaps_allocations++;
     exa->stats.num_pixmaps_allocations_fallback++;
@@ -104,6 +124,8 @@ static int tegra_exa_init_mm(TegraPtr tegra, struct tegra_exa *exa)
 
         INFO_MSG2("Tegra DRM uses IOMMU: %s\n", has_iommu ? "YES" : "NO");
     }
+
+    exa->has_iommu = has_iommu;
 
     /*
      * CMA doesn't guarantee contiguous allocations. We should do our best

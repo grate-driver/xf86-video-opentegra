@@ -44,6 +44,8 @@
  */
 #define TEGRA_EXA_OFFSET_ALIGN  128
 
+#define TEGRA_ATTRIB_BUFFER_SIZE    (256 * 1024)
+
 #if 0
 #define FALLBACK_MSG(fmt, args...) \
     printf("FALLBACK: %s:%d/%s(): " fmt, __FILE__, __LINE__, __func__, ##args)
@@ -164,19 +166,38 @@ struct tegra_3d_draw_state {
     struct tegra_texture_state src;
     struct tegra_texture_state mask;
     struct tegra_texture_state dst;
+    const struct shader_program *prog;
     bool dst_full_cover : 1;
     bool discards_clip : 1;
     bool optimized_out : 1;
     int op;
 };
 
+struct tegra_pixmap_3d_state {
+    struct tegra_pixmap *pixmap;
+    unsigned int refcnt;
+    bool cache_dirty : 1;
+    bool write : 1;
+    bool read : 1;
+};
+
 struct tegra_3d_state {
+    struct tegra_exa *exa;
     struct tegra_exa_scratch *scratch;
     struct tegra_stream *cmds;
     struct tegra_3d_draw_state new;
     struct tegra_3d_draw_state cur;
+    struct tegra_fence *explicit_fence;
+    unsigned int pixmaps_mmap_size;
+    unsigned int num_pixmaps;
+    unsigned int num_jobs;
+    OsTimerPtr flushtimer;
+    bool submitted : 1;
     bool inited : 1;
     bool clean : 1;
+
+    /* (textures + render targets) minus one buffer for vertex attributes */
+    struct tegra_pixmap_3d_state pixmaps[DRM_TEGRA_BO_TABLE_MAX_ENTRIES_NUM - 1];
 };
 
 struct tegra_attrib_bo {
@@ -216,6 +237,7 @@ struct tegra_exa_scratch {
         };
     };
     struct drm_tegra *drm;
+    unsigned attrib_offset;
     unsigned attrib_itr;
     unsigned vtx_cnt;
     bool cpu_access;
@@ -238,11 +260,13 @@ struct tegra_pixmap_pool {
     bool heavy : 1;
     bool light : 1;
     bool persistent : 1;
+    bool sparse : 1;
 };
 
 enum {
     TEGRA_OPT_SOLID,
     TEGRA_OPT_COPY,
+    TEGRA_OPT_3D,
     TEGRA_OPT_NUM,
 };
 
@@ -251,6 +275,8 @@ struct tegra_optimization_state {
     struct tegra_stream *cmds;
     struct tegra_exa_scratch scratch_tmp;
     struct tegra_exa_scratch scratch;
+    unsigned int wrapcnt;
+    unsigned id;
 };
 
 struct tegra_exa_stats {
@@ -298,9 +324,11 @@ struct tegra_exa {
     struct tegra_exa_scratch scratch;
 
     struct tegra_pixmap_pool *large_pool;
+    struct timespec large_pool_last_defrag_time;
     struct xorg_list mem_pools;
     time_t pool_slow_compact_time;
     time_t pool_fast_compact_time;
+    unsigned pool_compaction_blockcnt;
 
     struct xorg_list cool_pixmaps;
     unsigned long cooling_size;
@@ -316,15 +344,17 @@ struct tegra_exa {
 
     CreatePictureProcPtr create_picture;
     ScreenBlockHandlerProcPtr block_handler;
+    DestroyPixmapProcPtr destroy_pixmap;
 
     struct xorg_list pixmaps_freelist;
 
     struct tegra_3d_state gr3d_state;
 
     bool has_iommu_bug;
+    bool has_iommu;
 
     struct tegra_optimization_state opt_state[TEGRA_OPT_NUM];
-    bool in_flush;
+    bool in_2d_flush;
 
     struct tegra_exa_stats stats;
 };
@@ -353,6 +383,7 @@ struct tegra_pixmap {
     bool destroyed : 1;         /* pixmap was destroyed by EXA core */
     bool scanout : 1;           /* pixmap backs frontbuffer BO */
     bool frozen : 1;            /* pixmap's data compressed */
+    bool sparse : 1;            /* pixmap's BO data is sparse in phys memory */
     bool accel : 1;             /* pixmap acceleratable */
     bool cold : 1;              /* pixmap scheduled for compression */
     bool dri : 1;               /* pixmap's BO was exported */
@@ -404,6 +435,7 @@ struct tegra_pixmap {
     PixmapPtr base;
 
     unsigned picture_format;
+    unsigned refcnt;            /* pixmap destroyed on 0 */
 };
 
 #define TEGRA_WAIT_FENCE(F)                                     \

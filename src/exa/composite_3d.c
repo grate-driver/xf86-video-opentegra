@@ -34,8 +34,6 @@
         tegra->scratch.attribs.map[tegra->scratch.attrib_itr++] = y;    \
     }
 
-#define TEGRA_ATTRIB_BUFFER_SIZE    0x4000
-
 #define TEX_EMPTY           0
 #define TEX_SOLID           1
 #define TEX_CLIPPED         2
@@ -200,7 +198,8 @@ static const struct tegra_composite_config composite_cfgs[] = {
 #include "composite_3d_state_tracker.c"
 
 static bool
-tegra_exa_texture_optimized_out(PicturePtr picture, PixmapPtr pixmap)
+tegra_exa_texture_optimized_out(PicturePtr picture, PixmapPtr pixmap,
+                                const struct tegra_composite_config *cfg)
 {
     struct tegra_pixmap *priv;
 
@@ -213,10 +212,19 @@ tegra_exa_texture_optimized_out(PicturePtr picture, PixmapPtr pixmap)
         if (picture->pDrawable->width == 1 &&
             picture->pDrawable->height == 1)
                 return true;
+    }
 
-        if (pixmap) {
-            priv = exaGetPixmapDriverPrivate(pixmap);
-            if (priv->state.solid_fill)
+    if (pixmap) {
+        priv = exaGetPixmapDriverPrivate(pixmap);
+
+        if (priv->state.solid_fill) {
+            if (picture->repeat)
+                return true;
+
+            if (priv->state.solid_color == 0x0)
+                return true;
+
+            if (!cfg || cfg->discards_clipped_area)
                 return true;
         }
     }
@@ -331,12 +339,12 @@ static unsigned tegra_exa_picture_format_to_tgr3d(PictFormatShort format)
     }
 }
 
-static bool tegra_exa_check_texture(int op, PicturePtr pic)
+static bool tegra_exa_check_texture(int op, PicturePtr pic, PixmapPtr pixmap)
 {
     const struct tegra_composite_config *cfg = &composite_cfgs[op];
     unsigned width, height;
 
-    if (pic && pic->pDrawable && !tegra_exa_texture_optimized_out(pic, NULL)) {
+    if (pic && pic->pDrawable && !tegra_exa_texture_optimized_out(pic, pixmap, cfg)) {
         width = pic->pDrawable->width;
         height = pic->pDrawable->height;
 
@@ -411,7 +419,7 @@ static bool tegra_exa_check_composite_3d(int op,
         }
 
         if (src_picture->pDrawable) {
-            if (!tegra_exa_check_texture(op, src_picture))
+            if (!tegra_exa_check_texture(op, src_picture, NULL))
                 return false;
         } else {
             if (src_picture->pSourcePict->type != SourcePictTypeSolidFill) {
@@ -432,7 +440,7 @@ static bool tegra_exa_check_composite_3d(int op,
         }
 
         if (mask_picture->pDrawable) {
-            if (!tegra_exa_check_texture(op, mask_picture))
+            if (!tegra_exa_check_texture(op, mask_picture, NULL))
                 return false;
         } else {
             if (mask_picture->pSourcePict->type != SourcePictTypeSolidFill) {
@@ -497,6 +505,7 @@ static bool tegra_exa_prepare_composite_3d(int op,
                                            PixmapPtr pmask,
                                            PixmapPtr pdst)
 {
+    const struct tegra_composite_config *cfg = &composite_cfgs[op];
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pdst->drawable.pScreen);
     bool mask_tex = (mask_picture && mask_picture->pDrawable);
     bool src_tex = (src_picture && src_picture->pDrawable);
@@ -510,15 +519,17 @@ static bool tegra_exa_prepare_composite_3d(int op,
     Pixel solid;
     bool alpha;
 
-    if (!tegra_exa_check_texture(op, mask_picture))
+    if (!tegra_exa_check_texture(op, mask_picture, pmask))
         return false;
 
-    if (!tegra_exa_check_texture(op, src_picture))
+    if (!tegra_exa_check_texture(op, src_picture, psrc))
         return false;
 
     memset(&draw_state, 0, sizeof(draw_state));
 
-    if (src_tex && tegra_exa_texture_optimized_out(src_picture, psrc))
+    tegra_exa_enter_optimization_3d_state(tegra);
+
+    if (src_tex && tegra_exa_texture_optimized_out(src_picture, psrc, cfg))
         src_tex = false;
     else
         src_tex_reduced = false;
@@ -526,7 +537,7 @@ static bool tegra_exa_prepare_composite_3d(int op,
     if (src_tex_reduced)
         ACCEL_MSG("src texture reduced\n");
 
-    if (mask_tex && tegra_exa_texture_optimized_out(mask_picture, pmask))
+    if (mask_tex && tegra_exa_texture_optimized_out(mask_picture, pmask, cfg))
         mask_tex = false;
     else
         mask_tex_reduced = false;
@@ -556,7 +567,7 @@ static bool tegra_exa_prepare_composite_3d(int op,
             default:
                 FALLBACK_MSG("unsupported repeat type %u\n",
                          src_picture->repeatType);
-                return false;
+                goto fail;
             }
 
             draw_state.src.pow2     = tegra_exa_is_pow2_texture(psrc);
@@ -633,7 +644,7 @@ static bool tegra_exa_prepare_composite_3d(int op,
             default:
                 FALLBACK_MSG("unsupported repeat type %u\n",
                          mask_picture->repeatType);
-                return false;
+                goto fail;
             }
 
             draw_state.mask.pow2            = tegra_exa_is_pow2_texture(pmask);
@@ -696,9 +707,16 @@ static bool tegra_exa_prepare_composite_3d(int op,
     draw_state.op = op;
 
     if (!tegra_exa_pre_check_3d_program(&draw_state))
-        return false;
+        goto fail;
 
-    return tegra_exa_3d_state_append(&tegra->gr3d_state, tegra, &draw_state);
+    if (!tegra_exa_3d_state_append(&tegra->gr3d_state, tegra, &draw_state))
+        goto fail;
+
+    return true;
+
+fail:
+    tegra_exa_exit_optimization_3d_state(tegra);
+    return false;
 }
 
 static void tegra_exa_composite_3d(PixmapPtr pdst,
@@ -728,7 +746,7 @@ static void tegra_exa_composite_3d(PixmapPtr pdst,
     bool clip_src;
 
     if (draw_state->optimized_out)
-        return;
+        goto degenerate;
 
     /* if attributes buffer is full, do nothing for now (TODO better job) */
     if (tegra_exa_attributes_buffer_is_full(&tegra->scratch)) {
@@ -902,8 +920,9 @@ static void tegra_exa_composite_3d(PixmapPtr pdst,
     return;
 
 degenerate:
-    ACCEL_MSG("src %dx%d mask %dx%d w:h %d:%d area degenerated\n",
-              src_x, src_y, mask_x, mask_y, width, height);
+    ACCEL_MSG("src %dx%d mask %dx%d w:h %d:%d area degenerated, optimized_out %d\n",
+              src_x, src_y, mask_x, mask_y, width, height,
+              draw_state->optimized_out);
 }
 
 static void tegra_exa_done_composite_3d(PixmapPtr pdst)
@@ -918,26 +937,31 @@ static void tegra_exa_done_composite_3d(PixmapPtr pdst)
 
         fence = tegra_exa_submit_3d_state(&tegra->gr3d_state);
 
-        /*
-         * XXX: Glitches may occur due to lack of support for waitchecks
-         *      by kernel driver, they are required for 3D engine to complete
-         *      data prefetching before starting to render. Alternative would
-         *      be to flush the job, but that impacts performance very
-         *      significantly and just happens to minimize the issue, so we
-         *      choose glitches to low performance. Mostly fonts rendering is
-         *      affected.
-         *
-         *      See TegraGR3D_DrawPrimitives() in gr3d.c
-         */
-        tegra_exa_replace_pixmaps_fence(TEGRA_3D, fence, &tegra->scratch, pdst,
-                                        2, tegra->scratch.src, tegra->scratch.mask);
-    } else {
+        if (fence) {
+            /*
+            * XXX: Glitches may occur due to lack of support for waitchecks
+            *      by kernel driver, they are required for 3D engine to complete
+            *      data prefetching before starting to render. Alternative would
+            *      be to flush the job, but that impacts performance very
+            *      significantly and just happens to minimize the issue, so we
+            *      choose glitches to low performance. Mostly fonts rendering is
+            *      affected.
+            *
+            *      See TegraGR3D_DrawPrimitives() in gr3d.c
+            */
+            tegra_exa_replace_pixmaps_fence(TEGRA_3D, fence, &tegra->scratch, pdst,
+                                            2, tegra->scratch.src, tegra->scratch.mask);
+        }
+
+    } else if (!tegra_exa_3d_state_deferred(&tegra->gr3d_state)) {
         tegra_exa_3d_state_reset(&tegra->gr3d_state);
     }
 
     tegra_exa_cool_pixmap(tegra->scratch.src,  false);
     tegra_exa_cool_pixmap(tegra->scratch.mask, false);
     tegra_exa_cool_pixmap(pdst, true);
+
+    tegra_exa_exit_optimization_3d_state(tegra);
 
     ACCEL_MSG("\n");
 }
