@@ -8,10 +8,10 @@ http://github.com/envytools/envytools/
 git clone https://github.com/envytools/envytools.git
 
 The rules-ng-ng source files this header was generated from are:
-- /home/kusma/src/envytools/rnndb/tgr_3d.xml          (  14496 bytes, from 2017-09-06 20:15:12)
-- /home/kusma/src/envytools/rnndb/grate_copyright.xml (   1556 bytes, from 2017-09-06 18:11:45)
+- /home/dima/vl/envytools/rnndb//tgr_3d.xml          (  14878 bytes, from 2020-08-03 12:05:09)
+- /home/dima/vl/envytools/rnndb//grate_copyright.xml (   1556 bytes, from 2020-04-28 17:09:29)
 
-Copyright (C) 2012-2017 by the following authors:
+Copyright (C) 2012-2020 by the following authors:
 - Erik Faye-Lund <kusmabite@gmail.com> (kusma)
 - Dmitry Osipenko <digetx@gmail.com> (digetx)
 
@@ -78,7 +78,12 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define TGR3D_PIXEL_FORMAT_D16_LINEAR				0x0000000b
 #define TGR3D_PIXEL_FORMAT_D16_NONLINEAR			0x0000000c
 #define TGR3D_PIXEL_FORMAT_RGBA8888				0x0000000d
+#define TGR3D_PIXEL_FORMAT_BGRA8888				0x0000000e
 #define TGR3D_PIXEL_FORMAT_RGBA_FP32				0x00000012
+#define TGR3D_PIXEL_FORMAT_DXT1					0x00000016
+#define TGR3D_PIXEL_FORMAT_DXT3					0x00000018
+#define TGR3D_PIXEL_FORMAT_DXT5					0x00000019
+#define TGR3D_PIXEL_FORMAT_ETC1					0x0000001a
 #define TGR3D_COMPARE_FUNC_NEVER				0x00000000
 #define TGR3D_COMPARE_FUNC_LESS					0x00000001
 #define TGR3D_COMPARE_FUNC_EQUAL				0x00000002
@@ -186,6 +191,8 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define TGR3D_DRAW_PARAMS_PRIMITIVE_TYPE__SHIFT			24
 #define TGR3D_DRAW_PARAMS_FIRST__MASK				0x00ffffff
 #define TGR3D_DRAW_PARAMS_FIRST__SHIFT				0
+#define TGR3D_DRAW_PARAMS_VTX_MEM_CACHE_INVALIDATE		0x40000000
+#define TGR3D_DRAW_PARAMS_VTX_GPU_CACHE_INVALIDATE		0x80000000
 
 #define TGR3D_DRAW_PRIMITIVES					0x00000123
 #define TGR3D_DRAW_PRIMITIVES_INDEX_COUNT__MASK			0xfff00000
@@ -332,6 +339,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define TGR3D_TEXTURE_DESC1_MINFILTER_LINEAR_BETWEEN		0x08000000
 #define TGR3D_TEXTURE_DESC1_FORMAT__MASK			0x00001f00
 #define TGR3D_TEXTURE_DESC1_FORMAT__SHIFT			8
+#define TGR3D_TEXTURE_DESC1_COMPRESSED				0x00000010
 #define TGR3D_TEXTURE_DESC1_WRAP_S_MIRRORED_REPEAT		0x00000008
 #define TGR3D_TEXTURE_DESC1_WRAP_T_MIRRORED_REPEAT		0x00000004
 #define TGR3D_TEXTURE_DESC1_WRAP_S_CLAMP_TO_EDGE		0x00000002
