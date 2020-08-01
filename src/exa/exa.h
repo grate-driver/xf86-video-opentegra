@@ -408,10 +408,14 @@ struct tegra_pixmap {
 
 #define TEGRA_WAIT_FENCE(F)                                     \
 ({                                                              \
+    bool wait_success;                                          \
     PROFILE_DEF(wait_fence);                                    \
     profile_wait_fence.name = "wait_fence";                     \
     PROFILE_START(wait_fence);                                  \
-    TEGRA_FENCE_DEBUG_MSG(F, "wait"); tegra_fence_wait(F);      \
+    TEGRA_FENCE_DEBUG_MSG(F, "wait");                           \
+    assert(F->active);                                          \
+    wait_success = tegra_fence_wait(F);                         \
+    if (!wait_success) ERROR_MSG("fence timed out\n");          \
     PROFILE_STOP(wait_fence);                                   \
 })
 
