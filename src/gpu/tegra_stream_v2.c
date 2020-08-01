@@ -641,7 +641,8 @@ int grate_stream_create_v2(struct tegra_stream **pstream,
     stream_v2->drm_fd = tegra->fd;
     stream_v2->drm = tegra->drm;
 
-    ret = drm_tegra_job_new_v2(&stream_v2->job, tegra->drm, 16,
+    ret = drm_tegra_job_new_v2(&stream_v2->job, tegra->drm,
+                               DRM_TEGRA_BO_TABLE_MAX_ENTRIES_NUM,
                                65536 /* xxx: 64K should be enough (!?) */);
     if (ret) {
         ErrorMsg("drm_tegra_job_new_v2() failed %d\n", ret);
