@@ -31,6 +31,12 @@ tegra_exa_prepare_solid_2d(PixmapPtr pixmap, int op, Pixel planemask,
     struct tegra_exa *tegra = TegraPTR(pScrn)->exa;
     int err;
 
+    ACCEL_MSG("pixmap %p %d:%d color %08lx scanout %d\n",
+              pixmap,
+              pixmap->drawable.width,
+              pixmap->drawable.height,
+              color, priv->scanout);
+
     /*
      * It should be possible to support this, but let's bail for now
      */
@@ -111,12 +117,6 @@ tegra_exa_prepare_solid_2d(PixmapPtr pixmap, int op, Pixel planemask,
     }
 
     tegra_exa_prepare_optimized_solid_fill(pixmap, color);
-
-    ACCEL_MSG("pixmap %p %d:%d color %08lx scanout %d\n",
-              pixmap,
-              pixmap->drawable.width,
-              pixmap->drawable.height,
-              color, priv->scanout);
 
     return true;
 }

@@ -103,8 +103,7 @@ static bool tegra_exa_optimize_solid_op(PixmapPtr pixmap,
         priv->state.solid_fill &&
         priv->state.solid_color == tegra->scratch.color)
     {
-        DEBUG_MSG("pixmap %p partial solid-fill optimized out\n",
-              pixmap);
+        DEBUG_MSG("pixmap %p partial solid-fill optimized out\n", pixmap);
         return true;
     }
 
@@ -237,6 +236,8 @@ static void tegra_exa_prepare_optimized_copy(PixmapPtr src_pixmap,
 
     src_priv->freezer_lockcnt++;
     dst_priv->freezer_lockcnt++;
+
+    ACCEL_MSG("\n");
 }
 
 static bool tegra_exa_optimize_copy_op(PixmapPtr dst_pixmap,
@@ -246,6 +247,8 @@ static bool tegra_exa_optimize_copy_op(PixmapPtr dst_pixmap,
     ScrnInfoPtr scrn = xf86ScreenToScrn(dst_pixmap->drawable.pScreen);
     struct tegra_exa *tegra = TegraPTR(scrn)->exa;
     PixmapPtr src_pixmap = tegra->scratch.src;
+
+    ACCEL_MSG("\n");
 
     if (tegra->scratch.optimize) {
         struct tegra_pixmap *src_priv = exaGetPixmapDriverPrivate(src_pixmap);
@@ -296,6 +299,8 @@ static void tegra_exa_complete_solid_fill_copy_optimization(PixmapPtr dst_pixmap
     tegra_exa_unwrap_state(tegra, &tegra->opt_state[TEGRA_OPT_COPY]);
 
     tegra->scratch.ops = 0;
+
+    ACCEL_MSG("\n");
 }
 
 static void tegra_exa_complete_copy_optimization(PixmapPtr dst_pixmap)
@@ -317,6 +322,8 @@ static void tegra_exa_complete_copy_optimization(PixmapPtr dst_pixmap)
 
     src_priv->freezer_lockcnt--;
     dst_priv->freezer_lockcnt--;
+
+    ACCEL_MSG("\n");
 }
 
 /* vim: set et sts=4 sw=4 ts=4: */

@@ -185,7 +185,7 @@ dump_pict(const char *prefix, PixmapPtr pixmap, PicturePtr pict, bool accel)
         return;
 
     if (accel)
-        ACCEL_MSG("%s: pixmap %p type %s %dx%d format %s repeat %s transform %s alphamap %s componentalpha %s filter %s scanout %d\n",
+        ACCEL_MSG("%s: pixmap %p type %s %dx%d format %s repeat %s transform %s alphamap %s componentalpha %s filter %s scanout %d alpha_0 %d\n",
                   prefix,
                   pixmap,
                   pict_type(pict),
@@ -197,9 +197,10 @@ dump_pict(const char *prefix, PixmapPtr pixmap, PicturePtr pict, bool accel)
                   pict_alphamap(pict),
                   pict_componentalpha(pict),
                   pict_filter(pict),
-                  priv ? priv->scanout : 0);
+                  priv ? priv->scanout : 0,
+                  priv ? priv->state.alpha_0 : 0);
     else
-        FALLBACK_MSG("%s: %p type %s %dx%d format %s repeat %s transform %s alphamap %s componentalpha %s filter %s scanout %d\n",
+        FALLBACK_MSG("%s: %p type %s %dx%d format %s repeat %s transform %s alphamap %s componentalpha %s filter %s scanout %d alpha_0 %d\n",
                      prefix,
                      pixmap,
                      pict_type(pict),
@@ -211,7 +212,8 @@ dump_pict(const char *prefix, PixmapPtr pixmap, PicturePtr pict, bool accel)
                      pict_alphamap(pict),
                      pict_componentalpha(pict),
                      pict_filter(pict),
-                     priv ? priv->scanout : 0);
+                     priv ? priv->scanout : 0,
+                     priv ? priv->state.alpha_0 : 0);
 }
 
 static bool tegra_exa_check_composite(int op,
@@ -342,6 +344,8 @@ static void tegra_exa_done_composite(PixmapPtr dst)
         tegra_exa_done_composite_3d(dst);
 
     PROFILE_STOP(composite)
+
+    ACCEL_MSG("\n");
 }
 
 /* vim: set et sts=4 sw=4 ts=4: */

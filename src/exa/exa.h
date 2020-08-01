@@ -453,6 +453,9 @@ tegra_exa_stream_submit(struct tegra_exa *tegra, enum host1x_engine engine,
     else
         out_fence = tegra_stream_submit(engine, tegra->cmds, explicit_fence);
 
+    DEBUG_MSG("engine %u explicit_fence %p out_fence %p\n",
+              engine, explicit_fence, out_fence);
+
     return out_fence;
 }
 
