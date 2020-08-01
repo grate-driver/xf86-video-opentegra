@@ -193,6 +193,16 @@ tegra_exa_select_optimized_gr3d_program(struct tegra_3d_state *state,
 
    if (state->new.op == PictOpSrc) {
 op_src:
+        if (src_sel == TEX_EMPTY ||
+            (mask_sel == TEX_SOLID && state->new.mask.solid == 0x0))
+        {
+            if (dst_priv->state.solid_fill && dst_priv->state.solid_color == 0x0) {
+                ACCEL_MSG("PictOpSrc optimized out\n");
+                state->new.optimized_out = 1;
+                goto optimized_shader;
+            }
+        }
+
       if (src_sel == TEX_CLIPPED &&
           (mask_sel == TEX_SOLID || mask_sel == TEX_EMPTY)) {
          prog = &prog_blend_src_clipped_src_solid_mask;
