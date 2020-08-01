@@ -38,6 +38,21 @@ static inline struct tegra_pixmap_pool *to_tegra_pool(struct mem_pool *pool)
     return TEGRA_CONTAINER_OF(pool, struct tegra_pixmap_pool, pool);
 }
 
+static bool tegra_exa_pool_is_busy(struct tegra_exa *exa,
+                                   struct tegra_pixmap_pool *pool)
+{
+    struct mem_pool_entry *pool_entry;
+    int pool_itr;
+
+    MEM_POOL_FOR_EACH_ENTRY(&pool->pool, pool_entry, pool_itr) {
+        struct tegra_pixmap *pix = to_tegra_pixmap(pool_entry);
+        if (tegra_exa_pixmap_is_busy(exa, pix))
+            return true;
+    }
+
+    return false;
+}
+
 static void tegra_exa_fence_pool_entries(struct tegra_pixmap_pool *pool)
 {
     struct mem_pool_entry *pool_entry;
@@ -734,6 +749,47 @@ success:
     return 0;
 }
 
+static bool
+tegra_exa_pixmap_allocate_from_large_pool_slow(TegraPtr tegra,
+                                               struct tegra_pixmap *pixmap,
+                                               unsigned int size)
+{
+    struct tegra_exa *exa = tegra->exa;
+    struct mem_pool *pool = &exa->large_pool->pool;
+    unsigned int usecs = 30 * 1000 * 1000;
+    struct timespec now;
+    bool defrag = true;
+    bool ret;
+
+    clock_gettime(CLOCK_MONOTONIC, &now);
+
+    if (timespec_diff(&exa->large_pool_last_defrag_time, &now) < usecs ||
+        tegra_exa_pool_is_busy(exa, exa->large_pool))
+            return false;
+
+    exa->large_pool_last_defrag_time = now;
+
+    tegra_exa_pixmap_pool_map(exa->large_pool);
+    ret = !!mem_pool_alloc(pool, size, &pixmap->pool_entry, defrag);
+    tegra_exa_pixmap_pool_unmap(exa->large_pool);
+
+    return ret;
+}
+
+static bool
+tegra_exa_pixmap_allocate_from_large_pool_fast(TegraPtr tegra,
+                                               struct tegra_pixmap *pixmap,
+                                               unsigned int size)
+{
+    struct tegra_exa *exa = tegra->exa;
+
+    if (!mem_pool_alloc(&exa->large_pool->pool, size,
+                        &pixmap->pool_entry, false))
+        return false;
+
+    return true;
+}
+
 static int
 tegra_exa_pixmap_allocate_from_large_pool(TegraPtr tegra,
                                           struct tegra_pixmap *pixmap,
@@ -744,8 +800,11 @@ tegra_exa_pixmap_allocate_from_large_pool(TegraPtr tegra,
     if (!exa->large_pool || size <= TEGRA_EXA_POOL_SIZE_MAX)
         return -EINVAL;
 
-    if (!mem_pool_alloc(&exa->large_pool->pool, size,
-                        &pixmap->pool_entry, false))
+    if (!mem_pool_has_space(&exa->large_pool->pool, size))
+        return -ENOMEM;
+
+    if (!tegra_exa_pixmap_allocate_from_large_pool_fast(tegra, pixmap, size) &&
+        !tegra_exa_pixmap_allocate_from_large_pool_slow(tegra, pixmap, size))
         return -ENOMEM;
 
     return 0;
