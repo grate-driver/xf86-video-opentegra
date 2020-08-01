@@ -187,6 +187,7 @@ tegra_exa_compact_pools_fast(struct tegra_exa *exa, size_t size)
     struct tegra_pixmap_pool *pool_to, *pool_from = NULL;
     unsigned int transferred;
     unsigned int pass = 3;
+    struct timespec time;
 
     PROFILE_DEF(fast_compaction);
     PROFILE_START(fast_compaction);
@@ -251,6 +252,9 @@ again:
     PROFILE_STOP(fast_compaction);
 
     exa->stats.num_pool_fast_compactions++;
+
+    clock_gettime(CLOCK_MONOTONIC, &time);
+    exa->pool_fast_compact_time = time.tv_sec;
 
     return NULL;
 }
@@ -369,6 +373,7 @@ static void tegra_exa_compact_pools_slow(TegraPtr tegra)
     unsigned long heaviest_size;
     unsigned int transferred;
     unsigned int i, l, h;
+    struct timespec time;
     bool list_full;
     int err;
 
@@ -572,6 +577,9 @@ heavy_again:
 #endif
 
     exa->stats.num_pool_slow_compactions++;
+
+    clock_gettime(CLOCK_MONOTONIC, &time);
+    exa->pool_slow_compact_time = time.tv_sec;
 }
 
 static unsigned long
@@ -612,7 +620,6 @@ static bool
 tegra_exa_fast_compaction_allowed(struct tegra_exa *exa, size_t size_limit)
 {
     struct timespec time;
-    bool compact = false;
     bool expired = true;
 
     clock_gettime(CLOCK_MONOTONIC, &time);
@@ -620,15 +627,8 @@ tegra_exa_fast_compaction_allowed(struct tegra_exa *exa, size_t size_limit)
     if (time.tv_sec - exa->pool_fast_compact_time < 3)
         expired = false;
 
-    if (size_limit) {
-        if (tegra_exa_pools_total_available_space(exa) < size_limit)
-            expired = false;
-        else
-            compact = true;
-    }
-
-    if (!compact && size_limit)
-        exa->pool_fast_compact_time = time.tv_sec;
+    if (size_limit && tegra_exa_pools_total_available_space(exa) < size_limit)
+        expired = false;
 
     return expired;
 }
