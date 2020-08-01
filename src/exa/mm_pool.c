@@ -85,6 +85,7 @@ static int tegra_exa_pixmap_pool_create(TegraPtr tegra,
     struct tegra_exa *exa = tegra->exa;
     struct tegra_pixmap_pool *pool;
     unsigned long flags;
+    int drm_ver;
     int err;
 
     pool = calloc(1, sizeof(*pool));
@@ -93,9 +94,12 @@ static int tegra_exa_pixmap_pool_create(TegraPtr tegra,
         return -ENOMEM;
     }
 
+    drm_ver = drm_tegra_version(tegra->drm);
     flags = exa->default_drm_bo_flags;
 
-    if (size <= TEGRA_EXA_POOL_SIZE_MERGED_MAX)
+    if (drm_ver >= GRATE_KERNEL_DRM_VERSION &&
+            size <= TEGRA_EXA_POOL_SIZE_MERGED_MAX &&
+                exa->has_iommu)
         flags |= DRM_TEGRA_GEM_CREATE_SPARSE;
 
     err = drm_tegra_bo_new(&pool->bo, tegra->drm, flags, size);
