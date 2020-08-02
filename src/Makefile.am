@@ -140,7 +140,7 @@ shaders_gen := $(addsuffix .bin.h, $(shaders_dir:%/=%))
 		--lpname linker_common \
 		--out $@
 
-exa/shaders.h: $(shaders_gen) $(srcdir)/exa/gen_shaders_h.sh
+$(srcdir)/exa/shaders.h: $(shaders_gen) $(srcdir)/exa/gen_shaders_h.sh
 	$(srcdir)/exa/gen_shaders_h.sh $(srcdir)/exa
 
 asm_grammars := $(wildcard $(srcdir)/gpu/gr3d-asm/*.y)
