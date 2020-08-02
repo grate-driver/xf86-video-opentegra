@@ -44,6 +44,8 @@ void drm_tegra_close(struct drm_tegra *drm);
 
 int drm_tegra_version(struct drm_tegra *drm);
 
+int drm_tegra_fd(struct drm_tegra *drm);
+
 int drm_tegra_bo_new(struct drm_tegra_bo **bop, struct drm_tegra *drm,
 		     uint32_t flags, uint32_t size);
 int drm_tegra_bo_wrap(struct drm_tegra_bo **bop, struct drm_tegra *drm,

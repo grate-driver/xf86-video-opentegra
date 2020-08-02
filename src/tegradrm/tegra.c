@@ -286,6 +286,11 @@ int drm_tegra_version(struct drm_tegra *drm)
 	return drm->version;
 }
 
+int drm_tegra_fd(struct drm_tegra *drm)
+{
+	return drm->fd;
+}
+
 static int drm_tegra_wrap(struct drm_tegra **drmp, int fd, bool close,
 			  int version_major)
 {
