@@ -506,13 +506,13 @@ tegra_stream_get_current_fence_v1(struct tegra_stream *base_stream)
 }
 
 int tegra_stream_create_v1(struct tegra_stream **pstream,
-                           struct _TegraRec *tegra)
+                           struct drm_tegra *drm)
 {
     struct tegra_stream_v1 *stream_v1;
     struct tegra_stream *stream;
     int ret;
 
-    ret = drm_tegra_version(tegra->drm);
+    ret = drm_tegra_version(drm);
     if (ret < 0) {
         ErrorMsg("drm_tegra_version() failed %d\n", ret);
         return -1;

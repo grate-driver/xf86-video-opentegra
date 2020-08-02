@@ -46,8 +46,6 @@
     assert(0);                                                          \
 })
 
-struct _TegraRec;
-
 enum tegra_stream_status {
     TEGRADRM_STREAM_FREE,
     TEGRADRM_STREAM_CONSTRUCT,
@@ -98,20 +96,20 @@ struct tegra_stream {
 };
 
 /* Stream operations */
-int tegra_stream_create_v1(struct tegra_stream **stream,
-                           struct _TegraRec *tegra);
+int tegra_stream_create_v1(struct tegra_stream **pstream,
+                           struct drm_tegra *drm);
 
-int grate_stream_create_v2(struct tegra_stream **stream,
-                           struct _TegraRec *tegra);
+int grate_stream_create_v2(struct tegra_stream **pstream,
+                           struct drm_tegra *drm);
 
-static inline int tegra_stream_create(struct tegra_stream **stream,
-                                      struct _TegraRec *tegra)
+static inline int tegra_stream_create(struct tegra_stream **pstream,
+                                      struct drm_tegra *drm)
 {
     int ret;
 
-    ret = grate_stream_create_v2(stream, tegra);
+    ret = grate_stream_create_v2(pstream, drm);
     if (ret)
-        ret = tegra_stream_create_v1(stream, tegra);
+        ret = tegra_stream_create_v1(pstream, drm);
 
     return ret;
 }

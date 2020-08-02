@@ -40,7 +40,6 @@ struct tegra_fence_v2 {
 
 struct tegra_stream_v2 {
     struct tegra_stream base;
-    int drm_fd;
     struct drm_tegra *drm;
     struct drm_tegra_job_v2 *job;
 
@@ -216,7 +215,7 @@ tegra_stream_submit_v2(enum host1x_engine engine,
      */
     if (syncobj_handle_in && drm_ver < GRATE_KERNEL_DRM_VERSION + 6) {
 #ifdef HAVE_LIBDRM_SYNCOBJ_SUPPORT
-        ret = drmSyncobjWait(stream->drm_fd, &syncobj_handle_in, 1,
+        ret = drmSyncobjWait(drm_tegra_fd(stream->drm), &syncobj_handle_in, 1,
                              gettime_ns() + 1000000000,
                              DRM_SYNCOBJ_WAIT_FLAGS_WAIT_FOR_SUBMIT,
                              NULL);
@@ -255,7 +254,7 @@ static int tegra_stream_create_syncobj_v2(struct tegra_stream_v2 *stream,
 #ifdef HAVE_LIBDRM_SYNCOBJ_SUPPORT
     int err;
 
-    err = drmSyncobjCreate(stream->drm_fd, 0, syncobj_handle);
+    err = drmSyncobjCreate(drm_tegra_fd(stream->drm), 0, syncobj_handle);
     if (err < 0) {
         ErrorMsg("drmSyncobjCreate() failed %d\n", err);
         return err;
@@ -362,7 +361,7 @@ tegra_stream_create_fence_v2(struct tegra_stream_v2 *stream, bool gr2d)
         return NULL;
     }
 
-    f->drm_fd = stream->drm_fd;
+    f->drm_fd = drm_tegra_fd(stream->drm);
     f->base.check_fence = tegra_stream_check_fence_v2;
     f->base.wait_fence = tegra_stream_wait_fence_v2;
     f->base.free_fence = tegra_stream_free_fence_v2;
@@ -596,7 +595,7 @@ tegra_stream_get_current_fence_v2(struct tegra_stream *base_stream)
 }
 
 int grate_stream_create_v2(struct tegra_stream **pstream,
-                           struct _TegraRec *tegra)
+                           struct drm_tegra *drm)
 {
     struct tegra_stream_v2 *stream_v2;
     struct tegra_stream *stream;
@@ -607,7 +606,7 @@ int grate_stream_create_v2(struct tegra_stream **pstream,
     return -1;
 #endif
 
-    ret = drm_tegra_version(tegra->drm);
+    ret = drm_tegra_version(drm);
     if (ret < 0) {
         ErrorMsg("drm_tegra_version() failed %d\n", ret);
         return -1;
@@ -638,10 +637,9 @@ int grate_stream_create_v2(struct tegra_stream **pstream,
     stream->sync = tegra_stream_sync_v2;
     stream->current_fence = tegra_stream_get_current_fence_v2;
 
-    stream_v2->drm_fd = tegra->fd;
-    stream_v2->drm = tegra->drm;
+    stream_v2->drm = drm;
 
-    ret = drm_tegra_job_new_v2(&stream_v2->job, tegra->drm,
+    ret = drm_tegra_job_new_v2(&stream_v2->job, drm,
                                DRM_TEGRA_BO_TABLE_MAX_ENTRIES_NUM,
                                65536 /* xxx: 64K should be enough (!?) */);
     if (ret) {

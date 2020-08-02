@@ -145,7 +145,7 @@ static int tegra_exa_init_gpu(TegraPtr tegra, struct tegra_exa *exa)
         goto close_gr2d;
     }
 
-    err = tegra_stream_create(&exa->cmds, tegra);
+    err = tegra_stream_create(&exa->cmds, tegra->drm);
     if (err) {
         ERROR_MSG("failed to create command stream: %d\n", err);
         goto close_gr3d;

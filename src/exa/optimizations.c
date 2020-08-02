@@ -32,7 +32,7 @@ static int tegra_exa_init_optimizations(TegraPtr tegra, struct tegra_exa *exa)
      * to 0.
      */
     for (i = 0; i < TEGRA_OPT_NUM; i++) {
-        err = tegra_stream_create(&exa->opt_state[i].cmds, tegra);
+        err = tegra_stream_create(&exa->opt_state[i].cmds, tegra->drm);
         if (err < 0) {
             ERROR_MSG("failed to create command stream: %d\n", err);
             goto fail;

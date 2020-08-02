@@ -387,7 +387,7 @@ static Bool TegraVideoOpenGPU(TegraVideoPtr priv, ScrnInfoPtr scrn)
             return FALSE;
         }
 
-        err = tegra_stream_create(&priv->cmds, tegra);
+        err = tegra_stream_create(&priv->cmds, tegra->drm);
         if (err) {
             ErrorMsg("failed to create command stream: %d\n", err);
             drm_tegra_channel_close(priv->gr2d);
