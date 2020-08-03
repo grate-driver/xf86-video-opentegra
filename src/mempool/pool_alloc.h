@@ -25,6 +25,7 @@
 #define __TEGRA_MEM_POOL_H
 
 #include <assert.h>
+#include <stddef.h>
 
 #ifdef DEBUG
 #define POOL_DEBUG
