@@ -29,6 +29,9 @@
  * list handling. No list looping yet.
  */
 
+#ifndef __TEGRA_DRMLIST_H
+#define __TEGRA_DRMLIST_H
+
 #include <stddef.h>
 
 typedef struct _drmMMListHead
@@ -116,3 +119,5 @@ typedef struct _drmMMListHead
 	(__join)->next->prev = (__list)->prev;				\
 	(__join)->next = (__list)->next;				\
 }
+
+#endif
