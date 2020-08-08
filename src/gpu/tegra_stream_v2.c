@@ -469,14 +469,13 @@ static int tegra_stream_prep_v2(struct tegra_stream *base_stream, uint32_t words
 
 static int
 tegra_stream_push_words_v2(struct tegra_stream *base_stream, const void *addr,
-                           unsigned words, int num_relocs, ...)
+                           unsigned words, int num_relocs, va_list ap)
 {
     struct tegra_stream_v2 *stream = to_stream_v2(base_stream);
     struct tegra_reloc reloc_arg;
     uint32_t *pushbuf_ptr;
     uint32_t flags;
     int drm_ver;
-    va_list ap;
     int ret;
 
     ret = tegra_stream_prep_v2(base_stream, words);
@@ -497,12 +496,11 @@ tegra_stream_push_words_v2(struct tegra_stream *base_stream, const void *addr,
     memcpy(pushbuf_ptr, addr, words * sizeof(uint32_t));
 
     /* copy relocs */
-    va_start(ap, num_relocs);
     for (; num_relocs; num_relocs--) {
         reloc_arg = va_arg(ap, struct tegra_reloc);
 
         stream->job->ptr  = pushbuf_ptr;
-        stream->job->ptr += reloc_arg.var_offset / sizeof(uint32_t);
+        stream->job->ptr += reloc_arg.var_offset;
 
         flags = 0;
         if (reloc_arg.write)
@@ -522,7 +520,6 @@ tegra_stream_push_words_v2(struct tegra_stream *base_stream, const void *addr,
             break;
         }
     }
-    va_end(ap);
 
     stream->job->ptr = pushbuf_ptr + words;
 

@@ -54,7 +54,6 @@ enum tegra_stream_status {
 };
 
 struct tegra_reloc {
-    const void *addr;
     struct drm_tegra_bo *bo;
     uint32_t offset;
     unsigned var_offset;
@@ -87,7 +86,7 @@ struct tegra_stream {
                       bool write,
                       bool explicit_fencing);
     int (*push_words)(struct tegra_stream *stream, const void *addr,
-                      unsigned words, int num_relocs, ...);
+                      unsigned words, int num_relocs, va_list args);
     int (*prep)(struct tegra_stream *stream, uint32_t words);
     int (*sync)(struct tegra_stream *stream,
                 enum drm_tegra_syncpt_cond cond,
@@ -271,6 +270,11 @@ static inline int tegra_stream_push_words(struct tegra_stream *stream,
     return ret;
 }
 
+#define TEGRA_STREAM_PUSH_WORDS(STREAM, CMD_ARRAY, NUM_RELOCS, args...)     \
+    tegra_stream_push_words(STREAM, CMD_ARRAY,                              \
+                            sizeof(CMD_ARRAY) / sizeof(*(CMD_ARRAY)),       \
+                            NUM_RELOCS, ##args);
+
 static inline int
 tegra_stream_prep(struct tegra_stream *stream, uint32_t words)
 {
@@ -337,10 +341,11 @@ tegra_stream_push_setclass(struct tegra_stream *stream, unsigned class_id)
 }
 
 static inline struct tegra_reloc
-tegra_reloc(const void *var_ptr, struct drm_tegra_bo *bo,
-            uint32_t offset, uint32_t var_offset)
+tegra_reloc(struct drm_tegra_bo *bo,
+            uint32_t offset, uint32_t var_offset,
+            bool write, bool explicit_fencing)
 {
-    struct tegra_reloc reloc = {var_ptr, bo, offset, var_offset};
+    struct tegra_reloc reloc = {bo, offset, var_offset, write, explicit_fencing};
     return reloc;
 }
 
