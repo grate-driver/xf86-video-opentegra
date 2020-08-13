@@ -223,14 +223,14 @@ static void tegra_exa_prepare_optimized_copy(PixmapPtr src_pixmap,
         } else {
             DEBUG_MSG("pixmap %p -> %p copy optimized to a partial solid-fill\n",
                       src_pixmap, dst_pixmap);
-
-            tegra_exa_wrap_state(tegra, &tegra->opt_state[TEGRA_OPT_COPY]);
-
-            optimize = tegra_exa_prepare_solid_2d(dst_pixmap, op, planemask,
-                                                  src_priv->state.solid_color);
-
-            tegra_exa_unwrap_state(tegra, &tegra->opt_state[TEGRA_OPT_COPY]);
         }
+
+        tegra_exa_wrap_state(tegra, &tegra->opt_state[TEGRA_OPT_COPY]);
+
+        optimize = tegra_exa_prepare_solid_2d(dst_pixmap, op, planemask,
+                                              src_priv->state.solid_color);
+
+        tegra_exa_unwrap_state(tegra, &tegra->opt_state[TEGRA_OPT_COPY]);
     }
 
     tegra->scratch.optimize = optimize;
@@ -289,17 +289,10 @@ static void tegra_exa_complete_solid_fill_copy_optimization(PixmapPtr dst_pixmap
 {
     ScrnInfoPtr scrn = xf86ScreenToScrn(dst_pixmap->drawable.pScreen);
     struct tegra_exa *tegra = TegraPTR(scrn)->exa;
-    struct tegra_pixmap *src_priv = exaGetPixmapDriverPrivate(tegra->scratch.src);
-    struct tegra_pixmap *dst_priv = exaGetPixmapDriverPrivate(dst_pixmap);
-
-    if (tegra_exa_optimize_same_color_copy(src_priv, dst_priv))
-        return;
 
     tegra_exa_wrap_state(tegra, &tegra->opt_state[TEGRA_OPT_COPY]);
     tegra_exa_done_solid_2d(dst_pixmap);
     tegra_exa_unwrap_state(tegra, &tegra->opt_state[TEGRA_OPT_COPY]);
-
-    tegra->scratch.ops = 0;
 
     ACCEL_MSG("\n");
 }
