@@ -73,7 +73,7 @@ static bool tegra_exa_optimize_solid_op(PixmapPtr pixmap,
         if (priv->state.alpha_0 || (px1 == 0 && py1 == 0 &&
             pixmap->drawable.width == px2 &&
             pixmap->drawable.height == py2))
-            alpha_0 = 1;
+            alpha_0 = !DISABLE_2D_OPTIMIZATIONS;
     }
 
     if (priv->state.alpha_0 && !alpha_0)
