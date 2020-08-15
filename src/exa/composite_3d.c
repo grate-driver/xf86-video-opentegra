@@ -513,7 +513,6 @@ static bool tegra_exa_prepare_composite_3d(int op,
     struct tegra_3d_draw_state draw_state;
     bool mask_tex_reduced = true;
     bool src_tex_reduced = true;
-    struct tegra_pixmap *priv;
     unsigned mask_sel;
     unsigned src_sel;
     Pixel solid;
@@ -585,13 +584,6 @@ static bool tegra_exa_prepare_composite_3d(int op,
                                             &tegra->scratch.transform_src);
 
                 draw_state.src.transform_coords = true;
-            }
-
-            if (draw_state.src.alpha &&
-                draw_state.src.format == TGR3D_PIXEL_FORMAT_RGBA8888)
-            {
-                priv = exaGetPixmapDriverPrivate(psrc);
-                draw_state.src.alpha = !priv->state.alpha_0;
             }
         } else {
             if (op != PictOpClear && src_picture) {
