@@ -660,15 +660,23 @@ static int tegra_exa_freeze_pixmap(TegraPtr tegra, struct tegra_pixmap *pixmap)
 
     data_size = tegra_exa_pixmap_size(pixmap);
 
-    exa->cooling_size -= data_size;
-    xorg_list_del(&pixmap->fridge_entry);
-    pixmap->cold = false;
-
     pixmap_data = tegra_exa_mm_fridge_map_pixmap(pixmap);
 
     if (!pixmap_data) {
         ERROR_MSG("failed to map pixmap data\n");
         return -1;
+    }
+
+    /*
+     * Note that tegra_exa_mm_fridge_map_pixmap() flushes deferred operations,
+     * and thus, pixmap will be thawed and then returned to the cool_pixmaps
+     * list after the flushing is finished, hence pixmap shall be removed from
+     * the list after the mapping is done.
+     */
+    if (pixmap->cold) {
+        exa->cooling_size -= data_size;
+        xorg_list_del(&pixmap->fridge_entry);
+        pixmap->cold = false;
     }
 
     carg = tegra_exa_select_compression(tegra, pixmap, data_size, pixmap_data);
