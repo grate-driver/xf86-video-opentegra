@@ -51,7 +51,7 @@ struct tegra_stream_v2 {
     struct tegra_fence *job_fence;
 };
 
-static uint64_t gettime_ns(void)
+static __maybe_unused uint64_t gettime_ns(void)
 {
     struct timespec current;
     clock_gettime(CLOCK_MONOTONIC, &current);
@@ -342,9 +342,8 @@ tegra_stream_mark_fence_completed_v2(struct tegra_fence *base_fence)
     }
 
     TEGRA_FENCE_SET_ACTIVE(base_fence);
-
-    return true;
 #endif
+    return true;
 }
 
 static struct tegra_fence *
@@ -396,7 +395,7 @@ static int tegra_stream_begin_v2(struct tegra_stream *base_stream,
 static int tegra_stream_push_reloc_v2(struct tegra_stream *base_stream,
                                       struct drm_tegra_bo *bo,
                                       unsigned offset,
-                                      bool write,
+                                      bool write_dir,
                                       bool explicit_fencing)
 {
     struct tegra_stream_v2 *stream = to_stream_v2(base_stream);
@@ -406,7 +405,7 @@ static int tegra_stream_push_reloc_v2(struct tegra_stream *base_stream,
 
     drm_ver = drm_tegra_version(stream->drm);
 
-    if (write)
+    if (write_dir)
         flags |= DRM_TEGRA_BO_TABLE_WRITE;
 
     /* explicit fencing is bugged on older kernel versions */

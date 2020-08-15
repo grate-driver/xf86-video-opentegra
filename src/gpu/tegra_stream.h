@@ -234,7 +234,7 @@ static inline int
 tegra_stream_push_reloc(struct tegra_stream *stream,
                         struct drm_tegra_bo *bo,
                         unsigned offset,
-                        bool write,
+                        bool write_dir,
                         bool explicit_fencing)
 {
     if (!(stream && stream->status == TEGRADRM_STREAM_CONSTRUCT)) {
@@ -244,7 +244,7 @@ tegra_stream_push_reloc(struct tegra_stream *stream,
 
     stream->num_pushed_words++;
 
-    return stream->push_reloc(stream, bo, offset, write, explicit_fencing);
+    return stream->push_reloc(stream, bo, offset, write_dir, explicit_fencing);
 }
 
 static inline int tegra_stream_push_words(struct tegra_stream *stream,
