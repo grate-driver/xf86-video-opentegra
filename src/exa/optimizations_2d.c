@@ -82,8 +82,7 @@ static bool tegra_exa_optimize_solid_op(PixmapPtr pixmap,
     if (tegra->scratch.optimize &&
         px1 == 0 && py1 == 0 &&
         pixmap->drawable.width == px2 &&
-        pixmap->drawable.height == py2 &&
-        bytes >= TEGRA_EXA_CPU_FILL_MIN_SIZE)
+        pixmap->drawable.height == py2)
     {
         tegra_exa_cancel_deferred_operations(pixmap);
 
@@ -101,7 +100,8 @@ static bool tegra_exa_optimize_solid_op(PixmapPtr pixmap,
 
     if (tegra->scratch.optimize &&
         priv->state.solid_fill &&
-        priv->state.solid_color == tegra->scratch.color)
+        priv->state.solid_color == tegra->scratch.color &&
+        bytes < TEGRA_EXA_CPU_FILL_MIN_SIZE)
     {
         DEBUG_MSG("pixmap %p partial solid-fill optimized out\n", pixmap);
         return true;
