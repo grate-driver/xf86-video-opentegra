@@ -71,11 +71,11 @@ int mem_pool_init(struct mem_pool *pool, unsigned long size,
                   mem_pool_memcpy memcpy,
                   mem_pool_memmove memmove);
 void mem_pool_destroy(struct mem_pool *pool);
-int mem_pool_transfer_entries(struct mem_pool * restrict pool_to,
-                              struct mem_pool * restrict pool_from);
-int mem_pool_transfer_entries_fast(struct mem_pool * restrict pool_to,
-                                   struct mem_pool * restrict pool_from);
-void *mem_pool_alloc(struct mem_pool * restrict pool, unsigned long size,
+int mem_pool_transfer_entries(struct mem_pool *pool_to,
+                              struct mem_pool *pool_from);
+int mem_pool_transfer_entries_fast(struct mem_pool *pool_to,
+                                   struct mem_pool *pool_from);
+void *mem_pool_alloc(struct mem_pool *pool, unsigned long size,
                      struct mem_pool_entry *ret_entry, int defrag);
 void mem_pool_free(struct mem_pool_entry *entry);
 void mem_pool_defrag(struct mem_pool *pool);
@@ -120,7 +120,7 @@ static inline void *mem_pool_entry_addr(struct mem_pool_entry *entry)
     return pool->vbase + mem_pool_entry_offset(entry);
 }
 
-int mem_pool_get_next_used_entry(struct mem_pool * restrict pool,
+int mem_pool_get_next_used_entry(struct mem_pool *pool,
                                  unsigned int start);
 
 #define MEM_POOL_FOR_EACH_ENTRY(POOL, ENTRY, ITR)               \

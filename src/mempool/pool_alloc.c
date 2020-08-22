@@ -126,7 +126,7 @@ int mem_pool_init(struct mem_pool *pool, unsigned long size,
     return 0;
 }
 
-static int get_next_unused_entry(struct mem_pool * restrict pool,
+static int get_next_unused_entry(struct mem_pool *pool,
                                  unsigned int start)
 {
     unsigned int bits_array = start / 32;
@@ -161,7 +161,7 @@ out:
     return -1;
 }
 
-int mem_pool_get_next_used_entry(struct mem_pool * restrict pool,
+int mem_pool_get_next_used_entry(struct mem_pool *pool,
                                  unsigned int start)
 {
     unsigned int bits_array = start / 32;
@@ -196,7 +196,7 @@ out:
     return -1;
 }
 
-static void set_bit(struct mem_pool * restrict pool, unsigned int bit)
+static void set_bit(struct mem_pool *pool, unsigned int bit)
 {
     unsigned int bits_array = bit / 32;
     unsigned long mask = 1 << (bit % 32);
@@ -207,7 +207,7 @@ static void set_bit(struct mem_pool * restrict pool, unsigned int bit)
     pool->bitmap[bits_array] |= mask;
 }
 
-static void clear_bit(struct mem_pool * restrict pool, unsigned int bit)
+static void clear_bit(struct mem_pool *pool, unsigned int bit)
 {
     unsigned int bits_array = bit / 32;
     unsigned long mask = 1 << (bit % 32);
@@ -248,7 +248,7 @@ static void mem_pool_clear_canary(struct __mem_pool_entry *entry)
 #endif
 }
 
-static void validate_pool(struct mem_pool * restrict pool)
+static void validate_pool(struct mem_pool *pool)
 {
 #ifdef POOL_DEBUG
     struct __mem_pool_entry *busy;
@@ -365,7 +365,7 @@ static void migrate_entry(struct mem_pool *pool_from,
 #endif
 }
 
-static int mem_pool_resize_bitmap(struct mem_pool * restrict pool,
+static int mem_pool_resize_bitmap(struct mem_pool *pool,
                                   unsigned long new_size)
 {
     struct __mem_pool_entry *new_entries;
@@ -422,7 +422,7 @@ static int mem_pool_resize_bitmap(struct mem_pool * restrict pool,
     return 0;
 }
 
-static int defrag_pool(struct mem_pool * restrict pool,
+static int defrag_pool(struct mem_pool *pool,
                        unsigned long needed_size,
                        int ret_last_busy)
 {
@@ -486,12 +486,12 @@ out:
     return p;
 }
 
-static int mem_pool_grow_bitmap(struct mem_pool * restrict pool)
+static int mem_pool_grow_bitmap(struct mem_pool *pool)
 {
     return mem_pool_resize_bitmap(pool, pool->bitmap_size + 1);
 }
 
-void *mem_pool_alloc(struct mem_pool * restrict pool, unsigned long size,
+void *mem_pool_alloc(struct mem_pool *pool, unsigned long size,
                      struct mem_pool_entry *ret_entry, int defrag)
 {
     struct __mem_pool_entry *empty;
@@ -672,8 +672,8 @@ void mem_pool_destroy(struct mem_pool *pool)
  * Returns number of transferred entries. The "pool_to" is in defragmented
  * state.
  */
-int mem_pool_transfer_entries(struct mem_pool * restrict pool_to,
-                              struct mem_pool * restrict pool_from)
+int mem_pool_transfer_entries(struct mem_pool *pool_to,
+                              struct mem_pool *pool_from)
 {
     struct __mem_pool_entry *busy_from;
     struct __mem_pool_entry *busy_to;
@@ -773,8 +773,8 @@ next_from:
  *
  * Returns number of transferred entries.
  */
-int mem_pool_transfer_entries_fast(struct mem_pool * restrict pool_to,
-                                   struct mem_pool * restrict pool_from)
+int mem_pool_transfer_entries_fast(struct mem_pool *pool_to,
+                                   struct mem_pool *pool_from)
 {
     struct __mem_pool_entry *busy_from;
     struct mem_pool_entry empty_to;
