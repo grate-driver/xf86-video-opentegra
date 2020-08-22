@@ -68,16 +68,70 @@ static struct drm_tegra_bo * lookup_bo(void *table, uint32_t key)
 	return bo;
 }
 
+static void *drm_tegra_bo_do_mapping(struct drm_tegra_bo *bo,
+				     unsigned int size)
+{
+	struct drm_tegra_gem_mmap_3_19 args_3_19;
+	struct drm_tegra_gem_mmap args;
+	struct drm_tegra *drm = bo->drm;
+	void *map;
+	int err;
+
+	memset(&args, 0, sizeof(args));
+	args.handle = bo->handle;
+
+	err = drmCommandWriteRead(drm->fd, DRM_TEGRA_GEM_MMAP,
+				  &args, sizeof(args));
+	if (err < 0 || !args.offset)
+		goto legacy_args_3_19;
+
+	map = mmap(0, size, PROT_READ | PROT_WRITE, MAP_SHARED,
+		   drm->fd, args.offset);
+
+	if (map == MAP_FAILED) {
+		VDBG_BO(bo, "failed to map offset 0x%llX err %d (%s)\n",
+			args.offset, -errno, strerror(errno));
+
+		return MAP_FAILED;
+	}
+
+	return map;
+
+legacy_args_3_19:
+	/* upstream Tegra DRM UAPI had another ABI change after 4_0 kernel */
+	memset(&args_3_19, 0, sizeof(args_3_19));
+	args_3_19.handle = bo->handle;
+
+	err = drmCommandWriteRead(drm->fd, DRM_TEGRA_GEM_MMAP,
+				  &args_3_19, sizeof(args_3_19));
+	if (err < 0) {
+		VDBG_BO(bo, "failed get mapping offset err %d (%s)\n",
+			err, strerror(-err));
+
+		return MAP_FAILED;
+	}
+
+	map = mmap(0, size, PROT_READ | PROT_WRITE, MAP_SHARED,
+		   drm->fd, args_3_19.offset);
+
+	if (map == MAP_FAILED) {
+		VDBG_BO(bo, "failed to map offset 0x%X err %d (%s)\n",
+			args_3_19.offset, -errno, strerror(errno));
+
+		return MAP_FAILED;
+	}
+
+	return map;
+}
+
 static void drm_tegra_bo_setup_guards(struct drm_tegra_bo *bo)
 {
 #ifndef NDEBUG
 	struct drm_tegra *drm = bo->drm;
-	struct drm_tegra_gem_mmap args;
 	uint64_t guard = 0x5351317315731757;
 	uint8_t *map;
 	size_t size;
 	unsigned i;
-	int err;
 
 	if (!drm->debug_bo_front_guard && !drm->debug_bo_back_guard)
 		return;
@@ -87,24 +141,9 @@ static void drm_tegra_bo_setup_guards(struct drm_tegra_bo *bo)
 	if (drm->debug_bo_back_guard)
 		size += 4096;
 
-	memset(&args, 0, sizeof(args));
-	args.handle = bo->handle;
-
-	err = drmCommandWriteRead(drm->fd, DRM_TEGRA_GEM_MMAP,
-				  &args, sizeof(args));
-	if (err < 0) {
-		VDBG_BO(bo, "failed get mapping offset err %d (%s)\n",
-			err, strerror(-err));
+	map = drm_tegra_bo_do_mapping(bo, bo->offset + size);
+	if (map == MAP_FAILED)
 		abort();
-	}
-
-	map = mmap(0, bo->offset + size, PROT_READ | PROT_WRITE, MAP_SHARED,
-		   drm->fd, args.offset);
-	if (map == MAP_FAILED) {
-		VDBG_BO(bo, "failed to map guard 0x%llX err %d (%s)\n",
-			args.offset, -errno, strerror(errno));
-		abort();
-	}
 
 	if (drm->debug_bo_front_guard)
 		bo->guard_front = (uint64_t *)map;
@@ -564,9 +603,7 @@ int drm_tegra_bo_get_handle(struct drm_tegra_bo *bo, uint32_t *handle)
 int __drm_tegra_bo_map(struct drm_tegra_bo *bo, void **ptr)
 {
 	struct drm_tegra *drm = bo->drm;
-	struct drm_tegra_gem_mmap args;
 	uint8_t *map;
-	int err;
 
 	map = drm_tegra_bo_cache_map(bo);
 	if (map) {
@@ -581,22 +618,8 @@ int __drm_tegra_bo_map(struct drm_tegra_bo *bo, void **ptr)
 	}
 #endif
 
-	memset(&args, 0, sizeof(args));
-	args.handle = bo->handle;
-
-	err = drmCommandWriteRead(drm->fd, DRM_TEGRA_GEM_MMAP,
-				  &args, sizeof(args));
-	if (err < 0) {
-		VDBG_BO(bo, "failed get mapping offset err %d (%s)\n",
-			err, strerror(-err));
-		return err;
-	}
-
-	map = mmap(0, bo->offset + bo->size, PROT_READ | PROT_WRITE, MAP_SHARED,
-		   drm->fd, args.offset);
+	map = drm_tegra_bo_do_mapping(bo, bo->offset + bo->size);
 	if (map == MAP_FAILED) {
-		VDBG_BO(bo, "failed to map offset 0x%llX err %d (%s)\n",
-			args.offset, -errno, strerror(errno));
 		*ptr = NULL;
 		return -errno;
 	}

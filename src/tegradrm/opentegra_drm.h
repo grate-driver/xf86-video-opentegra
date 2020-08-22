@@ -117,6 +117,26 @@ struct drm_tegra_gem_mmap {
 };
 
 /**
+ * struct drm_tegra_gem_mmap_3_19 - parameters for the GEM mmap IOCTL for older kernels
+ */
+struct drm_tegra_gem_mmap_3_19 {
+	/**
+	 * @handle:
+	 *
+	 * Handle of the GEM object to obtain an mmap offset for.
+	 */
+	__u32 handle;
+
+	/**
+	 * @offset:
+	 *
+	 * The mmap offset for the given GEM object. Set by the kernel upon
+	 * successful completion of the IOCTL.
+	 */
+	__u32 offset;
+};
+
+/**
  * struct drm_tegra_syncpt_read - parameters for the read syncpoint IOCTL
  */
 struct drm_tegra_syncpt_read {
