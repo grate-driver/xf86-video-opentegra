@@ -53,10 +53,10 @@
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
 
 #ifndef NDEBUG
-#define VDBG_DRM(DRM, FMT, ...) do {					\
+#define VDBG_DRM(DRM, FMT, args...) do {				\
 	if (DRM->debug_bo)						\
 		fprintf(stderr, "%s: %d: " FMT,				\
-		__func__, __LINE__, __VA_ARGS__);			\
+			__func__, __LINE__, ##args);			\
 } while (0)
 
 #define DBG_BO_STATS(DRM) do {						\
@@ -77,7 +77,7 @@
 			 drm->debug_bos_mappings_cached);		\
 } while (0)
 
-#define VDBG_BO(BO, FMT, ...) do {					\
+#define VDBG_BO(BO, FMT, args...) do {					\
 	if (BO->drm->debug_bo)						\
 		fprintf(stderr,						\
 			"%s: %d:\tBO %p size %u handle %u name %u "	\
@@ -87,7 +87,7 @@
 			__func__, __LINE__, BO, BO->size, BO->handle,	\
 			BO->name, BO->flags, atomic_read(&BO->ref),	\
 			BO->map, atomic_read(&BO->mmap_ref),		\
-			BO->map_cached,	__VA_ARGS__);			\
+			BO->map_cached,	##args);			\
 } while (0)
 
 #define DBG_BO(BO, FMT) VDBG_BO(BO, FMT "%s", "")
