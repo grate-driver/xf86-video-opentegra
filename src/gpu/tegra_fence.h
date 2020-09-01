@@ -85,12 +85,24 @@ static inline void tegra_fence_validate(struct tegra_fence *f)
 {
 #ifdef FENCE_DEBUG
     if (f) {
+        assert(!f->released);
+        assert(f->refcnt >= 0);
+        assert(f->bug0 == 0);
+        assert(f->bug1 == 1);
+    }
+#endif
+}
+
+static inline void tegra_fence_validate_finished(struct tegra_fence *f)
+{
+#ifdef FENCE_DEBUG
+    if (f) {
         if (f->released)
             assert(f->refcnt == -1);
         else
             assert(f->refcnt >= 0);
-        assert(f->bug0 == 0);
-        assert(f->bug1 == 1);
+        assert(f->bug0 == (f->released ? 0xffffffff : 0));
+        assert(f->bug1 == (f->released ? 0xfffffffe : 1));
     }
 #endif
 }
@@ -141,14 +153,12 @@ static inline bool tegra_fence_wait(struct tegra_fence *f)
 static inline void tegra_fence_free(struct tegra_fence *f)
 {
     if (f) {
-        tegra_fence_validate(f);
+        tegra_fence_validate_finished(f);
 #ifdef FENCE_DEBUG
         f->refcnt = -100;
 #endif
         if (!f->free_fence(f)) {
 #ifdef FENCE_DEBUG
-            f->bug0 = 0xffffffff;
-            f->bug1 = 0xfffffffe;
             f->refcnt = -1;
 #endif
         }
@@ -161,10 +171,15 @@ static inline void tegra_fence_finish(struct tegra_fence *f)
 {
     if (f) {
 #ifdef FENCE_DEBUG
-        if (f->refcnt == -1)
+        if (f->refcnt == -1 && !f->released) {
+            assert(f->bug0 == 0);
+            assert(f->bug1 == 1);
+            f->bug0 = 0xffffffff;
+            f->bug1 = 0xfffffffe;
             f->released = true;
+        }
 #endif
-        tegra_fence_validate(f);
+        tegra_fence_validate_finished(f);
 
         if (f->refcnt == -1)
             TEGRA_FENCE_FREE(f);
