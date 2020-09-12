@@ -498,18 +498,20 @@ static Bool
 SetMaster(ScrnInfoPtr pScrn)
 {
     TegraPtr tegra = TegraPTR(pScrn);
-    int ret, err, err2 = 0;
+    int ret = 0, err, err2 = 0;
 
 #ifdef XF86_PDEV_SERVER_FD
     if (tegra->pEnt->location.type == BUS_PLATFORM &&
             (tegra->pEnt->location.id.plat->flags & XF86_PDEV_SERVER_FD))
-        return TRUE;
+        goto get_atomic_caps;
 #endif
 
     ret = drmSetMaster(tegra->fd);
     if (ret)
         xf86DrvMsg(pScrn->scrnIndex, X_ERROR, "drmSetMaster failed: %s\n",
                    strerror(errno));
+
+get_atomic_caps:
 #ifdef HAVE_DRM_MODE_ATOMIC
     err = drmSetClientCap(tegra->fd, DRM_CLIENT_CAP_ATOMIC, 2);
     if (err < 0)
