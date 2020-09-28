@@ -924,6 +924,8 @@ static void tegra_exa_done_composite_3d(PixmapPtr pdst)
     struct tegra_fence *fence = NULL;
 
     if (tegra->scratch.ops && tegra->cmds->status == TEGRADRM_STREAM_CONSTRUCT) {
+        tegra_exa_finalize_3d_state(&tegra->gr3d_state);
+
         tegra_exa_wait_pixmaps(TEGRA_2D, pdst, 2, tegra->scratch.src,
                                tegra->scratch.mask);
 

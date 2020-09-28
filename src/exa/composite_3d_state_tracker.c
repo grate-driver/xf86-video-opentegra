@@ -540,8 +540,6 @@ tegra_exa_submit_3d_state(struct tegra_3d_state *state)
     if (state->clean)
         return fence;
 
-    tegra_exa_finalize_3d_state(state);
-
     if (state->new.optimized_out) {
         if (tegra_exa_3d_state_deferred(state))
             return fence;
