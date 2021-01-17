@@ -150,6 +150,24 @@ static inline bool tegra_fence_wait(struct tegra_fence *f)
 #define TEGRA_FENCE_WAIT(F) \
     ({ TEGRA_FENCE_DEBUG_MSG(F, "wait"); tegra_fence_wait(F); })
 
+/*
+ * Same as tegra_fence_wait(), but fence could be in a finished state,
+ * i.e. the free() callback of fence didn't release the fence.
+ */
+static inline bool tegra_fence_wait_finished(struct tegra_fence *f)
+{
+    if (f) {
+        tegra_fence_validate_finished(f);
+
+        if (f->active)
+            return f->wait_fence(f);
+    }
+
+    return true;
+}
+#define TEGRA_FENCE_WAIT_FINISHED(F) \
+    ({ TEGRA_FENCE_DEBUG_MSG(F, "wait_finished"); tegra_fence_wait_finished(F); })
+
 static inline void tegra_fence_free(struct tegra_fence *f)
 {
     if (f) {
