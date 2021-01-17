@@ -101,16 +101,27 @@ int tegra_stream_create_v1(struct tegra_stream **pstream,
 int grate_stream_create_v2(struct tegra_stream **pstream,
                            struct drm_tegra *drm);
 
+int tegra_stream_create_v3(struct tegra_stream **pstream,
+                           struct drm_tegra *drm);
+
 static inline int tegra_stream_create(struct tegra_stream **pstream,
                                       struct drm_tegra *drm)
 {
-    int ret;
+    int err;
 
-    ret = grate_stream_create_v2(pstream, drm);
-    if (ret)
-        ret = tegra_stream_create_v1(pstream, drm);
+    err = tegra_stream_create_v3(pstream, drm);
+    if (!err)
+        return 0;
 
-    return ret;
+    err = grate_stream_create_v2(pstream, drm);
+    if (!err)
+        return 0;
+
+    err = tegra_stream_create_v1(pstream, drm);
+    if (!err)
+        return 0;
+
+    return err;
 }
 
 static inline void tegra_stream_destroy(struct tegra_stream *stream)
