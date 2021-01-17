@@ -111,7 +111,6 @@ static int tegra_stream_flush_v3(struct tegra_stream *base_stream,
         goto cleanup;
     } else if (!fence) {
         ErrorMsg("drm_tegra_job_submit_v3() failed to create fence\n");
-        tegra_fences_debug_dump(255);
     }
 
     ret = drm_tegra_fence_wait_timeout(fence, 1000);
@@ -156,10 +155,8 @@ tegra_stream_submit_v3(enum host1x_engine engine,
         stream->base.last_fence[engine] = f = NULL;
         ret = -1;
     } else {
-        if (!fence) {
+        if (!fence)
             ErrorMsg("drm_tegra_job_submit_v3() failed to create fence\n");
-            tegra_fences_debug_dump(255);
-        }
 
         f = tegra_stream_create_fence_v3(stream, fence, engine == TEGRA_2D);
         if (f) {
