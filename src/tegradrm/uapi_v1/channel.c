@@ -53,9 +53,9 @@ static int drm_tegra_channel_setup(struct drm_tegra_channel *channel)
 	return 0;
 }
 
-int drm_tegra_channel_open(struct drm_tegra_channel **channelp,
-			   struct drm_tegra *drm,
-			   enum drm_tegra_class client)
+int drm_tegra_channel_open_v1(struct drm_tegra_channel **channelp,
+			      struct drm_tegra *drm,
+			      enum drm_tegra_class client)
 {
 	struct drm_tegra_open_channel args;
 	struct drm_tegra_channel *channel;
@@ -109,7 +109,7 @@ int drm_tegra_channel_open(struct drm_tegra_channel **channelp,
 	return 0;
 }
 
-int drm_tegra_channel_close(struct drm_tegra_channel *channel)
+int drm_tegra_channel_close_v1(struct drm_tegra_channel *channel)
 {
 	struct drm_tegra_close_channel args;
 	struct drm_tegra *drm;

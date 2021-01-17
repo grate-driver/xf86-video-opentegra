@@ -1097,6 +1097,313 @@ struct drm_tegra_version {
 #define DRM_IOCTL_TEGRA_SUBMIT_V2 DRM_IOWR(DRM_COMMAND_BASE + DRM_TEGRA_SUBMIT_V2, struct drm_tegra_submit_v2)
 #define DRM_IOCTL_TEGRA_VERSION DRM_IOWR(DRM_COMMAND_BASE + DRM_TEGRA_VERSION, struct drm_tegra_version)
 
+/* New TegraDRM UAPI */
+
+struct drm_tegra_channel_open {
+	/**
+	 * @host1x_class: [in]
+	 *
+	 * Host1x class of the engine that will be programmed using this
+	 * channel.
+	 */
+	__u32 host1x_class;
+
+	/**
+	 * @flags: [in]
+	 *
+	 * Flags.
+	 */
+	__u32 flags;
+
+	/**
+	 * @channel_ctx: [out]
+	 *
+	 * Opaque identifier corresponding to the opened channel.
+	 */
+	__u32 channel_ctx;
+
+	/**
+	 * @hardware_version: [out]
+	 *
+	 * Version of the engine hardware. This can be used by userspace
+	 * to determine how the engine needs to be programmed.
+	 */
+	__u32 hardware_version;
+};
+
+struct drm_tegra_channel_close {
+	/**
+	 * @channel_ctx: [in]
+	 *
+	 * Identifier of the channel to close.
+	 */
+	__u32 channel_ctx;
+};
+
+#define DRM_TEGRA_CHANNEL_MAP_READWRITE			(1<<0)
+
+struct drm_tegra_channel_map {
+	/**
+	 * @channel_ctx: [in]
+	 *
+	 * Identifier of the channel to which make memory available for.
+	 */
+	__u32 channel_ctx;
+
+	/**
+	 * @handle: [in]
+	 *
+	 * GEM handle of the memory to map.
+	 */
+	__u32 handle;
+
+	/**
+	 * @flags: [in]
+	 *
+	 * Flags.
+	 */
+	__u32 flags;
+
+	/**
+	 * @mapping_id: [out]
+	 *
+	 * Identifier corresponding to the mapping, to be used for
+	 * relocations or unmapping later.
+	 */
+	__u32 mapping_id;
+};
+
+struct drm_tegra_channel_unmap {
+	/**
+	 * @channel_ctx: [in]
+	 *
+	 * Channel identifier of the channel to unmap memory from.
+	 */
+	__u32 channel_ctx;
+
+	/**
+	 * @mapping_id: [in]
+	 *
+	 * Mapping identifier of the memory mapping to unmap.
+	 */
+	__u32 mapping_id;
+};
+
+/* Submission */
+
+/**
+ * Specify that bit 39 of the patched-in address should be set to
+ * trigger layout swizzling between Tegra and non-Tegra Blocklinear
+ * layout on systems that store surfaces in system memory in non-Tegra
+ * Blocklinear layout.
+ */
+#define DRM_TEGRA_SUBMIT_BUF_RELOC_BLOCKLINEAR		(1<<0)
+
+struct drm_tegra_submit_buf {
+	/**
+	 * @mapping_id: [in]
+	 *
+	 * Identifier of the mapping to use in the submission.
+	 */
+	__u32 mapping_id;
+
+	/**
+	 * @flags: [in]
+	 *
+	 * Flags.
+	 */
+	__u32 flags;
+
+	/**
+	 * Information for relocation patching. Relocation patching will
+	 * be done if the MAP IOCTL that created `mapping_id` did not
+	 * return an IOVA. If an IOVA was returned, the application is
+	 * responsible for patching the address into the gather.
+	 */
+	struct {
+		/**
+		 * @target_offset: [in]
+		 *
+		 * Offset from the start of the mapping of the data whose
+		 * address is to be patched into the gather.
+		 */
+		__u64 target_offset;
+
+		/**
+		 * @gather_offset_words: [in]
+		 *
+		 * Offset in words from the start of the gather data to
+		 * where the address should be patched into.
+		 */
+		__u32 gather_offset_words;
+
+		/**
+		 * @shift: [in]
+		 *
+		 * Number of bits the address should be shifted right before
+		 * patching in.
+		 */
+		__u32 shift;
+	} reloc;
+};
+
+struct drm_tegra_submit_syncpt_incr {
+	/**
+	 * @syncpt_fd: [in]
+	 *
+	 * Syncpoint file descriptor of the syncpoint that the job will
+	 * increment.
+	 */
+	__s32 syncpt_fd;
+
+	/**
+	 * @flags: [in]
+	 *
+	 * Flags.
+	 */
+	__u32 flags;
+
+	/**
+	 * @num_incrs: [in]
+	 *
+	 * Number of times the job will increment this syncpoint.
+	 */
+	__u32 num_incrs;
+
+	/**
+	 * @fence_value: [out]
+	 *
+	 * Value the syncpoint will have once the job has completed all
+	 * its specified syncpoint increments.
+	 *
+	 * Note that the kernel may increment the syncpoint before or after
+	 * the job. These increments are not reflected in this field.
+	 *
+	 * If the job hangs or times out, not all of the increments may
+	 * get executed.
+	 */
+	__u32 fence_value;
+};
+
+/**
+ * Execute `words` words of Host1x opcodes specified in the `gather_data_ptr`
+ * buffer. Each GATHER_UPTR command uses successive words from the buffer.
+ */
+#define DRM_TEGRA_SUBMIT_CMD_GATHER_UPTR		0
+/**
+ * Wait for a syncpoint to reach a value before continuing with further
+ * commands.
+ */
+#define DRM_TEGRA_SUBMIT_CMD_WAIT_SYNCPT		1
+
+struct drm_tegra_submit_cmd_gather_uptr {
+	__u32 words;
+	__u32 reserved[3];
+};
+
+struct drm_tegra_submit_cmd_wait_syncpt {
+	__u32 id;
+	__u32 threshold;
+	__u32 reserved[2];
+};
+
+struct drm_tegra_submit_cmd {
+	/**
+	 * @type: [in]
+	 *
+	 * Command type to execute. One of the DRM_TEGRA_SUBMIT_CMD*
+	 * defines.
+	 */
+	__u32 type;
+
+	/**
+	 * @flags: [in]
+	 *
+	 * Flags.
+	 */
+	__u32 flags;
+
+	union {
+		struct drm_tegra_submit_cmd_gather_uptr gather_uptr;
+		struct drm_tegra_submit_cmd_wait_syncpt wait_syncpt;
+		__u32 reserved[4];
+	};
+};
+
+struct drm_tegra_channel_submit {
+	/**
+	 * @channel_ctx: [in]
+	 *
+	 * Identifier of the channel to submit this job to.
+	 */
+	__u32 channel_ctx;
+
+	/**
+	 * @num_bufs: [in]
+	 *
+	 * Number of elements in the `bufs_ptr` array.
+	 */
+	__u32 num_bufs;
+
+	/**
+	 * @num_cmds: [in]
+	 *
+	 * Number of elements in the `cmds_ptr` array.
+	 */
+	__u32 num_cmds;
+
+	/**
+	 * @gather_data_words: [in]
+	 *
+	 * Number of 32-bit words in the `gather_data_ptr` array.
+	 */
+	__u32 gather_data_words;
+
+	/**
+	 * @bufs_ptr: [in]
+	 *
+	 * Pointer to an array of drm_tegra_submit_buf structures.
+	 */
+	__u64 bufs_ptr;
+
+	/**
+	 * @cmds_ptr: [in]
+	 *
+	 * Pointer to an array of drm_tegra_submit_cmd structures.
+	 */
+	__u64 cmds_ptr;
+
+	/**
+	 * @gather_data_ptr: [in]
+	 *
+	 * Pointer to an array of Host1x opcodes to be used by GATHER_UPTR
+	 * commands.
+	 */
+	__u64 gather_data_ptr;
+
+	/**
+	 * @syncpt_incr: [in,out]
+	 *
+	 * Information about the syncpoint the job will increment.
+	 */
+	struct drm_tegra_submit_syncpt_incr syncpt_incr;
+};
+
+#define DRM_TEGRA_CHANNEL_OPEN		0x10
+#define DRM_TEGRA_CHANNEL_CLOSE		0x11
+#define DRM_TEGRA_CHANNEL_MAP		0x12
+#define DRM_TEGRA_CHANNEL_UNMAP		0x13
+#define DRM_TEGRA_CHANNEL_SUBMIT	0x14
+
+#define DRM_IOCTL_TEGRA_CHANNEL_OPEN     DRM_IOWR(DRM_COMMAND_BASE + DRM_TEGRA_CHANNEL_OPEN, struct drm_tegra_channel_open)
+#define DRM_IOCTL_TEGRA_CHANNEL_CLOSE    DRM_IOWR(DRM_COMMAND_BASE + DRM_TEGRA_CHANNEL_CLOSE, struct drm_tegra_channel_close)
+#define DRM_IOCTL_TEGRA_CHANNEL_MAP      DRM_IOWR(DRM_COMMAND_BASE + DRM_TEGRA_CHANNEL_MAP, struct drm_tegra_channel_map)
+#define DRM_IOCTL_TEGRA_CHANNEL_UNMAP    DRM_IOWR(DRM_COMMAND_BASE + DRM_TEGRA_CHANNEL_UNMAP, struct drm_tegra_channel_unmap)
+#define DRM_IOCTL_TEGRA_CHANNEL_SUBMIT   DRM_IOWR(DRM_COMMAND_BASE + DRM_TEGRA_CHANNEL_SUBMIT, struct drm_tegra_channel_submit)
+
+#define DRM_IOCTL_TEGRA_GEM_CREATE2      DRM_IOWR(DRM_COMMAND_BASE + 0x15, struct drm_tegra_gem_create)
+#define DRM_IOCTL_TEGRA_GEM_MMAP2        DRM_IOWR(DRM_COMMAND_BASE + 0x16, struct drm_tegra_gem_mmap)
+
 #if defined(__cplusplus)
 }
 #endif

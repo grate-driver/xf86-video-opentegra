@@ -122,7 +122,9 @@ opentegra_drv_la_SOURCES += \
 	tegradrm/uapi_v1/fence.c \
 	tegradrm/uapi_v1/job.c \
 	tegradrm/uapi_v1/pushbuf.c \
-	tegradrm/uapi_v2/job.c
+	tegradrm/uapi_v2/job.c \
+	tegradrm/uapi_v3/sync.c \
+	tegradrm/uapi_v3/uapi.c
 
 shaders_dir := $(filter %/, $(wildcard $(srcdir)/exa/shaders/*/*/))
 shaders_gen := $(addsuffix .bin.h, $(shaders_dir:%/=%))

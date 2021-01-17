@@ -241,6 +241,30 @@ static void drm_tegra_bo_unmap_guards(struct drm_tegra_bo *bo)
 #endif
 }
 
+static int drm_tegra_bo_mapping_unref_v3(struct drm_tegra *drm,
+					 struct drm_tegra_bo_mapping_v3 *mapping)
+{
+	struct drm_tegra_channel_unmap unmap_args = {};
+	int err;
+
+	DRMLISTDELINIT(&mapping->bo_list);
+
+	if (!atomic_dec_and_test(&mapping->ref))
+		return 0;
+
+	unmap_args.channel_ctx = mapping->channel_ctx;
+	unmap_args.mapping_id = mapping->id;
+
+	err = drmCommandWriteRead(drm->fd, DRM_TEGRA_CHANNEL_UNMAP,
+				  &unmap_args, sizeof(unmap_args));
+
+	DRMLISTDELINIT(&mapping->ch_list);
+
+	free(mapping);
+
+	return err;
+}
+
 int drm_tegra_bo_free(struct drm_tegra_bo *bo)
 {
 	struct drm_tegra *drm = bo->drm;
@@ -284,6 +308,22 @@ vg_free:
 
 	if (bo->name)
 		drmHashDelete(drm->name_table, bo->name);
+
+	while (!DRMLISTEMPTY(&bo->mapping_list_v3)) {
+		struct drm_tegra_bo_mapping_v3 *mapping;
+		uint32_t mapping_id, channel_ctx;
+
+		mapping = DRMLISTENTRY(struct drm_tegra_bo_mapping_v3,
+				       bo->mapping_list_v3.next,
+				       bo_list);
+		mapping_id = mapping->id;
+		channel_ctx = mapping->channel_ctx;
+
+		err = drm_tegra_bo_mapping_unref_v3(drm, mapping);
+		if (err < 0)
+			VDBG_BO(bo, "UNMAP failed err %d strerror(%s) mapping_id=%u channel_ctx=%u\n",
+				err, strerror(-err), mapping_id, channel_ctx);
+	}
 
 	drmHashDelete(drm->handle_table, bo->handle);
 
@@ -423,6 +463,7 @@ int drm_tegra_bo_new(struct drm_tegra_bo **bop, struct drm_tegra *drm,
 	if (!bo)
 		return -ENOMEM;
 
+	DRMINITLISTHEAD(&bo->mapping_list_v3);
 	DRMINITLISTHEAD(&bo->push_list);
 	DRMINITLISTHEAD(&bo->bo_list);
 	atomic_set(&bo->ref, 1);
@@ -526,6 +567,7 @@ int drm_tegra_bo_wrap(struct drm_tegra_bo **bop, struct drm_tegra *drm,
 		goto unlock;
 	}
 
+	DRMINITLISTHEAD(&bo->mapping_list_v3);
 	DRMINITLISTHEAD(&bo->push_list);
 	DRMINITLISTHEAD(&bo->bo_list);
 	atomic_set(&bo->ref, 1);
@@ -1093,4 +1135,77 @@ int drm_tegra_bo_from_handle(struct drm_tegra_bo **bop, struct drm_tegra *drm,
 	*bop = bo;
 
 	return 0;
+}
+
+int drm_tegra_channel_open(struct drm_tegra_channel **channelp,
+			   struct drm_tegra *drm,
+			   enum drm_tegra_class client)
+{
+	int err;
+
+	err = drm_tegra_channel_open_v1(channelp, drm, client);
+	if (err)
+		return err;
+
+	drm_tegra_channel_init_v3(*channelp, drm, client);
+
+	return 0;
+}
+
+int drm_tegra_channel_close(struct drm_tegra_channel *channel)
+{
+	int err;
+
+	if (channel->version == 3) {
+		err = drm_tegra_channel_deinit_v3(channel);
+		if (err)
+			return err;
+	}
+
+	err = drm_tegra_channel_close_v1(channel);
+	if (err)
+		return err;
+
+	return 0;
+}
+
+int drm_tegra_fence_is_busy(struct drm_tegra_fence *fence)
+{
+	if (!fence)
+		return 0;
+
+	if (fence->version == 0)
+		return drm_tegra_fence_is_busy_v1(fence);
+
+	if (fence->version == 3)
+		return drm_tegra_fence_is_busy_v3(fence);
+
+	return 0;
+}
+
+int drm_tegra_fence_wait_timeout(struct drm_tegra_fence *fence,
+				 unsigned long timeout)
+{
+	if (!fence)
+		return 0;
+
+	if (fence->version == 0)
+		return drm_tegra_fence_wait_timeout_v1(fence, timeout);
+
+	if (fence->version == 3)
+		return drm_tegra_fence_wait_timeout_v3(fence, timeout);
+
+	return 0;
+}
+
+void drm_tegra_fence_free(struct drm_tegra_fence *fence)
+{
+	if (!fence)
+		return;
+
+	if (fence->version == 0)
+		return drm_tegra_fence_free_v1(fence);
+
+	if (fence->version == 3)
+		return drm_tegra_fence_free_v3(fence);
 }

@@ -29,6 +29,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#include "lists.h"
 #include "opentegra_drm.h"
 
 enum drm_tegra_class {
@@ -140,6 +141,15 @@ static inline int drm_tegra_fence_wait(struct drm_tegra_fence *fence)
 	return drm_tegra_fence_wait_timeout(fence, -1);
 }
 
+int drm_tegra_channel_open_v1(struct drm_tegra_channel **channelp,
+			      struct drm_tegra *drm,
+			      enum drm_tegra_class client);
+int drm_tegra_channel_close_v1(struct drm_tegra_channel *channel);
+int drm_tegra_fence_is_busy_v1(struct drm_tegra_fence *fence);
+int drm_tegra_fence_wait_timeout_v1(struct drm_tegra_fence *fence,
+				    unsigned long timeout);
+void drm_tegra_fence_free_v1(struct drm_tegra_fence *fence);
+
 struct drm_tegra_job_v2 {
 	struct drm_tegra *drm;
 	struct drm_tegra_bo_table_entry *bo_table;
@@ -168,5 +178,61 @@ int drm_tegra_job_submit_v2(struct drm_tegra_job_v2 *job,
 			    uint32_t syncobj_handle_in,
 			    uint32_t syncobj_handle_out,
 			    uint64_t pipes_mask);
+
+struct drm_tegra_job_v3 {
+	struct drm_tegra *drm;
+	drmMMListHead fences_list;
+	struct drm_tegra_channel *channel;
+	struct drm_tegra_submit_cmd *cmds;
+	struct drm_tegra_submit_buf *buf_table;
+	unsigned int num_buffers_max;
+	unsigned int num_buffers;
+	unsigned int num_words;
+	unsigned int num_cmds_max;
+	unsigned int num_cmds;
+	unsigned int num_incrs;
+	uint32_t sp_incrs;
+	uint32_t *gather_start;
+	uint32_t *start;
+	uint32_t *ptr;
+};
+
+int drm_tegra_channel_init_v3(struct drm_tegra_channel *channel,
+			      struct drm_tegra *drm,
+			      enum drm_tegra_class client);
+int drm_tegra_channel_open_v3(struct drm_tegra_channel **channelp,
+			      struct drm_tegra *drm,
+			      enum drm_tegra_class client);
+int drm_tegra_channel_deinit_v3(struct drm_tegra_channel *channel);
+int drm_tegra_channel_close_v3(struct drm_tegra_channel *channel);
+int drm_tegra_job_new_v3(struct drm_tegra_job_v3 **jobp,
+			 struct drm_tegra_channel *channel,
+			 unsigned int num_buffers_expected,
+			 unsigned int num_words_expected,
+			 unsigned int num_cmds_expected);
+int drm_tegra_job_resize_v3(struct drm_tegra_job_v3 *job,
+			    unsigned int num_words,
+			    unsigned int num_mappings,
+			    unsigned int num_cmds,
+			    bool reallocate);
+int drm_tegra_job_reset_v3(struct drm_tegra_job_v3 *job);
+int drm_tegra_job_free_v3(struct drm_tegra_job_v3 *job);
+int drm_tegra_job_push_reloc_v3(struct drm_tegra_job_v3 *job,
+				struct drm_tegra_bo *target,
+				unsigned long offset,
+				uint32_t flags);
+int drm_tegra_job_push_wait_v3(struct drm_tegra_job_v3 *job,
+			       uint32_t threshold);
+int drm_tegra_job_push_syncpt_incr_v3(struct drm_tegra_job_v3 *job,
+				      enum drm_tegra_syncpt_cond cond);
+struct drm_tegra_fence *
+drm_tegra_job_create_fence_v3(struct drm_tegra_job_v3 *job,
+			      uint32_t job_thresh);
+int drm_tegra_job_submit_v3(struct drm_tegra_job_v3 *job,
+			    struct drm_tegra_fence **pfence);
+int drm_tegra_fence_is_busy_v3(struct drm_tegra_fence *fence);
+int drm_tegra_fence_wait_timeout_v3(struct drm_tegra_fence *fence,
+				    int timeout);
+void drm_tegra_fence_free_v3(struct drm_tegra_fence *fence);
 
 #endif /* __DRM_TEGRA_H__ */

@@ -27,20 +27,6 @@
 
 #include "private.h"
 
-struct drm_tegra_channel {
-	struct drm_tegra *drm;
-	enum host1x_class class;
-	uint64_t context;
-	uint32_t syncpt;
-	uint32_t flags;
-};
-
-struct drm_tegra_fence {
-	struct drm_tegra *drm;
-	uint32_t syncpt;
-	uint32_t value;
-};
-
 struct drm_tegra_pushbuf_private {
 	struct drm_tegra_pushbuf base;
 	struct drm_tegra_job *job;

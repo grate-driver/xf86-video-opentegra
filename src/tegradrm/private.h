@@ -105,6 +105,48 @@ enum host1x_class {
 	HOST1X_CLASS_GR3D = 0x60,
 };
 
+struct drm_tegra_channel_v3 {
+	uint32_t hardware_version;
+	drmMMListHead mapping_list;
+	uint32_t channel_ctx;
+	uint32_t sp_thresh;
+	uint32_t sp_id;
+	int host1x_fd;
+	int sp_fd;
+};
+
+struct drm_tegra_channel {
+	struct drm_tegra *drm;
+	enum host1x_class class;
+	unsigned int version;
+
+	/* v1 */
+	uint64_t context;
+	uint32_t syncpt;
+	uint32_t flags;
+
+	struct drm_tegra_channel_v3 v3;
+};
+
+struct drm_tegra_fence {
+	struct drm_tegra *drm;
+	unsigned int version;
+
+	union {
+		/* v1 */
+		struct {
+			uint32_t syncpt;
+			uint32_t value;
+		};
+
+		/* v3 */
+		struct {
+			int32_t sync_file_fd;
+			drmMMListHead job_list;
+		};
+	};
+};
+
 struct drm_tegra_bo_bucket {
 	uint32_t size;
 	drmMMListHead list;
@@ -157,9 +199,18 @@ struct drm_tegra {
 #endif
 };
 
+struct drm_tegra_bo_mapping_v3 {
+	drmMMListHead bo_list;
+	drmMMListHead ch_list;
+	uint32_t channel_ctx;
+	uint32_t id;
+	atomic_t ref;
+};
+
 struct drm_tegra_bo {
 	struct drm_tegra *drm;
 	drmMMListHead push_list;
+	drmMMListHead mapping_list_v3;
 	uint32_t offset;
 	uint32_t handle;
 	uint32_t flags;

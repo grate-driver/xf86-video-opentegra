@@ -34,7 +34,7 @@
 
 #include "uapi_v1.h"
 
-int drm_tegra_fence_is_busy(struct drm_tegra_fence *fence)
+int drm_tegra_fence_is_busy_v1(struct drm_tegra_fence *fence)
 {
 	struct drm_tegra_syncpt_wait args;
 	unsigned long request;
@@ -59,8 +59,8 @@ int drm_tegra_fence_is_busy(struct drm_tegra_fence *fence)
 	return ioctl(fence->drm->fd, request, &args);
 }
 
-int drm_tegra_fence_wait_timeout(struct drm_tegra_fence *fence,
-				 unsigned long timeout)
+int drm_tegra_fence_wait_timeout_v1(struct drm_tegra_fence *fence,
+				    unsigned long timeout)
 {
 	struct drm_tegra_syncpt_wait args;
 
@@ -76,7 +76,7 @@ int drm_tegra_fence_wait_timeout(struct drm_tegra_fence *fence,
 				   &args, sizeof(args));
 }
 
-void drm_tegra_fence_free(struct drm_tegra_fence *fence)
+void drm_tegra_fence_free_v1(struct drm_tegra_fence *fence)
 {
 	free(fence);
 }
