@@ -33,13 +33,11 @@
 struct tegra_fence_v3 {
     struct tegra_fence base;
     struct drm_tegra_fence *fence;
-    struct xorg_list entry;
 };
 
 struct tegra_stream_v3 {
     struct tegra_stream base;
     struct drm_tegra_job_v3 *job;
-    struct xorg_list held_fences;
 };
 
 static struct tegra_fence *
@@ -59,12 +57,6 @@ static inline struct tegra_fence_v3 *to_fence_v3(struct tegra_fence *base)
 static void tegra_stream_destroy_v3(struct tegra_stream *base_stream)
 {
     struct tegra_stream_v3 *stream = to_stream_v3(base_stream);
-    struct tegra_fence_v3 *f, *tmp;
-
-    xorg_list_for_each_entry_safe(f, tmp, &stream->held_fences, entry) {
-        TEGRA_FENCE_WAIT_FINISHED(&f->base);
-        TEGRA_FENCE_FINISH(&f->base);
-    }
 
     TEGRA_FENCE_WAIT(stream->base.last_fence[TEGRA_2D]);
     TEGRA_FENCE_PUT(stream->base.last_fence[TEGRA_2D]);
@@ -164,11 +156,6 @@ tegra_stream_submit_v3(enum host1x_engine engine,
         stream->base.last_fence[engine] = f = NULL;
         ret = -1;
     } else {
-        struct tegra_fence_v3 *f_v3, *tmp_v3;
-
-        xorg_list_for_each_entry_safe(f_v3, tmp_v3, &stream->held_fences, entry)
-            TEGRA_FENCE_FINISH(&f_v3->base);
-
         if (!fence) {
             ErrorMsg("drm_tegra_job_submit_v3() failed to create fence\n");
             tegra_fences_debug_dump(255);
@@ -264,19 +251,14 @@ static bool tegra_stream_free_fence_v3(struct tegra_fence *base_fence)
             ErrorMsg("drm_tegra_fence_is_busy() failed %d\n", err);
     }
 
-    if (err <= 0) {
 #ifdef FENCE_DEBUG
-        DRMLISTDEL(&f->base.dbg_entry);
-        tegra_fences_destroyed++;
+    DRMLISTDEL(&f->base.dbg_entry);
+    tegra_fences_destroyed++;
 #endif
-        drm_tegra_fence_free(f->fence);
-        xorg_list_del(&f->entry);
-        free(f);
+    drm_tegra_fence_free(f->fence);
+    free(f);
 
-        return true;
-    }
-
-    return false;
+    return true;
 }
 
 static bool
@@ -318,8 +300,6 @@ tegra_stream_create_fence_v3(struct tegra_stream_v3 *stream,
     DRMLISTADD(&f->base.dbg_entry, &tegra_live_fences);
     tegra_fences_created++;
 #endif
-
-    xorg_list_append(&f->entry, &stream->held_fences);
 
     return &f->base;
 }
@@ -575,8 +555,6 @@ int tegra_stream_create_v3(struct tegra_stream **pstream,
     stream->prep = tegra_stream_prep_v3;
     stream->sync = tegra_stream_sync_v3;
     stream->current_fence = tegra_stream_get_current_fence_v3;
-
-    xorg_list_init(&stream_v3->held_fences);
 
     InfoMsg("success\n");
 
