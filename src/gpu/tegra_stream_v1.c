@@ -74,7 +74,7 @@ static void tegra_stream_destroy_v1(struct tegra_stream *base_stream)
     struct tegra_fence_v1 *f, *tmp;
 
     xorg_list_for_each_entry_safe(f, tmp, &stream->held_fences, entry) {
-        TEGRA_FENCE_WAIT(&f->base);
+        TEGRA_FENCE_WAIT_FINISHED(&f->base);
         TEGRA_FENCE_FINISH(&f->base);
     }
 
