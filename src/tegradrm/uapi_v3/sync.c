@@ -24,7 +24,7 @@
 #include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <bsd/string.h>
+#include "strlcpy.c"
 #include "stdatomic.h"
 #include "sync.h"
 /* Prototypes for deprecated functions that used to be declared in the legacy
