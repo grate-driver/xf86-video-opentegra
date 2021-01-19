@@ -19,13 +19,13 @@
 #include <fcntl.h>
 #include <malloc.h>
 #include <poll.h>
-#include <stdatomic.h>
 #include <stdint.h>
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <bsd/string.h>
+#include "stdatomic.h"
 #include "sync.h"
 /* Prototypes for deprecated functions that used to be declared in the legacy
  * android/sync.h. They've been moved here to make sure new code does not use
