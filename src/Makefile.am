@@ -127,6 +127,17 @@ opentegra_drv_la_SOURCES += \
 	tegradrm/uapi_v3/sync.c \
 	tegradrm/uapi_v3/uapi.c
 
+opentegra_drv_la_DEPENDENCIES += \
+	tegradrm/atomic.h \
+	tegradrm/lists.h \
+	tegradrm/opentegra_drm.h \
+	tegradrm/opentegra_lib.h \
+	tegradrm/private.h \
+	tegradrm/uapi_v3/host1x_uapi.h \
+	tegradrm/uapi_v3/stdatomic.h \
+	tegradrm/uapi_v3/strlcpy.c \
+	tegradrm/uapi_v3/sync_file.h
+
 shaders_dir := $(filter %/, $(wildcard $(srcdir)/exa/shaders/*/*/))
 shaders_gen := $(addsuffix .bin.h, $(shaders_dir:%/=%))
 
