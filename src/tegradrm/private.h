@@ -63,14 +63,15 @@
 	if (DRM->debug_bo)						\
 		fprintf(stderr,						\
 			"%s: %d:\tstats: "				\
-			"total BO's allocated %d (%d bytes, "		\
-						 "%d BO's cached) "	\
-			"total BO's mapped %d (%d pages, "		\
-					      "%d pages cached of %d BO's)\n", \
+			"total BOs allocated %d (%dKB, "		\
+						 "%d BOs cached %dKB) "	\
+			"total BOs mapped %d (%d pages, "		\
+					      "%d pages cached of %d BOs)\n", \
 			__func__, __LINE__,				\
 			 drm->debug_bos_allocated,			\
-			 drm->debug_bos_total_size,			\
+			 drm->debug_bos_total_size / 1000,		\
 			 drm->debug_bos_cached,				\
+			 drm->debug_bos_cached_size / 1000,		\
 			 drm->debug_bos_mapped,				\
 			 drm->debug_bos_total_pages,			\
 			 drm->debug_bos_cached_pages,			\
@@ -193,6 +194,7 @@ struct drm_tegra {
 	int32_t debug_bos_allocated;
 	int32_t debug_bos_total_size;
 	int32_t debug_bos_cached;
+	int32_t debug_bos_cached_size;
 	int32_t debug_bos_mapped;
 	int32_t debug_bos_total_pages;
 	int32_t debug_bos_cached_pages;

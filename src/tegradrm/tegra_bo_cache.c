@@ -116,6 +116,9 @@ void drm_tegra_bo_cache_cleanup(struct drm_tegra *drm, time_t time)
 	struct drm_tegra_bo_cache *cache = &drm->bo_cache;
 	time_t delta;
 	int i;
+#ifndef NDEBUG
+	uint32_t size;
+#endif
 
 	if (cache->time == time)
 		return;
@@ -142,11 +145,16 @@ void drm_tegra_bo_cache_cleanup(struct drm_tegra *drm, time_t time)
 				break;
 
 			VG_BO_OBTAIN(bo);
+#ifndef NDEBUG
+			size = bo->size;
+#endif
 			DRMLISTDEL(&bo->bo_list);
 			drm_tegra_bo_free(bo);
 #ifndef NDEBUG
-			if (drm->debug_bo)
+			if (drm->debug_bo) {
 				drm->debug_bos_cached--;
+				drm->debug_bos_cached_size -= size;
+			}
 #endif
 			bucket->num_entries--;
 		}
@@ -303,8 +311,10 @@ drm_tegra_bo_cache_alloc(struct drm_tegra *drm,
 				drm_tegra_bo_set_flags(bo, flags);
 			}
 #ifndef NDEBUG
-			if (drm->debug_bo)
+			if (drm->debug_bo) {
 				drm->debug_bos_cached--;
+				drm->debug_bos_cached_size -= bo->size;
+			}
 #endif
 			bo->reused = true;
 		}
@@ -317,13 +327,14 @@ int drm_tegra_bo_cache_free(struct drm_tegra_bo *bo)
 {
 	struct drm_tegra *drm = bo->drm;
 	struct drm_tegra_bo_bucket *bucket;
+	uint32_t size = bo->size;
 
 #ifndef NDEBUG
 	if (drm->debug_bo)
 		assert(DRMLISTEMPTY(&bo->bo_list));
 #endif
 	/* see if we can be green and recycle: */
-	bucket = drm_tegra_get_bucket(drm, bo->size, bo->flags);
+	bucket = drm_tegra_get_bucket(drm, size, bo->flags);
 	if (bucket) {
 		struct timespec time;
 
@@ -338,6 +349,7 @@ int drm_tegra_bo_cache_free(struct drm_tegra_bo *bo)
 #ifndef NDEBUG
 		if (drm->debug_bo) {
 			drm->debug_bos_cached++;
+			drm->debug_bos_cached_size += size;
 			DBG_BO_STATS(drm);
 		}
 #endif
