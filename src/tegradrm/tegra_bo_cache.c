@@ -36,13 +36,14 @@
 #include "private.h"
 
 static void
-add_bucket(struct drm_tegra_bo_cache *cache, int size)
+add_bucket(struct drm_tegra_bo_cache *cache, int size, bool sparse)
 {
 	unsigned int i = cache->num_buckets;
 
 	assert(i < ARRAY_SIZE(cache->cache_bucket));
 
 	DRMINITLISTHEAD(&cache->cache_bucket[i].list);
+	cache->cache_bucket[i].sparse = sparse;
 	cache->cache_bucket[i].size = size;
 	cache->num_buckets++;
 }
@@ -80,7 +81,8 @@ bucket_free_up(struct drm_tegra *drm, struct drm_tegra_bo_bucket *bucket,
  * @coarse: if true, only power-of-two bucket sizes, otherwise
  *    fill in for a bit smoother size curve..
  */
-void drm_tegra_bo_cache_init(struct drm_tegra_bo_cache *cache, bool course)
+void drm_tegra_bo_cache_init(struct drm_tegra_bo_cache *cache,
+			     bool coarse, bool sparse)
 {
 	unsigned long size, cache_max_size = 64 * 1024 * 1024;
 
@@ -92,18 +94,18 @@ void drm_tegra_bo_cache_init(struct drm_tegra_bo_cache *cache, bool course)
 	 * width/height alignment and rounding of sizes to pages will
 	 * get us useful cache hit rates anyway)
 	 */
-	add_bucket(cache, 4096);
-	add_bucket(cache, 4096 * 2);
-	if (!course)
-		add_bucket(cache, 4096 * 3);
+	add_bucket(cache, 4096, sparse);
+	add_bucket(cache, 4096 * 2, sparse);
+	if (!coarse)
+		add_bucket(cache, 4096 * 3, sparse);
 
 	/* Initialize the linked lists for BO reuse cache. */
 	for (size = 4 * 4096; size <= cache_max_size; size *= 2) {
-		add_bucket(cache, size);
-		if (!course) {
-			add_bucket(cache, size + size * 1 / 4);
-			add_bucket(cache, size + size * 2 / 4);
-			add_bucket(cache, size + size * 3 / 4);
+		add_bucket(cache, size, sparse);
+		if (!coarse) {
+			add_bucket(cache, size + size * 1 / 4, sparse);
+			add_bucket(cache, size + size * 2 / 4, sparse);
+			add_bucket(cache, size + size * 3 / 4, sparse);
 		}
 	}
 }
@@ -154,17 +156,39 @@ void drm_tegra_bo_cache_cleanup(struct drm_tegra *drm, time_t time)
 }
 
 struct drm_tegra_bo_bucket *
-drm_tegra_get_bucket(struct drm_tegra *drm, uint32_t size)
+drm_tegra_get_bucket(struct drm_tegra *drm, uint32_t size, uint32_t flags)
 {
 	struct drm_tegra_bo_cache *cache = &drm->bo_cache;
+	bool sparse;
 	int i;
+
+#ifndef GRATE_KERNEL_DRM_VERSION
+#define GRATE_KERNEL_DRM_VERSION	99991
+#endif
+	if (drm->version >= GRATE_KERNEL_DRM_VERSION &&
+	    (flags & DRM_TEGRA_GEM_CREATE_SPARSE))
+		sparse = true;
+	else
+		sparse = false;
+
+	/* check sparse bucket first */
+	if (sparse) {
+		for (i = 0; i < cache->num_buckets; i++) {
+			struct drm_tegra_bo_bucket *bucket = &cache->cache_bucket[i];
+			if (bucket->size >= size && bucket->sparse == true) {
+				return bucket;
+			}
+		}
+	}
+
+	/* it's fine to fall back to contiguous bucket */
 
 	/* hmm, this is what intel does, but I suppose we could calculate our
 	 * way to the correct bucket size rather than looping..
 	 */
 	for (i = 0; i < cache->num_buckets; i++) {
 		struct drm_tegra_bo_bucket *bucket = &cache->cache_bucket[i];
-		if (bucket->size >= size) {
+		if (bucket->size >= size && bucket->sparse == false) {
 			return bucket;
 		}
 	}
@@ -176,7 +200,7 @@ drm_tegra_get_bucket(struct drm_tegra *drm, uint32_t size)
 
 static struct drm_tegra_bo_bucket * bo_bucket(struct drm_tegra_bo *bo)
 {
-	return drm_tegra_get_bucket(bo->drm, bo->size);
+	return drm_tegra_get_bucket(bo->drm, bo->size, bo->flags);
 }
 
 static bool is_idle(struct drm_tegra_bo *bo)
@@ -263,7 +287,7 @@ drm_tegra_bo_cache_alloc(struct drm_tegra *drm,
 	struct drm_tegra_bo_bucket *bucket;
 
 	*size = align(*size, 4096);
-	bucket = drm_tegra_get_bucket(drm, *size);
+	bucket = drm_tegra_get_bucket(drm, *size, flags);
 
 	/* see if we can be green and recycle: */
 	if (bucket) {
@@ -299,7 +323,7 @@ int drm_tegra_bo_cache_free(struct drm_tegra_bo *bo)
 		assert(DRMLISTEMPTY(&bo->bo_list));
 #endif
 	/* see if we can be green and recycle: */
-	bucket = drm_tegra_get_bucket(drm, bo->size);
+	bucket = drm_tegra_get_bucket(drm, bo->size, bo->flags);
 	if (bucket) {
 		struct timespec time;
 

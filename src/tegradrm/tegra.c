@@ -58,7 +58,7 @@ static struct drm_tegra_bo * lookup_bo(void *table, uint32_t key)
 		DRMLISTDELINIT(&bo->bo_list);
 
 		/* update bucket stats */
-		bucket = drm_tegra_get_bucket(bo->drm, bo->size);
+		bucket = drm_tegra_get_bucket(bo->drm, bo->size, bo->flags);
 		bucket->num_entries--;
 	}
 
@@ -386,7 +386,12 @@ static int drm_tegra_wrap(struct drm_tegra **drmp, int fd, bool close,
 	drm->close = close;
 	drm->fd = fd;
 
-	drm_tegra_bo_cache_init(&drm->bo_cache, false);
+	drm_tegra_bo_cache_init(&drm->bo_cache,
+				/* coarse */ false,
+				/* sparse */ false);
+	drm_tegra_bo_cache_init(&drm->bo_cache,
+				/* coarse */ false,
+				/* sparse */ true);
 	drm->handle_table = drmHashCreate();
 	drm->name_table = drmHashCreate();
 	DRMINITLISTHEAD(&drm->mmap_cache.list);

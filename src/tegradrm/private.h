@@ -152,10 +152,11 @@ struct drm_tegra_bo_bucket {
 	drmMMListHead list;
 	uint32_t num_entries;
 	uint32_t num_mmap_entries;
+	bool sparse;
 };
 
 struct drm_tegra_bo_cache {
-	struct drm_tegra_bo_bucket cache_bucket[14 * 4];
+	struct drm_tegra_bo_bucket cache_bucket[14 * 4 * 2];
 	int num_buckets;
 	time_t time;
 };
@@ -250,7 +251,8 @@ struct drm_tegra_bo {
 int drm_tegra_bo_free(struct drm_tegra_bo *bo);
 int __drm_tegra_bo_map(struct drm_tegra_bo *bo, void **ptr);
 
-void drm_tegra_bo_cache_init(struct drm_tegra_bo_cache *cache, bool coarse);
+void drm_tegra_bo_cache_init(struct drm_tegra_bo_cache *cache,
+			     bool coarse, bool sparse);
 struct drm_tegra_bo * drm_tegra_bo_cache_alloc(struct drm_tegra *drm,
 					       uint32_t *size, uint32_t flags);
 int drm_tegra_bo_cache_free(struct drm_tegra_bo *bo);
@@ -258,7 +260,7 @@ void drm_tegra_bo_cache_unmap(struct drm_tegra_bo *bo);
 void *drm_tegra_bo_cache_map(struct drm_tegra_bo *bo);
 
 struct drm_tegra_bo_bucket *
-drm_tegra_get_bucket(struct drm_tegra *drm, uint32_t size);
+drm_tegra_get_bucket(struct drm_tegra *drm, uint32_t size, uint32_t flags);
 
 void drm_tegra_reset_bo(struct drm_tegra_bo *bo, uint32_t flags,
 			bool set_flags);
