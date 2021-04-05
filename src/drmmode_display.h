@@ -37,6 +37,7 @@
 
 struct dumb_bo {
     struct drm_tegra_bo *bo;
+    struct _TegraRec *tegra;
     uint32_t handle;
     void *ptr;
     uint32_t pitch;

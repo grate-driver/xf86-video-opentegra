@@ -352,11 +352,15 @@ struct tegra_exa {
 
     bool has_iommu_bug;
     bool has_iommu;
+    bool has_gart;
 
     struct tegra_optimization_state opt_state[TEGRA_OPT_NUM];
     bool in_2d_flush;
 
     struct tegra_exa_stats stats;
+
+    struct _TegraRec *tegra;
+    bool prefer_sparse_bo_alloc;
 };
 
 #define TEGRA_EXA_PIXMAP_TYPE_NONE              0

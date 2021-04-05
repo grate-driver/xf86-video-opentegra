@@ -572,6 +572,11 @@ tegra_exa_optimize_3d_submission(struct tegra_3d_state *state)
 
     max_mmap_size = 20 * 1024 * 1024;
 
+    if (exa->tegra->pinned_mem_size > max_mmap_size)
+        max_mmap_size = 0;
+    else
+        max_mmap_size -= exa->tegra->pinned_mem_size;
+
     if (num_pixmaps > TEGRA_ARRAY_SIZE(state->pixmaps) ||
         state->pixmaps_mmap_size > max_mmap_size)
     {

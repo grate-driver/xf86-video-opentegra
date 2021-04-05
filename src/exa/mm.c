@@ -52,14 +52,27 @@ static bool tegra_exa_pixmap_allocate_from_bo(TegraPtr tegra,
 
     if (drm_ver >= GRATE_KERNEL_DRM_VERSION &&
             size < tegra_exa_max_sparse_size() &&
-                exa->has_iommu) {
+                exa->has_iommu &&
+                    exa->prefer_sparse_bo_alloc)
+    {
         flags |= DRM_TEGRA_GEM_CREATE_SPARSE;
         sparse = true;
     }
 
     err = drm_tegra_bo_new(&pixmap->bo, tegra->drm, flags, size);
-    if (err)
-        return false;
+    if (err) {
+        if (drm_ver >= GRATE_KERNEL_DRM_VERSION &&
+                size < tegra_exa_max_sparse_size() &&
+                    exa->has_iommu && !sparse) {
+            flags |= DRM_TEGRA_GEM_CREATE_SPARSE;
+            sparse = true;
+
+            err = drm_tegra_bo_new(&pixmap->bo, tegra->drm, flags, size);
+        }
+
+        if (err)
+            return false;
+    }
 
     pixmap->type = TEGRA_EXA_PIXMAP_TYPE_BO;
     pixmap->sparse = sparse;
@@ -123,6 +136,19 @@ static int tegra_exa_init_mm(TegraPtr tegra, struct tegra_exa *exa)
                     drm_tegra_channel_has_iommu(exa->gr3d);
 
         INFO_MSG2("Tegra DRM uses IOMMU: %s\n", has_iommu ? "YES" : "NO");
+
+        if (!access("/sys/devices/soc0/7000f000.memory-controller/iommu/gart/device", F_OK)) {
+            INFO_MSG2("IOMMU is GART\n");
+            exa->has_gart = true;
+        } else {
+            if (!access("/sys/devices/soc0/7000f000.memory-controller/iommu/7000f000.memory-controller/device", F_OK) ||
+                !access("/sys/devices/soc0/7000f000.memory-controller/iommu/smmu/device", F_OK))
+                INFO_MSG2("IOMMU is SMMU\n");
+            else
+                INFO_MSG2("IOMMU unrecognized\n");
+
+            exa->prefer_sparse_bo_alloc = true;
+        }
     }
 
     exa->has_iommu = has_iommu;
@@ -133,7 +159,8 @@ static int tegra_exa_init_mm(TegraPtr tegra, struct tegra_exa *exa)
      * large, the accidental pinned memory pages may ruin the day (or Xorg
      * session at least).
      */
-    if (tegra->exa_pool_alloc && !exa->has_iommu) {
+    if (tegra->exa_pool_alloc &&
+            (!exa->has_iommu || !exa->prefer_sparse_bo_alloc)) {
         unsigned int size;
         int err = -ENOMEM;
 

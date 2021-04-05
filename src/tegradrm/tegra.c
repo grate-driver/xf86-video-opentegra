@@ -789,7 +789,7 @@ int drm_tegra_bo_get_flags(struct drm_tegra_bo *bo, uint32_t *flags)
 	}
 
 	if (flags)
-		*flags = args.flags;
+		*flags = args.flags | bo->flags;
 
 	VDBG_BO(bo, "success flags 0x%08X\n", args.flags);
 

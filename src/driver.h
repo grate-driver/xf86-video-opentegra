@@ -196,6 +196,8 @@ typedef struct _TegraRec
     Bool exa_compositing;
     Bool exa_enabled;
 
+    unsigned int pinned_mem_size;
+
     void *xv_priv;
 } TegraRec, *TegraPtr;
 

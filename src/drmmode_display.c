@@ -28,13 +28,14 @@
 #include "driver.h"
 
 static struct dumb_bo *
-dumb_bo_create(struct drm_tegra *drm,
+dumb_bo_create(TegraPtr tegra,
                const unsigned width, const unsigned height,
                const unsigned bpp)
 {
+    struct drm_tegra *drm = tegra->drm;
     struct dumb_bo *bo;
-    unsigned long flags = 0;
-    unsigned int size;
+    uint32_t flags = 0;
+    uint32_t size;
     int drm_ver;
     void *ptr;
     int ret;
@@ -43,6 +44,7 @@ dumb_bo_create(struct drm_tegra *drm,
     if (!bo)
         return NULL;
 
+    bo->tegra = tegra;
     bo->pitch = tegra_hw_pitch(width, height, bpp);
     size = bo->pitch * tegra_height_hw_aligned(height, bpp);
 
@@ -51,6 +53,12 @@ dumb_bo_create(struct drm_tegra *drm,
         flags = DRM_TEGRA_GEM_CREATE_DONT_KMAP;
 
     ret = drm_tegra_bo_new(&bo->bo, drm, flags, size);
+
+    if (ret && drm_ver >= GRATE_KERNEL_DRM_VERSION) {
+        flags |= DRM_TEGRA_GEM_CREATE_SPARSE;
+        ret = drm_tegra_bo_new(&bo->bo, drm, flags, size);
+    }
+
     if (ret)
         goto err_free;
 
@@ -63,6 +71,14 @@ dumb_bo_create(struct drm_tegra *drm,
         memset(ptr, 0, size);
 
         drm_tegra_bo_unmap(bo->bo);
+    }
+
+    if (drm_ver >= GRATE_KERNEL_DRM_VERSION) {
+        drm_tegra_bo_get_flags(bo->bo, &flags);
+        drm_tegra_bo_get_size(bo->bo, &size);
+
+        if (flags & DRM_TEGRA_GEM_CREATE_SPARSE)
+            tegra->pinned_mem_size += size;
     }
 
     return bo;
@@ -91,6 +107,19 @@ static int dumb_bo_unmap(int fd, struct dumb_bo *bo)
 
 static int dumb_bo_destroy(struct dumb_bo *bo)
 {
+    struct drm_tegra *drm = bo->tegra->drm;
+    int drm_ver = drm_tegra_version(drm);
+
+    if (drm_ver >= GRATE_KERNEL_DRM_VERSION) {
+        uint32_t flags = 0, size = 0;
+
+        drm_tegra_bo_get_flags(bo->bo, &flags);
+        drm_tegra_bo_get_size(bo->bo, &size);
+
+        if (flags & DRM_TEGRA_GEM_CREATE_SPARSE)
+            bo->tegra->pinned_mem_size -= size;
+    }
+
     drm_tegra_bo_unref(bo->bo);
     free(bo);
     return 0;
@@ -430,7 +459,7 @@ drmmode_shadow_allocate(xf86CrtcPtr crtc, int width, int height)
     drmmode_ptr drmmode = drmmode_crtc->drmmode;
     int ret;
 
-    drmmode_crtc->rotate_bo = dumb_bo_create(tegra->drm, width, height,
+    drmmode_crtc->rotate_bo = dumb_bo_create(tegra, width, height,
                                              crtc->scrn->bitsPerPixel);
     if (!drmmode_crtc->rotate_bo) {
         xf86DrvMsg(crtc->scrn->scrnIndex, X_ERROR,
@@ -1135,7 +1164,7 @@ drmmode_xf86crtc_resize(ScrnInfoPtr scrn, int width, int height)
     old_fb_id = drmmode->fb_id;
     old_front = drmmode->front_bo;
 
-    drmmode->front_bo = dumb_bo_create(tegra->drm, width, height, scrn->bitsPerPixel);
+    drmmode->front_bo = dumb_bo_create(tegra, width, height, scrn->bitsPerPixel);
     if (!drmmode->front_bo)
         goto fail;
 
@@ -1468,7 +1497,7 @@ Bool drmmode_create_initial_bos(ScrnInfoPtr pScrn, drmmode_ptr drmmode)
     width = pScrn->virtualX;
     height = pScrn->virtualY;
 
-    drmmode->front_bo = dumb_bo_create(tegra->drm, width, height, bpp);
+    drmmode->front_bo = dumb_bo_create(tegra, width, height, bpp);
     if (!drmmode->front_bo)
         return FALSE;
 
@@ -1481,7 +1510,7 @@ Bool drmmode_create_initial_bos(ScrnInfoPtr pScrn, drmmode_ptr drmmode)
     for (i = 0; i < xf86_config->num_crtc; i++) {
         xf86CrtcPtr crtc = xf86_config->crtc[i];
         drmmode_crtc_private_ptr drmmode_crtc = crtc->driver_private;
-        drmmode_crtc->cursor_bo = dumb_bo_create(tegra->drm, width, height, bpp);
+        drmmode_crtc->cursor_bo = dumb_bo_create(tegra, width, height, bpp);
     }
 
     return TRUE;
@@ -1621,7 +1650,7 @@ void drmmode_get_default_bpp(ScrnInfoPtr pScrn, drmmode_ptr drmmode, int *depth,
         mode_res->min_height = 1;
 
     /*create a bo */
-    bo = dumb_bo_create(tegra->drm, mode_res->min_width,
+    bo = dumb_bo_create(tegra, mode_res->min_width,
                         mode_res->min_height, 32);
     if (!bo) {
         ErrorF("It looks like CONFIG_DRM_TEGRA_STAGING isn't enabled in "

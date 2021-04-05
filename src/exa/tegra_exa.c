@@ -185,6 +185,9 @@ static void tegra_exa_init_features(ScrnInfoPtr scrn, struct tegra_exa *exa,
          * pool because it will hog most of GART aperture.
          */
         INFO_MSG(scrn, "EXA using GEM CREATE_SPARSE\n");
+
+        if (exa->prefer_sparse_bo_alloc)
+            INFO_MSG(scrn, "EXA prefer GEM CREATE_SPARSE\n");
     }
 
     /*
@@ -244,6 +247,7 @@ static int tegra_exa_init(ScreenPtr screen)
     }
 
     exa->scratch.drm = tegra->drm;
+    exa->tegra = tegra;
 
     /* tegra->exa is used by MM initialization, so set it early */
     tegra->exa = exa;
