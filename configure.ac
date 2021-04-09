@@ -24,7 +24,7 @@
 AC_PREREQ([2.60])
 AC_INIT([xf86-video-opentegra],
 	[0.6.0],
-	[https://bugs.freedesktop.org/enter_bug.cgi?product=xorg],
+	[https://github.com/grate-driver/xf86-video-opentegra/issues],
 	[xf86-video-opentegra])
 AC_CONFIG_SRCDIR([Makefile.am])
 AC_CONFIG_HEADERS([config.h])
