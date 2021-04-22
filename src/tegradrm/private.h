@@ -112,8 +112,6 @@ struct drm_tegra_channel_v3 {
 	uint32_t channel_ctx;
 	uint32_t sp_thresh;
 	uint32_t sp_id;
-	int host1x_fd;
-	int sp_fd;
 };
 
 struct drm_tegra_channel {
@@ -142,8 +140,7 @@ struct drm_tegra_fence {
 
 		/* v3 */
 		struct {
-			int32_t sync_file_fd;
-			drmMMListHead job_list;
+			uint32_t syncobj;
 		};
 	};
 };

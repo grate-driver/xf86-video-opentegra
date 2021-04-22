@@ -484,6 +484,7 @@ tegra_stream_get_current_fence_v3(struct tegra_stream *base_stream)
     struct tegra_stream_v3 *stream = to_stream_v3(base_stream);
     struct drm_tegra_fence *fence;
     struct tegra_fence *f;
+    int err;
 
     if (stream->base.class_id == 0) {
         stream->base.status = TEGRADRM_STREAM_CONSTRUCTION_FAILED;
@@ -491,8 +492,8 @@ tegra_stream_get_current_fence_v3(struct tegra_stream *base_stream)
         return NULL;
     }
 
-    fence = drm_tegra_job_create_fence_v3(stream->job, stream->job->sp_incrs);
-    if (!fence) {
+    err = drm_tegra_job_create_fence_v3(stream->job, &fence);
+    if (err) {
         stream->base.status = TEGRADRM_STREAM_CONSTRUCTION_FAILED;
         ErrorMsg("drm_tegra_job_create_fence_v3() failed\n");
         return NULL;
@@ -518,13 +519,16 @@ int tegra_stream_create_v3(struct tegra_stream **pstream,
     struct tegra_stream *stream;
     int ret;
 
+    if (getenv("OPENTEGRA_FORCE_OLD_UAPI"))
+        return -1;
+
     ret = drm_tegra_version(drm);
     if (ret < 0) {
         ErrorMsg("drm_tegra_version() failed %d\n", ret);
         return -1;
     }
 
-    if (ret != 0)
+    if (ret != 1)
         return -1;
 
     ret = drm_tegra_channel_open_v3(&channel, drm, DRM_TEGRA_GR3D);

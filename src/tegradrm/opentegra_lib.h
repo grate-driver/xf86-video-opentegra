@@ -204,7 +204,6 @@ int drm_tegra_job_submit_v2(struct drm_tegra_job_v2 *job,
 
 struct drm_tegra_job_v3 {
 	struct drm_tegra *drm;
-	drmMMListHead fences_list;
 	struct drm_tegra_channel *channel;
 	struct drm_tegra_submit_cmd *cmds;
 	struct drm_tegra_submit_buf *buf_table;
@@ -213,7 +212,6 @@ struct drm_tegra_job_v3 {
 	unsigned int num_words;
 	unsigned int num_cmds_max;
 	unsigned int num_cmds;
-	unsigned int num_incrs;
 	uint32_t sp_incrs;
 	uint32_t *gather_start;
 	uint32_t *start;
@@ -248,9 +246,8 @@ int drm_tegra_job_push_wait_v3(struct drm_tegra_job_v3 *job,
 			       uint32_t threshold);
 int drm_tegra_job_push_syncpt_incr_v3(struct drm_tegra_job_v3 *job,
 				      enum drm_tegra_syncpt_cond cond);
-struct drm_tegra_fence *
-drm_tegra_job_create_fence_v3(struct drm_tegra_job_v3 *job,
-			      uint32_t job_thresh);
+int drm_tegra_job_create_fence_v3(struct drm_tegra_job_v3* job,
+			    struct drm_tegra_fence** pfence);
 int drm_tegra_job_submit_v3(struct drm_tegra_job_v3 *job,
 			    struct drm_tegra_fence **pfence);
 int drm_tegra_fence_is_busy_v3(struct drm_tegra_fence *fence);

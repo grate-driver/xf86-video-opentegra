@@ -17,105 +17,66 @@
 #include "private.h"
 #include "sync.h"
 
-static void drm_tegra_job_detach_fences_v3(struct drm_tegra_job_v3 *job,
-					   bool error)
-{
-	while (!DRMLISTEMPTY(&job->fences_list)) {
-		struct drm_tegra_fence *fence;
-
-		fence = DRMLISTENTRY(struct drm_tegra_fence,
-				     job->fences_list.next,
-				     job_list);
-
-		DRMLISTDELINIT(&fence->job_list);
-
-		if (error) {
-			close(fence->sync_file_fd);
-			fence->sync_file_fd = -1;
-		}
-	}
-}
-
-static struct drm_tegra_fence *
-drm_tegra_fence_create_v3(struct drm_tegra *drm,
-			  int host1x_fd, uint32_t sp_id, uint32_t threshold)
+int
+drm_tegra_job_create_fence_v3(struct drm_tegra_job_v3* job,
+			      struct drm_tegra_fence** pfence)
 {
 	struct drm_tegra_fence *fence;
-	struct host1x_create_fence args;
+	int err;
 
 	fence = calloc(1, sizeof(*fence));
 	if (!fence)
-		return NULL;
+		return -ENOMEM;
 
-	memset(&args, 0, sizeof(args));
-	args.id = sp_id;
-	args.threshold = threshold;
-
-	if (drmIoctl(host1x_fd, HOST1X_IOCTL_CREATE_FENCE, &args)) {
-		free(fence);
-		return NULL;
-	}
-
-	DRMINITLISTHEAD(&fence->job_list);
-	fence->sync_file_fd = args.fence_fd;
+	fence->drm = job->drm;
 	fence->version = 3;
 
-	return fence;
-}
+	err = drmSyncobjCreate(job->drm->fd, 0, &fence->syncobj);
+	if (err) {
+		fprintf(stderr, "drmSyncobjCreate failed %d\n", err);
+		free(fence);
+		return err;
+	}
 
-struct drm_tegra_fence *
-drm_tegra_job_create_fence_v3(struct drm_tegra_job_v3 *job,
-			      uint32_t job_thresh)
-{
-	struct drm_tegra_fence *fence;
+	*pfence = fence;
 
-	fence = drm_tegra_fence_create_v3(job->drm,
-					  job->channel->v3.host1x_fd,
-					  job->channel->v3.sp_id,
-					  job->channel->v3.sp_thresh + job_thresh);
-	if (!fence)
-		return NULL;
-
-	DRMLISTADDTAIL(&fence->job_list, &job->fences_list);
-
-	return fence;
+	return 0;
 }
 
 int drm_tegra_fence_is_busy_v3(struct drm_tegra_fence *fence)
 {
-	struct sync_file_info *file_info;
-	struct sync_fence_info *info;
-	int ret = -1;
+	int err;
 
-	file_info = sync_file_info(fence->sync_file_fd);
-	if (file_info) {
-		info = sync_get_fence_info(file_info);
+	err = drm_tegra_fence_wait_timeout_v3(fence, 0);
 
-		if (file_info->num_fences == 1) {
-			if (info->status == 0)
-				ret = 1;
-			else if (info->status == 1)
-				ret = 0;
-			else if (info->status < 0)
-				ret = info->status;
-		}
+	if (err == 0)
+		return 0;
+	else if (err == -ETIME)
+		return 1;
+	else
+		return err;
+}
 
-		sync_file_info_free(file_info);
-	}
-
-	return ret;
+static uint64_t gettime_ns(void)
+{
+	struct timespec current;
+	clock_gettime(CLOCK_MONOTONIC, &current);
+	return (uint64_t)current.tv_sec * 1000000000ull + current.tv_nsec;
 }
 
 int drm_tegra_fence_wait_timeout_v3(struct drm_tegra_fence *fence,
 				    int timeout)
 {
-	return sync_wait(fence->sync_file_fd, timeout);
+	return drmSyncobjWait(fence->drm->fd, &fence->syncobj, 1,
+				gettime_ns() + 1000000LL * (int64_t)timeout,
+				DRM_SYNCOBJ_WAIT_FLAGS_WAIT_ALL|
+					DRM_SYNCOBJ_WAIT_FLAGS_WAIT_FOR_SUBMIT,
+				NULL);
 }
 
 void drm_tegra_fence_free_v3(struct drm_tegra_fence *fence)
 {
-	DRMLISTDEL(&fence->job_list);
-	close(fence->sync_file_fd);
+	drmSyncobjDestroy(fence->drm->fd, fence->syncobj);
 	free(fence);
 }
 
@@ -123,9 +84,7 @@ int drm_tegra_channel_init_v3(struct drm_tegra_channel *channel,
 			      struct drm_tegra *drm,
 			      enum drm_tegra_class client)
 {
-	struct host1x_allocate_syncpoint sp_args;
-	struct host1x_syncpoint_info sp_info;
-	struct host1x_read_syncpoint sp_read;
+	struct drm_tegra_syncpoint_allocate sp_args;
 	struct drm_tegra_channel_open args;
 	enum host1x_class class;
 	int err;
@@ -156,45 +115,18 @@ int drm_tegra_channel_init_v3(struct drm_tegra_channel *channel,
 
 	channel->drm			= drm;
 	channel->version		= 3;
-	channel->v3.sp_fd		= -1;
-	channel->v3.host1x_fd		= open("/dev/host1x", O_RDWR, 0);
 	channel->v3.channel_ctx		= args.channel_ctx;
 	channel->v3.hardware_version	= args.hardware_version;
 
 	DRMINITLISTHEAD(&channel->v3.mapping_list);
 
-	if (channel->v3.host1x_fd < 0) {
-		err = -errno;
-		goto deinit_channel;
-	}
-
 	memset(&sp_args, 0, sizeof(sp_args));
 
-	if (drmIoctl(channel->v3.host1x_fd, HOST1X_IOCTL_ALLOCATE_SYNCPOINT, &sp_args)) {
-		err = -errno;
+	err = drmCommandWriteRead(drm->fd, DRM_TEGRA_SYNCPOINT_ALLOCATE, &sp_args, sizeof(sp_args));
+	if (err < 0)
 		goto deinit_channel;
-	}
 
-	channel->v3.sp_fd = sp_args.fd;
-
-	memset(&sp_info, 0, sizeof(sp_info));
-
-	if (drmIoctl(channel->v3.sp_fd, HOST1X_IOCTL_SYNCPOINT_INFO, &sp_info)) {
-		err = -errno;
-		goto deinit_channel;
-	}
-
-	channel->v3.sp_id = sp_info.id;
-
-	memset(&sp_read, 0, sizeof(sp_read));
-	sp_read.id = channel->v3.sp_id;
-
-	if (drmIoctl(channel->v3.host1x_fd, HOST1X_IOCTL_READ_SYNCPOINT, &sp_read)) {
-		err = -errno;
-		goto deinit_channel;
-	}
-
-	channel->v3.sp_thresh = sp_read.value;
+	channel->v3.sp_id = sp_args.id;
 
 	return 0;
 
@@ -262,7 +194,7 @@ int drm_tegra_channel_deinit_v3(struct drm_tegra_channel *channel)
 	if (!channel)
 		return -EINVAL;
 
-	if (channel->v3.host1x_fd < 0)
+	if (channel->v3.channel_ctx == 0)
 		return 0;
 
 	drm = channel->drm;
@@ -277,25 +209,16 @@ int drm_tegra_channel_deinit_v3(struct drm_tegra_channel *channel)
 
 	while (!DRMLISTEMPTY(&channel->v3.mapping_list)) {
 		struct drm_tegra_bo_mapping_v3 *mapping;
-		uint32_t mapping_id, channel_ctx;
 
 		mapping = DRMLISTENTRY(struct drm_tegra_bo_mapping_v3,
 				       channel->v3.mapping_list.next,
 				       ch_list);
-		mapping_id = mapping->id;
-		channel_ctx = mapping->channel_ctx;
 
 		err = drm_tegra_channel_mapping_unref_v3(drm, mapping);
 		if (err < 0)
 			VDBG_DRM(drm, "UNMAP failed err %d strerror(%s) mapping_id=%u channel_ctx=%u\n",
-				 err, strerror(-err), mapping_id, channel_ctx);
+				 err, strerror(-err), mapping->id, mapping->channel_ctx);
 	}
-
-	close(channel->v3.sp_fd);
-	close(channel->v3.host1x_fd);
-
-	channel->v3.host1x_fd = -1;
-	channel->v3.sp_fd = -1;
 
 	return 0;
 }
@@ -350,7 +273,6 @@ int drm_tegra_job_new_v3(struct drm_tegra_job_v3 **jobp,
 	if (err)
 		goto err_free_words;
 
-	DRMINITLISTHEAD(&job->fences_list);
 	job->num_buffers_max = num_buffers_expected;
 	job->num_cmds_max = num_cmds_expected;
 	job->num_words = num_words_expected;
@@ -384,7 +306,6 @@ int drm_tegra_job_reset_v3(struct drm_tegra_job_v3 *job)
 	job->num_buffers = 0;
 	job->ptr = job->start;
 	job->gather_start = job->start;
-	drm_tegra_job_detach_fences_v3(job, true);
 
 	return 0;
 }
@@ -481,7 +402,6 @@ int drm_tegra_job_free_v3(struct drm_tegra_job_v3 *job)
 	if (!job)
 		return -EINVAL;
 
-	drm_tegra_job_detach_fences_v3(job, true);
 	free(job->buf_table);
 	free(job->start);
 	free(job->cmds);
@@ -497,6 +417,14 @@ static int drm_tegra_bo_map_io_v3(struct drm_tegra_bo_mapping_v3 **pmapping,
 	struct drm_tegra_bo_mapping_v3 *mapping;
 	struct drm_tegra_channel_map map_args;
 	int err;
+
+	DRMLISTFOREACHENTRY(mapping, &bo->mapping_list_v3, bo_list) {
+		if (mapping->channel_ctx == channel->v3.channel_ctx) {
+			atomic_inc(&mapping->ref);
+			*pmapping = mapping;
+			return 0;
+		}
+	}
 
 	mapping = calloc(1, sizeof(*mapping));
 
@@ -516,7 +444,7 @@ static int drm_tegra_bo_map_io_v3(struct drm_tegra_bo_mapping_v3 **pmapping,
 	mapping->channel_ctx = channel->v3.channel_ctx;
 	DRMLISTADDTAIL(&mapping->bo_list, &bo->mapping_list_v3);
 	DRMLISTADDTAIL(&mapping->ch_list, &channel->v3.mapping_list);
-	atomic_set(&bo->ref, 2);
+	atomic_set(&mapping->ref, 1);
 
 	*pmapping = mapping;
 
@@ -624,11 +552,8 @@ int drm_tegra_job_push_wait_v3(struct drm_tegra_job_v3 *job,
 			return err;
 	}
 
-	if (threshold < 0)
-		threshold = job->channel->v3.sp_thresh + job->sp_incrs;
-
 	memset(&cmd, 0, sizeof(cmd));
-	cmd.type = DRM_TEGRA_SUBMIT_CMD_WAIT_SYNCPT;
+	cmd.type = DRM_TEGRA_SUBMIT_CMD_WAIT_SYNCPT_RELATIVE;
 	cmd.wait_syncpt.id = job->channel->v3.sp_id;
 	cmd.wait_syncpt.threshold = threshold;
 
@@ -661,8 +586,10 @@ int drm_tegra_job_submit_v3(struct drm_tegra_job_v3 *job,
 		return -EINVAL;
 
 	err = drm_tegra_job_push_gather_v3(job);
-	if (err)
+	if (err) {
+		fprintf(stderr, "push_gather failed %d\n", err);
 		return err;
+	}
 
 	memset(&args, 0, sizeof(args));
 	args.channel_ctx		= job->channel->v3.channel_ctx;
@@ -672,24 +599,25 @@ int drm_tegra_job_submit_v3(struct drm_tegra_job_v3 *job,
 	args.bufs_ptr			= (uintptr_t)job->buf_table;
 	args.cmds_ptr			= (uintptr_t)job->cmds;
 	args.gather_data_ptr		= (uintptr_t)job->start;
-	args.syncpt_incr.syncpt_fd	= job->channel->v3.sp_fd;
-	args.syncpt_incr.num_incrs	= job->num_incrs;
+	args.syncpt_incr.id		= job->channel->v3.sp_id;
+	args.syncpt_incr.num_incrs	= job->sp_incrs;
+
+	if (pfence) {
+		err = drm_tegra_job_create_fence_v3(job, pfence);
+		if (err)
+			return err;
+
+		args.syncobj_out = (*pfence)->syncobj;
+	}
 
 	err = drmCommandWriteRead(job->drm->fd, DRM_TEGRA_CHANNEL_SUBMIT,
 				  &args, sizeof(args));
 	if (err) {
-		drm_tegra_job_detach_fences_v3(job, true);
+		fprintf(stderr, "CHANNEL_SUBMIT failed errno=%d\n", errno);
+		if (pfence)
+			drm_tegra_fence_free_v3(*pfence);
 		return err;
 	}
-
-	drm_tegra_job_detach_fences_v3(job, false);
-	job->channel->v3.sp_thresh += job->sp_incrs;
-
-	if (pfence)
-		*pfence = drm_tegra_fence_create_v3(job->drm,
-						    job->channel->v3.host1x_fd,
-						    job->channel->v3.sp_id,
-						    job->channel->v3.sp_thresh);
 
 	return 0;
 }

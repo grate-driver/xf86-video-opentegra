@@ -311,18 +311,15 @@ vg_free:
 
 	while (!DRMLISTEMPTY(&bo->mapping_list_v3)) {
 		struct drm_tegra_bo_mapping_v3 *mapping;
-		uint32_t mapping_id, channel_ctx;
 
 		mapping = DRMLISTENTRY(struct drm_tegra_bo_mapping_v3,
 				       bo->mapping_list_v3.next,
 				       bo_list);
-		mapping_id = mapping->id;
-		channel_ctx = mapping->channel_ctx;
 
 		err = drm_tegra_bo_mapping_unref_v3(drm, mapping);
 		if (err < 0)
 			VDBG_BO(bo, "UNMAP failed err %d strerror(%s) mapping_id=%u channel_ctx=%u\n",
-				err, strerror(-err), mapping_id, channel_ctx);
+				err, strerror(-err), mapping->id, mapping->channel_ctx);
 	}
 
 	drmHashDelete(drm->handle_table, bo->handle);
@@ -1146,15 +1143,10 @@ int drm_tegra_channel_open(struct drm_tegra_channel **channelp,
 			   struct drm_tegra *drm,
 			   enum drm_tegra_class client)
 {
-	int err;
-
-	err = drm_tegra_channel_open_v1(channelp, drm, client);
-	if (err)
-		return err;
-
-	drm_tegra_channel_init_v3(*channelp, drm, client);
-
-	return 0;
+	if (drm->version == 1 && !getenv("OPENTEGRA_FORCE_OLD_UAPI"))
+		return drm_tegra_channel_open_v3(channelp, drm, client);
+	else
+		return drm_tegra_channel_open_v1(channelp, drm, client);
 }
 
 int drm_tegra_channel_close(struct drm_tegra_channel *channel)
