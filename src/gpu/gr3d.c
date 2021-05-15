@@ -27,6 +27,35 @@
 #define TGE3D_ARRAY_SIZE(x) (sizeof(x) / sizeof(*x))
 
 static const uint32_t state_reset[] = {
+    /* Tegra114 specific stuff */
+    HOST1X_OPCODE_IMM(0xe44,0x00000000),
+    HOST1X_OPCODE_IMM(0x807,0x00000000),
+    HOST1X_OPCODE_IMM(0xc00,0x00000000),
+    HOST1X_OPCODE_IMM(0xc01,0x00000000),
+    HOST1X_OPCODE_IMM(0xc02,0x00000000),
+    HOST1X_OPCODE_IMM(0xc03,0x00000000),
+    HOST1X_OPCODE_IMM(0xc30,0x00000000),
+    HOST1X_OPCODE_IMM(0xc31,0x00000000),
+    HOST1X_OPCODE_IMM(0xc32,0x00000000),
+    HOST1X_OPCODE_IMM(0xc33,0x00000000),
+    HOST1X_OPCODE_IMM(0xc40,0x00000000),
+    HOST1X_OPCODE_IMM(0xc41,0x00000000),
+    HOST1X_OPCODE_IMM(0xc42,0x00000000),
+    HOST1X_OPCODE_IMM(0xc43,0x00000000),
+    HOST1X_OPCODE_IMM(0xc50,0x00000000),
+    HOST1X_OPCODE_IMM(0xc51,0x00000000),
+    HOST1X_OPCODE_IMM(0xc52, 0x00000000),
+    HOST1X_OPCODE_IMM(0xc53, 0x00000000),
+    HOST1X_OPCODE_INCR(0xe70, 0x0010),
+        0x00000000, 0x00000000, 0x00000000, 0x00000000,
+        0x00000000, 0x00000000, 0x00000000, 0x00000000,
+        0x00000000, 0x00000000, 0x00000000, 0x00000000,
+        0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    HOST1X_OPCODE_IMM(0xe80, 0x00000f00),
+    HOST1X_OPCODE_IMM(0xe84, 0x00000000),
+    HOST1X_OPCODE_IMM(0xe85, 0x00000000),
+    HOST1X_OPCODE_IMM(0xe86, 0x00000000),
+    HOST1X_OPCODE_IMM(0xe87, 0x00000000),
     /* Tegra30 specific stuff */
     HOST1X_OPCODE_INCR(0x907, 5),
         0x00000000, 0x00000000, 0x00000000, 0x00000000,
@@ -38,6 +67,18 @@ static const uint32_t state_reset[] = {
         0x00000000, 0x00000000, 0x00000000, 0x00000000,
         0x00000000, 0x00000000, 0x00000000, 0x00000000,
         0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    /*
+     * Tegra114 has additional texture descriptors. The order may be important,
+     * hence it's placed in a middle of T30 regs until we'll know that this is
+     * unnecessary.
+     */
+    HOST1X_OPCODE_INCR(0x770, 16),
+        0x00000000, 0x00000000, 0x00000000, 0x00000000,
+        0x00000000, 0x00000000, 0x00000000, 0x00000000,
+        0x00000000, 0x00000000, 0x00000000, 0x00000000,
+        0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    HOST1X_OPCODE_IMM(0x7e0, 0x0001),
+    HOST1X_OPCODE_IMM(0x7e1, 0x0000),
     HOST1X_OPCODE_IMM(0xb04, 0x00000000),
     HOST1X_OPCODE_INCR(0xb06, 13),
         0x00000000, 0x00000000, 0x00000000, 0x00000000,
@@ -107,6 +148,12 @@ static void tgr3d_init_state(struct tegra_stream *cmds)
 {
     tegra_stream_prep(cmds, TGE3D_ARRAY_SIZE(state_reset));
     tegra_stream_push_words(cmds, state_reset, TGE3D_ARRAY_SIZE(state_reset), 0);
+
+    if (cmds->tegra114) {
+        tegra_stream_prep(cmds, 2);
+        tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0x41a, 0xa00));
+        tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0x416, 0x140));
+    }
 }
 
 void tgr3d_upload_const_vp(struct tegra_stream *cmds, unsigned index,
@@ -174,11 +221,17 @@ static void tgr3d_set_late_test(struct tegra_stream *cmds)
 
 static void tgr3d_set_depth_range(struct tegra_stream *cmds)
 {
-    tegra_stream_prep(cmds, 3);
+    unsigned int scale;
 
+    if (cmds->tegra114)
+        scale = 0xFFFFFF;
+    else
+        scale = 0xFFFFF;
+
+    tegra_stream_prep(cmds, 3);
     tegra_stream_push(cmds, HOST1X_OPCODE_INCR(TGR3D_DEPTH_RANGE_NEAR, 2));
-    tegra_stream_push(cmds, (uint32_t)(0xFFFFF * 0.0f));
-    tegra_stream_push(cmds, (uint32_t)(0xFFFFF * 1.0f));
+    tegra_stream_push(cmds, (uint32_t)(scale * 0.0f));
+    tegra_stream_push(cmds, (uint32_t)(scale * 1.0f));
 }
 
 static void tgr3d_set_depth_buffer(struct tegra_stream *cmds)
@@ -192,6 +245,12 @@ static void tgr3d_set_depth_buffer(struct tegra_stream *cmds)
 
     tegra_stream_push(cmds, HOST1X_OPCODE_INCR(TGR3D_DEPTH_TEST_PARAMS, 1));
     tegra_stream_pushf(cmds, value);
+
+    if (cmds->tegra114) {
+        tegra_stream_prep(cmds, 2);
+        tegra_stream_push(cmds, HOST1X_OPCODE_INCR(0xe45, 1));
+        tegra_stream_push(cmds, value);
+    }
 }
 
 static void tgr3d_set_polygon_offset(struct tegra_stream *cmds)
@@ -211,6 +270,14 @@ static void tgr3d_set_pseq_dw_cfg(struct tegra_stream *cmds,
     tegra_stream_prep(cmds, 2);
     tegra_stream_push(cmds, HOST1X_OPCODE_INCR(TGR3D_FP_PSEQ_DW_CFG, 1));
     tegra_stream_push(cmds, value);
+
+    if (cmds->tegra114) {
+        /* XXX: maybe not needed */
+        tegra_stream_prep(cmds, 3);
+        tegra_stream_push(cmds, HOST1X_OPCODE_INCR(0x547, 0x0002));
+        tegra_stream_push(cmds, 0xc0000000);
+        tegra_stream_push(cmds, 0x00000000);
+    }
 }
 
 static void tgr3d_set_alu_buffer_size(struct tegra_stream *cmds,
@@ -229,7 +296,8 @@ static void tgr3d_set_alu_buffer_size(struct tegra_stream *cmds,
     tegra_stream_push(cmds, value);
 
     tegra_stream_push(cmds, HOST1X_OPCODE_INCR(0x501, 1));
-    tegra_stream_push(cmds, (0x0032 << 16) | (unk_pseq_cfg << 4) | 0xF);
+    tegra_stream_push(cmds, (0x2200 << 16) | (0x0032 << 16) |
+                            (unk_pseq_cfg << 4) | 0xF);
 }
 
 static void tgr3d_set_stencil_test(struct tegra_stream *cmds)
@@ -502,7 +570,12 @@ void tgr3d_upload_program(struct tegra_stream *cmds,
     tegra_stream_push(cmds, HOST1X_OPCODE_IMM(TGR3D_FP_UPLOAD_ALU_INST_ID, 0));
 
     tegra_stream_push_words(cmds, prog->vs_prog_words, prog->vs_prog_words_nb, 0);
-    tegra_stream_push_words(cmds, prog->fs_prog_words, prog->fs_prog_words_nb, 0);
+
+    if (cmds->tegra114)
+        tegra_stream_push_words(cmds, prog->fs_prog_words_t114, prog->fs_prog_words_nb, 0);
+    else
+        tegra_stream_push_words(cmds, prog->fs_prog_words, prog->fs_prog_words_nb, 0);
+
     tegra_stream_push_words(cmds, prog->linker_words,  prog->linker_words_nb, 0);
 }
 

@@ -113,6 +113,7 @@ TegraIdentify(int flags)
 static int
 TegraCheckHardware(int fd)
 {
+    enum drm_tegra_soc_id soc_id = DRM_TEGRA_INVALID_SOC;
     struct drm_tegra_channel *channel = NULL;
     struct drm_tegra *drm = NULL;
     static Bool verbose = TRUE;
@@ -135,12 +136,16 @@ TegraCheckHardware(int fd)
             drm_tegra_channel_close(channel);
         }
 
+        soc_id = drm_tegra_get_soc_id(drm);
         drm_tegra_close(drm);
     }
 
     if (verbose) {
-        xf86DrvMsg(-1, X_INFO, "%s: Tegra20/30 DRM support %s\n",
+        xf86DrvMsg(-1, X_INFO, "%s: Tegra20/30/114 DRM support %s\n",
                    __func__, err ? "undetected" : "detected");
+
+        xf86DrvMsg(-1, X_INFO, "%s: SoC ID: %s\n",
+                   __func__, drm_tegra_soc_names[soc_id]);
 
         /* print messages only once */
         verbose = FALSE;

@@ -69,6 +69,7 @@ struct tegra_stream {
     uint32_t **buf_ptr;
     uint32_t class_id;
     uint32_t num_pushed_words;
+    bool tegra114;
 
     void (*destroy)(struct tegra_stream *stream);
     int (*begin)(struct tegra_stream *stream,
@@ -120,6 +121,9 @@ static inline int tegra_stream_create(struct tegra_stream **pstream,
     err = tegra_stream_create_v1(pstream, drm);
     if (!err)
         return 0;
+
+    if (drm_tegra_get_soc_id(drm) == DRM_TEGRA114_SOC)
+        (*pstream)->tegra114 = true;
 
     return err;
 }
