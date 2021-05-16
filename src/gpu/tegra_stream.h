@@ -112,20 +112,23 @@ static inline int tegra_stream_create(struct tegra_stream **pstream,
 
     err = tegra_stream_create_v3(pstream, drm);
     if (!err)
-        return 0;
+        goto success;
 
     err = grate_stream_create_v2(pstream, drm);
     if (!err)
-        return 0;
+        goto success;
 
     err = tegra_stream_create_v1(pstream, drm);
     if (!err)
-        return 0;
+        goto success;
 
+    return err;
+
+success:
     if (drm_tegra_get_soc_id(drm) == DRM_TEGRA114_SOC)
         (*pstream)->tegra114 = true;
 
-    return err;
+    return 0;
 }
 
 static inline void tegra_stream_destroy(struct tegra_stream *stream)
