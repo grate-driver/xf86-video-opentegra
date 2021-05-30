@@ -21,6 +21,7 @@ int
 drm_tegra_job_create_fence_v3(struct drm_tegra_job_v3* job,
 			      struct drm_tegra_fence** pfence)
 {
+#ifdef HAVE_LIBDRM_SYNCOBJ_SUPPORT
 	struct drm_tegra_fence *fence;
 	int err;
 
@@ -39,6 +40,7 @@ drm_tegra_job_create_fence_v3(struct drm_tegra_job_v3* job,
 	}
 
 	*pfence = fence;
+#endif
 
 	return 0;
 }
@@ -67,16 +69,22 @@ static uint64_t gettime_ns(void)
 int drm_tegra_fence_wait_timeout_v3(struct drm_tegra_fence *fence,
 				    int timeout)
 {
+#ifdef HAVE_LIBDRM_SYNCOBJ_SUPPORT
 	return drmSyncobjWait(fence->drm->fd, &fence->syncobj, 1,
 				gettime_ns() + 1000000LL * (int64_t)timeout,
 				DRM_SYNCOBJ_WAIT_FLAGS_WAIT_ALL|
 					DRM_SYNCOBJ_WAIT_FLAGS_WAIT_FOR_SUBMIT,
 				NULL);
+#else
+	return true;
+#endif
 }
 
 void drm_tegra_fence_free_v3(struct drm_tegra_fence *fence)
 {
+#ifdef HAVE_LIBDRM_SYNCOBJ_SUPPORT
 	drmSyncobjDestroy(fence->drm->fd, fence->syncobj);
+#endif
 	free(fence);
 }
 
