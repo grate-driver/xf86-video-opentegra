@@ -1331,6 +1331,10 @@ Bool drmmode_set_desired_modes(ScrnInfoPtr pScrn, drmmode_ptr drmmode)
                                          crtc->desiredRotation,
                                          crtc->desiredX, crtc->desiredY))
             return FALSE;
+
+        if (drmmode->upside_down)
+                drm_set_planes_rotation(drmmode->fd, output->possible_crtcs,
+                                        DRM_MODE_ROTATE_180);
     }
 
     return TRUE;
