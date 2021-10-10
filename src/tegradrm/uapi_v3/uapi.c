@@ -123,14 +123,15 @@ int drm_tegra_channel_init_v3(struct drm_tegra_channel *channel,
 
 	channel->drm			= drm;
 	channel->version		= 3;
-	channel->v3.channel_ctx		= args.channel_ctx;
-	channel->v3.hardware_version	= args.hardware_version;
+	channel->v3.channel_ctx		= args.context;
+	channel->v3.hardware_version	= args.version;
 
 	DRMINITLISTHEAD(&channel->v3.mapping_list);
 
 	memset(&sp_args, 0, sizeof(sp_args));
 
-	err = drmCommandWriteRead(drm->fd, DRM_TEGRA_SYNCPOINT_ALLOCATE, &sp_args, sizeof(sp_args));
+	err = drmCommandWriteRead(drm->fd, DRM_TEGRA_SYNCPOINT_ALLOCATE,
+				  &sp_args, sizeof(sp_args));
 	if (err < 0)
 		goto deinit_channel;
 
@@ -180,8 +181,8 @@ static int drm_tegra_channel_mapping_unref_v3(struct drm_tegra *drm,
 	if (!atomic_dec_and_test(&mapping->ref))
 		return 0;
 
-	unmap_args.channel_ctx = mapping->channel_ctx;
-	unmap_args.mapping_id = mapping->id;
+	unmap_args.context = mapping->channel_ctx;
+	unmap_args.mapping = mapping->id;
 
 	err = drmCommandWriteRead(drm->fd, DRM_TEGRA_CHANNEL_UNMAP,
 				  &unmap_args, sizeof(unmap_args));
@@ -208,7 +209,7 @@ int drm_tegra_channel_deinit_v3(struct drm_tegra_channel *channel)
 	drm = channel->drm;
 
 	memset(&args, 0, sizeof(args));
-	args.channel_ctx = channel->v3.channel_ctx;
+	args.context = channel->v3.channel_ctx;
 
 	err = drmCommandWriteRead(drm->fd, DRM_TEGRA_CHANNEL_CLOSE, &args,
 				  sizeof(args));
@@ -224,7 +225,7 @@ int drm_tegra_channel_deinit_v3(struct drm_tegra_channel *channel)
 
 		err = drm_tegra_channel_mapping_unref_v3(drm, mapping);
 		if (err < 0)
-			VDBG_DRM(drm, "UNMAP failed err %d strerror(%s) mapping_id=%u channel_ctx=%u\n",
+			VDBG_DRM(drm, "UNMAP failed err %d strerror(%s) mapping_id=%u context=%u\n",
 				 err, strerror(-err), mapping->id, mapping->channel_ctx);
 	}
 
@@ -437,9 +438,9 @@ static int drm_tegra_bo_map_io_v3(struct drm_tegra_bo_mapping_v3 **pmapping,
 	mapping = calloc(1, sizeof(*mapping));
 
 	memset(&map_args, 0, sizeof(map_args));
-	map_args.channel_ctx = channel->v3.channel_ctx;
+	map_args.context = channel->v3.channel_ctx;
 	map_args.handle = bo->handle;
-	map_args.flags = DRM_TEGRA_CHANNEL_MAP_READWRITE;
+	map_args.flags = DRM_TEGRA_CHANNEL_MAP_READ_WRITE;
 
 	err = drmCommandWriteRead(channel->drm->fd, DRM_TEGRA_CHANNEL_MAP,
 				  &map_args, sizeof(map_args));
@@ -448,7 +449,7 @@ static int drm_tegra_bo_map_io_v3(struct drm_tegra_bo_mapping_v3 **pmapping,
 		return err;
 	}
 
-	mapping->id = map_args.mapping_id;
+	mapping->id = map_args.mapping;
 	mapping->channel_ctx = channel->v3.channel_ctx;
 	DRMLISTADDTAIL(&mapping->bo_list, &bo->mapping_list_v3);
 	DRMLISTADDTAIL(&mapping->ch_list, &channel->v3.mapping_list);
@@ -495,7 +496,7 @@ int drm_tegra_job_push_reloc_v3(struct drm_tegra_job_v3 *job,
 
 	memset(&buf, 0, sizeof(buf));
 	buf.flags = drm_buf_table_flags;
-	buf.mapping_id = mapping->id;
+	buf.mapping = mapping->id;
 	buf.reloc.target_offset = target->offset + offset;
 	buf.reloc.gather_offset_words = (unsigned long)(job->ptr - job->start);
 
@@ -563,7 +564,7 @@ int drm_tegra_job_push_wait_v3(struct drm_tegra_job_v3 *job,
 	memset(&cmd, 0, sizeof(cmd));
 	cmd.type = DRM_TEGRA_SUBMIT_CMD_WAIT_SYNCPT_RELATIVE;
 	cmd.wait_syncpt.id = job->channel->v3.sp_id;
-	cmd.wait_syncpt.threshold = threshold;
+	cmd.wait_syncpt.value = threshold;
 
 	job->cmds[job->num_cmds++] = cmd;
 
@@ -600,15 +601,15 @@ int drm_tegra_job_submit_v3(struct drm_tegra_job_v3 *job,
 	}
 
 	memset(&args, 0, sizeof(args));
-	args.channel_ctx		= job->channel->v3.channel_ctx;
+	args.context			= job->channel->v3.channel_ctx;
 	args.num_bufs			= job->num_buffers;
 	args.num_cmds			= job->num_cmds;
 	args.gather_data_words		= (uint32_t)(job->ptr - job->start);
 	args.bufs_ptr			= (uintptr_t)job->buf_table;
 	args.cmds_ptr			= (uintptr_t)job->cmds;
 	args.gather_data_ptr		= (uintptr_t)job->start;
-	args.syncpt_incr.id		= job->channel->v3.sp_id;
-	args.syncpt_incr.num_incrs	= job->sp_incrs;
+	args.syncpt.id			= job->channel->v3.sp_id;
+	args.syncpt.increments		= job->sp_incrs;
 
 	if (pfence) {
 		err = drm_tegra_job_create_fence_v3(job, pfence);

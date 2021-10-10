@@ -252,8 +252,8 @@ static int drm_tegra_bo_mapping_unref_v3(struct drm_tegra *drm,
 	if (!atomic_dec_and_test(&mapping->ref))
 		return 0;
 
-	unmap_args.channel_ctx = mapping->channel_ctx;
-	unmap_args.mapping_id = mapping->id;
+	unmap_args.context = mapping->channel_ctx;
+	unmap_args.mapping = mapping->id;
 
 	err = drmCommandWriteRead(drm->fd, DRM_TEGRA_CHANNEL_UNMAP,
 				  &unmap_args, sizeof(unmap_args));
