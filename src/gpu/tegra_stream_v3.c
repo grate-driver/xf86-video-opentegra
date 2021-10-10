@@ -522,6 +522,9 @@ int tegra_stream_create_v3(struct tegra_stream **pstream,
     if (getenv("OPENTEGRA_FORCE_OLD_UAPI"))
         return -1;
 
+    if (getenv("OPENTEGRA_FORCE_NEW_UAPI"))
+        return -1;
+
 #ifndef HAVE_LIBDRM_SYNCOBJ_SUPPORT
     InfoMsg("too old libdrm\n");
     return -1;
