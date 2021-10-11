@@ -146,6 +146,13 @@ static void tegra_exa_cancel_deferred_operations(PixmapPtr pixmap)
 {
     struct tegra_pixmap *priv = exaGetPixmapDriverPrivate(pixmap);
 
+    /*
+     * NOTE: So far this is functions is used for cancelling of 2d
+     *       operations only.
+     */
+
+    tegra_exa_cancel_or_flush_deferred_3d_operations(pixmap);
+
     if (priv->state.solid_fill)
         DEBUG_MSG("pixmap %p canceled deferred solid-fill\n", pixmap);
 

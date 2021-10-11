@@ -83,6 +83,8 @@ static void tegra_exa_flush_deferred_3d_operations(PixmapPtr pixmap,
                                                    bool flush_reads,
                                                    bool flush_writes);
 
+static void tegra_exa_cancel_or_flush_deferred_3d_operations(PixmapPtr pixmap);
+
 static void
 tegra_exa_prepare_optimized_solid_fill(PixmapPtr pixmap, Pixel color);
 static bool tegra_exa_optimize_solid_op(PixmapPtr pixmap,

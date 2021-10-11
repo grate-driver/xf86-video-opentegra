@@ -717,4 +717,46 @@ tegra_exa_3d_state_deferred(struct tegra_3d_state *state)
     return state->num_jobs > 0;
 }
 
+static void tegra_exa_cancel_or_flush_deferred_3d_operations(PixmapPtr pixmap)
+{
+    ScrnInfoPtr scrn = xf86ScreenToScrn(pixmap->drawable.pScreen);
+    struct tegra_pixmap *priv = exaGetPixmapDriverPrivate(pixmap);
+    struct tegra_exa *tegra = TegraPTR(scrn)->exa;
+    struct tegra_3d_state *state = &tegra->gr3d_state;
+    bool canceled = false;
+    unsigned int i;
+
+    /*
+     * Drawing operation may cancel all operations that are currently deferred
+     * for the given pixmap. Ideally we should drop all relevant jobs, but we
+     * can't do it because it requires a full blown compositor implementation
+     * within driver which don't have and won't ever have. Instead, we will do
+     * the best effort by resetting the enqueued 3d job if we know that it's
+     * safe to do it, otherwise do a heavy flush.
+     */
+    if (state->num_jobs == 1 &&
+        TEGRA_FENCE_COMPLETED(tegra->cmds->last_fence[TEGRA_3D])) {
+
+        for (i = 0; i < state->num_pixmaps; i++) {
+            if (state->pixmaps[i].pixmap == priv && state->pixmaps[i].write) {
+                canceled = true;
+                break;
+            }
+        }
+
+        for (i = 0; canceled && i < state->num_pixmaps; i++) {
+            TEGRA_FENCE_MARK_COMPLETED(priv->fence_write[TEGRA_3D]);
+            TEGRA_FENCE_MARK_COMPLETED(priv->fence_read[TEGRA_3D]);
+        }
+
+        if (canceled) {
+            DEBUG_MSG("pixmap %p solid-fill canceled 3d job\n", pixmap);
+            tegra_exa_3d_state_reset(state);
+            return;
+        }
+    }
+
+    tegra_exa_flush_deferred_3d_operations(pixmap, true, true, true);
+}
+
 /* vim: set et sts=4 sw=4 ts=4: */
