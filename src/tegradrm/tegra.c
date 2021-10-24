@@ -1143,7 +1143,8 @@ int drm_tegra_channel_open(struct drm_tegra_channel **channelp,
 			   struct drm_tegra *drm,
 			   enum drm_tegra_class client)
 {
-	if (drm->version == 1 && !getenv("OPENTEGRA_FORCE_OLD_UAPI"))
+	if (drm->version == 1 && !getenv("OPENTEGRA_FORCE_OLD_UAPI") &&
+	    getenv("OPENTEGRA_FORCE_NEW_UAPI"))
 		return drm_tegra_channel_open_v3(channelp, drm, client);
 	else
 		return drm_tegra_channel_open_v1(channelp, drm, client);
